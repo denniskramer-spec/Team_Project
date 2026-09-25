@@ -1,0 +1,144 @@
+:root {
+  --bg: #313338;
+  --surface: #2b2d31;
+  --surface-2: #1e1f22;
+  --input: #1e1f22;
+  --border: #3f4147;
+  --text: #dbdee1;
+  --muted: #949ba4;
+  --link: #00a8fc;
+  --good: #23a55a;
+  --bad: #f23f43;
+  --warn: #f0b232;
+
+  /* Chart series (Planned / Reported / Actual), validated on this surface. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+
+  /* Status palette for results (done / in progress / not done). */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-neutral: #80848e;
+
+  /* Role colours. --accent follows the logged-in user's role. */
+  --role-admin: #f23f43;
+  --role-leader: #f0b232;
+  --role-boss: #a970ff;
+  --role-member: #5865f2;
+  --accent: var(--role-member);
+
+  font-family: 'gg sans', 'Segoe UI', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body[data-role='admin'] { --accent: var(--role-admin); }
+body[data-role='leader'] { --accent: var(--role-leader); }
+body[data-role='boss'] { --accent: var(--role-boss); }
+body[data-role='member'] { --accent: var(--role-member); }
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+.center-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 32px;
+  background: var(--surface);
+  border-radius: 8px;
+  border-top: 4px solid var(--accent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  display: grid;
+  gap: 14px;
+}
+.auth-card h1 { margin: 0; font-size: 24px; }
+.auth-card > p { margin: 0; }
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+input, select {
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  background: var(--input);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+}
+input:focus, select:focus { border-color: var(--accent); }
+input:user-invalid:not(:focus) { border-color: var(--bad); }
+
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: #4e5058;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn:hover { filter: brightness(1.1); text-decoration: none; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.danger { background: var(--bad); color: #fff; }
+.link { background: none; border: 0; padding: 0; font: inherit; color: var(--link); cursor: pointer; }
+
+.alert { padding: 10px 12px; border-radius: 4px; font-size: 14px; }
+.alert.error { background: rgb(242 63 67 / 0.15); color: #ffb3b5; }
+.alert.success { background: rgb(35 165 90 / 0.15); color: #9be8b9; }
+.alert.warning { background: rgb(240 178 50 / 0.15); color: #f7d58c; }
+
+.pw-rules { list-style: none; margin: -6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
+.pw-rules .ok { color: var(--good); }
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.role-admin { background: var(--role-admin); }
+.role-leader { background: var(--role-leader); color: #1e1f22; }
+.role-boss { background: var(--role-boss); }
+.role-member { background: var(--role-member); }
+
+.profile { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; }
+.profile dt { color: var(--muted); }
+.profile dd { margin: 0; }
+
+@media (max-width: 480px) {
+  .auth-card { padding: 24px 20px; }
+  .row { grid-template-columns: 1fr; }
+}

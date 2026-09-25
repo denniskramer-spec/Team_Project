@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# secrets — .env.example is committed instead
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+client/dist/
+
+# logs and editor/OS noise
+*.log
+npm-debug.log*
+.vite/
+.DS_Store

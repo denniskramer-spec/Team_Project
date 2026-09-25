@@ -1,0 +1,14 @@
+{
+  "name": "business-manager",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "dev": "npm --prefix client run build && concurrently -n server,build,web -c blue,magenta,green \"npm --prefix server run dev\" \"npm --prefix client run dev\" \"npm --prefix client run preview\"",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start",
+    "seed:demo": "npm --prefix server run seed:demo --"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
