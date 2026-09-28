@@ -140,8 +140,9 @@ Channel titles come from `GET /api/nav`, built per user in
 | `npm run dev` | API (nodemon) + client watch build + client on http://localhost:3000 |
 | `npm run build` | Production build of the client into `client/dist` |
 | `npm start` | Runs the API only |
+| `npm test` | Server unit tests (periods, permission rules, outcome splits) |
 | `npm run seed:demo` | Fills the database with the demo team (see above) |
-| `npm --prefix server run reset-password -- <user> <password>` | Resets one account's password (add `--must-change` to force a change at next login) |
+| `npm --prefix server run reset-password -- <user>` | Gives one account a temporary password (printed) to change at next login. To set a chosen one, pass it as `RESET_PASSWORD=...` (add `--no-must-change` to keep it) |
 | `npm run install:all` | Installs root, server and client dependencies |
 
 ## API
@@ -185,8 +186,8 @@ client/
 
 ## Notes and troubleshooting
 
-- **Node 18** — dependencies are pinned to versions that support it (Vite 5,
-  Mongoose 8, concurrently 8).
+- **Node 20 or newer** — React Router 7 requires it (Vite 6, Mongoose 8 and
+  concurrently 8 also run on it).
 - **The `#` in the folder path** breaks the Vite dev server (it serves untransformed
   JSX), so `npm run dev` rebuilds the client on each save and serves it with
   `vite preview`. There is no hot reload; refresh after a change (about a second per

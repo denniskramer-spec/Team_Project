@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useState } from 'react';
 import { formatAmount, formatDay, toDateInput } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
-import { useLatestRequest } from '../../useLiveData.js';
+import { useLiveData } from '../../useLiveData.js';
 
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--series-3)' },
@@ -104,27 +102,8 @@ function groupHistory(history, by) {
 // behind them by person or by date.
 export default function TotalPage() {
   const period = useFinancePeriod();
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const { data, error } = useLiveData(`/finance/total?${period.query}`, ['income:changed', 'outcome:changed']);
   const [by, setBy] = useState('person');
-
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const result = await api(`/finance/total?${period.query}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, period.query]);
-
-  useEffect(() => { load(); }, [load]);
-  useReconnect(load);
-  useSocketEvent('income:changed', load);
-  useSocketEvent('outcome:changed', load);
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;

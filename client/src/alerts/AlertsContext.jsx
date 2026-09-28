@@ -81,7 +81,8 @@ export function AlertsProvider({ children }) {
   }, [user]);
 
   useSocketEvent('instruction:new', (alert) => {
-    if (!isForMe(alert)) return;
+    // A repeated event (e.g. after a reconnect) must not count twice.
+    if (!isForMe(alert) || unread.some((a) => a.id === alert.id)) return;
     setUnread((list) => [alert, ...list.filter((a) => a.id !== alert.id)]);
     setTotal((t) => t + 1);
 

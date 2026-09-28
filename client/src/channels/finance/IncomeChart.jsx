@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatAmount, formatDay } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
+import { compact, niceMax, topRounded } from './chartMath.js';
 
 // Planned vs real income per member, as grouped columns:
 //   blue          = planned income (from the member's plan)
@@ -17,22 +18,6 @@ const GAP = 2;           // surface gap between stacked segments and adjacent co
 const MAX_COLUMN = 48;
 // More items than this and the hover card only summarises; a click opens the full list.
 const TOOLTIP_LIMIT = 8;
-const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
-
-// Round the axis top up to a friendly number: 1, 2, 2.5, 5 × 10^n.
-function niceMax(value) {
-  if (value <= 0) return 1;
-  const exp = 10 ** Math.floor(Math.log10(value));
-  const step = [1, 2, 2.5, 5, 10].find((s) => s * exp >= value);
-  return step * exp;
-}
-
-// A column with 4px rounded corners on its top edge only.
-function topRounded(x, y, w, h) {
-  const r = Math.min(4, w / 2, h);
-  if (h <= 0) return '';
-  return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
-}
 
 // Everything behind one member's column, in full.
 function MemberDetail({ row, periodLabel, onClose }) {

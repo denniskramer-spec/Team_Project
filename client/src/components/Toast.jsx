@@ -23,9 +23,10 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="toasts" role="status" aria-live="polite">
+      <div className="toasts">
+        {/* Errors interrupt screen readers; confirmations wait their turn. */}
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.type}`}>
+          <div key={t.id} className={`toast ${t.type}`} role={t.type === 'error' ? 'alert' : 'status'}>
             <span>{t.message}</span>
             <button className="icon-btn" onClick={() => dismiss(t.id)} aria-label="Dismiss"><Icon name="close" size={14} /></button>
           </div>

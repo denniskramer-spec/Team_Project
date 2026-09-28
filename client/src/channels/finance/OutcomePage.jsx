@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount, formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
@@ -11,7 +10,7 @@ import OutcomeForm from './OutcomeForm.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
-import { useLatestRequest } from '../../useLiveData.js';
+import { useLiveData } from '../../useLiveData.js';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
 // More items than this and the hover card only summarises; a click opens the full list.
@@ -52,29 +51,11 @@ function ItemsTable({ items }) {
 export default function OutcomePage() {
   const toast = useToast();
   const period = useFinancePeriod();
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const { data, error, reload: load } = useLiveData(`/outcomes?${period.query}`, ['outcome:changed']);
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState(null);
-
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const result = await api(`/outcomes?${period.query}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, period.query]);
-
-  useEffect(() => { load(); }, [load]);
-  useReconnect(load);
-  useSocketEvent('outcome:changed', load);
 
   const remove = async () => {
     setBusy(true);

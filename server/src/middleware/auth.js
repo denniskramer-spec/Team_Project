@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { can } from '../config/roles.js';
 import User from '../models/User.js';
+import RevokedToken from '../models/RevokedToken.js';
 import { unauthorized, forbidden } from '../utils/httpError.js';
 
 export const TOKEN_COOKIE = 'token';
@@ -16,6 +18,7 @@ export const cookieOptions = {
 export function signToken(user) {
   return jwt.sign({ sub: String(user._id), role: user.role }, env.jwtSecret, {
     expiresIn: env.jwtExpiresIn,
+    jwtid: randomUUID(),
   });
 }
 
@@ -25,6 +28,22 @@ export function setSessionCookie(res, user) {
   const token = signToken(user);
   const { exp } = jwt.decode(token);
   res.cookie(TOKEN_COOKIE, token, { ...cookieOptions, maxAge: exp * 1000 - Date.now() });
+}
+
+// Ends the session this request's token belongs to (logout).
+export async function revokeToken(req) {
+  let payload;
+  try {
+    payload = jwt.verify(readToken(req) ?? '', env.jwtSecret);
+  } catch {
+    return; // no valid token: nothing to end
+  }
+  if (!payload.jti) return;
+  await RevokedToken.updateOne(
+    { _id: payload.jti },
+    { expiresAt: new Date(payload.exp * 1000) },
+    { upsert: true },
+  );
 }
 
 function readToken(req) {
@@ -43,6 +62,9 @@ export async function loadUserFromToken(token) {
     payload = jwt.verify(token, env.jwtSecret);
   } catch {
     throw unauthorized('Session expired, please log in again');
+  }
+  if (payload.jti && await RevokedToken.exists({ _id: payload.jti })) {
+    throw unauthorized('You have logged out, please log in again');
   }
   const user = await User.findById(payload.sub);
   if (!user) throw unauthorized();

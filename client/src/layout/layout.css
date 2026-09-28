@@ -285,15 +285,6 @@
   background: var(--surface);
   color: var(--accent);
 }
-.step-chip {
-  margin-top: 8px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-}
 
 /* ---------- Section 4: hidden right panel ---------- */
 .panel-toggle {
@@ -394,9 +385,11 @@
     bottom: 0;
     z-index: 27;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    /* Hidden (and out of the tab order) once it has slid away. */
+    visibility: hidden;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
   }
-  .nav-drawer.open { transform: none; box-shadow: 8px 0 24px rgb(0 0 0 / 0.4); }
+  .nav-drawer.open { transform: none; visibility: visible; transition: transform 0.2s ease; box-shadow: 8px 0 24px rgb(0 0 0 / 0.4); }
   .titles { width: min(232px, calc(100vw - 84px - 48px)); }
   .scrim { display: block; position: absolute; inset: 0; z-index: 26; background: rgb(0 0 0 / 0.5); }
   .side-panel.open { width: min(280px, 100vw); }

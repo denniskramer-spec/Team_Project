@@ -13,7 +13,7 @@ import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js
 import Asset from '../models/Asset.js';
 import { scopeFilter } from '../utils/visibility.js';
 import { assetSentence } from './assets.js';
-import { directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
+import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -262,7 +262,7 @@ router.post('/:id/approve', requireCapability('approveSignups'), async (req, res
 router.post('/:id/reject', requireCapability('approveSignups'), async (req, res) => {
   const user = await findPending(req);
   await user.deleteOne();
-  navChanged();
+  approvalsChanged();
   res.json({ ok: true });
 });
 

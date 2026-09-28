@@ -13,12 +13,15 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
   const [error, setError] = useState('');
   const [previews, setPreviews] = useState([]);
 
-  // Object URLs for the new files, released when they change.
+  // Object URLs for the new files, released when they change. Each URL is
+  // kept with its file, so the render right after a change never points at a
+  // revoked URL (or another file's).
   useEffect(() => {
-    const urls = files.map((f) => URL.createObjectURL(f));
-    setPreviews(urls);
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+    const made = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+    setPreviews(made);
+    return () => made.forEach((p) => URL.revokeObjectURL(p.url));
   }, [files]);
+  const previewOf = (file) => previews.find((p) => p.file === file)?.url;
 
   const add = (list) => {
     const incoming = Array.from(list ?? []);
@@ -86,7 +89,7 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
           ))}
           {files.map((f, i) => (
             <li key={`${f.name}-${i}`} className="is-new">
-              <img src={previews[i]} alt={f.name} title={f.name} />
+              {previewOf(f) && <img src={previewOf(f)} alt={f.name} title={f.name} />}
               <button type="button" className="thumb-remove" onClick={() => onFiles(files.filter((_, n) => n !== i))} aria-label={`Remove ${f.name}`}>
                 <Icon name="close" size={12} />
               </button>

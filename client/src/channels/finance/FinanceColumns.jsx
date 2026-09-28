@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatAmount } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
+import { compact, niceMax, topRounded } from './chartMath.js';
 
 // Grouped columns: one group per member, one column per series. Shared by
 // the Outcome chart (one series) and the Total chart (income and outcome).
@@ -12,22 +13,6 @@ import Modal from '../../components/Modal.jsx';
 const MARGIN = { top: 26, right: 8, bottom: 32, left: 56 };
 const GAP = 2;
 const MAX_COLUMN = 48;
-const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
-
-// Round the axis top up to a friendly number: 1, 2, 2.5, 5 × 10^n.
-function niceMax(value) {
-  if (value <= 0) return 1;
-  const exp = 10 ** Math.floor(Math.log10(value));
-  const step = [1, 2, 2.5, 5, 10].find((s) => s * exp >= value);
-  return step * exp;
-}
-
-// A column with 4px rounded corners on its top edge only.
-function topRounded(x, y, w, h) {
-  const r = Math.min(4, w / 2, h);
-  if (h <= 0) return '';
-  return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
-}
 
 export default function FinanceColumns({ title, periodLabel, rows, series, tag, tooltip, detail, emptyNote }) {
   const wrap = useRef(null);

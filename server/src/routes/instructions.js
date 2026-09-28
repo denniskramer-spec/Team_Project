@@ -146,15 +146,14 @@ router.get('/', async (req, res) => {
     filter.createdAt = { $lt: before };
   }
 
-  const [items, count] = await Promise.all([
-    Instruction.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(PAGE_SIZE + 1)
-      .populate('author', AUTHOR_FIELDS)
-      .populate('group', 'name slug')
-      .populate('recipient', 'name role'),
-    audienceIndex(),
-  ]);
+  const items = await Instruction.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(PAGE_SIZE + 1)
+    .populate('author', AUTHOR_FIELDS)
+    .populate('group', 'name slug')
+    .populate('recipient', 'name role');
+  // Recipient counts are only for read receipts, which most users never see.
+  const count = items.some((i) => canSeeReceipts(req.user, i)) ? await audienceIndex() : () => 0;
   res.json({
     instructions: items.slice(0, PAGE_SIZE).map((i) => serialize(i, req.user, count)),
     hasMore: items.length > PAGE_SIZE,

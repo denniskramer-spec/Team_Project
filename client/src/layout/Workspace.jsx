@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { load, save } from '../storage.js';
-import { useSocketEvent } from '../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../socket/SocketContext.jsx';
+import { useLatestRequest } from '../useLiveData.js';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
@@ -24,16 +25,26 @@ export default function Workspace() {
   const [navOpen, setNavOpen] = useState(false);
   const [panelTab, setPanelTab] = useState('members');
 
+  const track = useLatestRequest();
   const loadNav = useCallback(() => {
+    const isLatest = track();
     api('/nav')
-      .then((d) => { setChannels(d.channels); setError(''); })
-      .catch((err) => setError(err.message));
-  }, []);
+      .then((d) => { if (isLatest()) { setChannels(d.channels); setError(''); } })
+      .catch((err) => { if (isLatest()) setError(err.message); });
+  }, [track]);
 
   useEffect(() => { loadNav(); }, [loadNav]);
+  useReconnect(loadNav);
 
   // The server emits this when groups, roles or pending sign-ups change.
-  useSocketEvent('nav:changed', loadNav);
+  // Bursts (a task change sends several) become one reload, spread out a
+  // little so every open client doesn't hit the server in the same instant.
+  const navTimer = useRef(null);
+  useSocketEvent('nav:changed', () => {
+    clearTimeout(navTimer.current);
+    navTimer.current = setTimeout(loadNav, 300 + Math.random() * 700);
+  });
+  useEffect(() => () => clearTimeout(navTimer.current), []);
 
   // Close the mobile drawer after navigating.
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
@@ -67,11 +78,14 @@ export default function Workspace() {
   }
   if (!channels) return <div className="center-screen muted">Loading workspace...</div>;
 
+  if (!channels.length) return <div className="center-screen muted">No channels are available for your account.</div>;
+
   // Unknown or missing channel/title: fall back to the last visited or the first one.
   if (!channel) return <Navigate to={`/${channels[0].key}`} replace />;
   if (!title) {
     const last = load(LAST_TITLES_KEY, {})[channel.key];
     const fallback = channel.titles.find((t) => t.key === last) || channel.titles[0];
+    if (!fallback) return <div className="center-screen muted">{channel.name} has nothing to show yet.</div>;
     return <Navigate to={`/${channel.key}/${fallback.key}`} replace />;
   }
 

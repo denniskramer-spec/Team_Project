@@ -4,12 +4,14 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import bcrypt from 'bcryptjs';
-import { requireAuth, setSessionCookie, TOKEN_COOKIE, cookieOptions } from '../middleware/auth.js';
+import {
+  requireAuth, revokeToken, setSessionCookie, TOKEN_COOKIE, cookieOptions,
+} from '../middleware/auth.js';
 import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
-import { directoryChanged, navChanged } from '../socket/events.js';
+import { approvalsChanged, directoryChanged } from '../socket/events.js';
 
 const router = Router();
 
@@ -62,7 +64,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   const user = new User({ username, name, birthday, group, role: 'member', status: 'pending' });
   await user.setPassword(password);
   await user.save();
-  navChanged(); // updates the approvals badge for approvers
+  approvalsChanged(); // updates the approvals badge for approvers
 
   res.status(201).json({
     message: 'Account created. You can log in once an admin, team leader or boss approves it.',
@@ -90,7 +92,8 @@ router.post('/login', authLimiter, async (req, res) => {
   res.json({ user: await publicUser(user) });
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
+  await revokeToken(req);
   res.clearCookie(TOKEN_COOKIE, cookieOptions);
   res.json({ ok: true });
 });

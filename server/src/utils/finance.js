@@ -16,6 +16,9 @@ const TYPES = {
   range: 'range',
 };
 
+// A custom duration loads every record in it, so it is capped.
+const MAX_RANGE_DAYS = 5 * 366;
+
 const DAY_LABEL = { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' };
 
 function parseDay(value, what) {
@@ -38,6 +41,7 @@ export function financePeriod(query) {
     const start = parseDay(query.from, 'start of the duration');
     const last = parseDay(query.to, 'end of the duration');
     if (last < start) throw badRequest('The duration ends before it starts');
+    if (last - start > MAX_RANGE_DAYS * 86400000) throw badRequest(`A duration can be at most ${MAX_RANGE_DAYS / 366} years`);
     const end = new Date(last);
     end.setUTCDate(end.getUTCDate() + 1);
     const label = query.from === query.to

@@ -1,38 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { formatAmount, formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import IncomeChart from './IncomeChart.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
-import { useLatestRequest } from '../../useLiveData.js';
+import { useLiveData } from '../../useLiveData.js';
 
 // Income for one period, for All or one group: totals, the planned vs real
 // chart, income per member and the records. Records are history: they are
 // shown as recorded and cannot be edited or deleted here.
 export default function IncomePage() {
   const period = useFinancePeriod();
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
-
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const result = await api(`/incomes?${period.query}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, period.query]);
-
-  useEffect(() => { load(); }, [load]);
-  useReconnect(load);
-  useSocketEvent('income:changed', load);
+  const { data, error } = useLiveData(`/incomes?${period.query}`, ['income:changed']);
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;

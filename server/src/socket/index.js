@@ -9,6 +9,8 @@ const connections = new Map();
 
 let io = null;
 
+const TYPING_ACCESS_TTL_MS = 60 * 1000;
+
 export const onlineUserIds = () => [...connections.keys()];
 
 // Lets route handlers push real-time events (instruction alerts, chat, ...).
@@ -55,10 +57,17 @@ export function initSocket(httpServer) {
     if (!wasOnline) socket.broadcast.emit('presence:online', id);
 
     // "X is typing" in chat. Only broadcast to chats this user may open.
+    // Access is looked up once a minute per chat, not on every keystroke.
+    const typingAccess = new Map(); // titleKey -> { channel, at }
     socket.on('chat:typing', async ({ titleKey } = {}) => {
-      if (typeof titleKey !== 'string') return;
+      if (typeof titleKey !== 'string' || titleKey.length > 100) return;
       try {
-        const channel = await resolveChannel({ _id: id, role, group }, titleKey);
+        let cached = typingAccess.get(titleKey);
+        if (!cached || Date.now() - cached.at > TYPING_ACCESS_TTL_MS) {
+          cached = { channel: await resolveChannel({ _id: id, role, group }, titleKey), at: Date.now() };
+          typingAccess.set(titleKey, cached);
+        }
+        const { channel } = cached;
         socket.to(roomsFor(channel)).emit('chat:typing', {
           titleKey,
           user: { id, name: socket.data.user.name },

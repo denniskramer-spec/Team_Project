@@ -9,6 +9,8 @@ export const directoryChanged = () => getIO()?.emit('directory:changed');
 // Channel tree (groups, badges, ...) should reload, for everyone or one user.
 export const navChanged = () => getIO()?.emit('nav:changed');
 export const navChangedFor = (userId) => getIO()?.to(`user:${userId}`).emit('nav:changed');
+// Only the people who approve sign-ups show a pending count.
+export const approvalsChanged = () => getIO()?.to(['role:admin', 'role:leader', 'role:boss']).emit('nav:changed');
 
 // A specific user's role, group or status changed: their client reloads
 // its session, and their sockets reconnect so they join the right rooms.
