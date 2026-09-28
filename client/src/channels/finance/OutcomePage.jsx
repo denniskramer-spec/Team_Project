@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount, formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
-import { ConfirmDialog } from '../../components/Modal.jsx';
+import Modal, { ConfirmDialog } from '../../components/Modal.jsx';
 import OutcomeForm from './OutcomeForm.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
+import { useLatestRequest } from '../../useLiveData.js';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
 // More items than this and the hover card only summarises; a click opens the full list.
@@ -37,7 +38,7 @@ function ItemsTable({ items }) {
         {items.map((o) => (
           <tr key={o.id}>
             <td>{formatDay(o.date)}</td>
-            <td>{o.reason}{o.comment && <div className="muted small">{o.comment}</div>}</td>
+            <td>{o.reason}{o.split && <span className="tag split-tag">{o.split}</span>}{o.comment && <div className="muted small">{o.comment}</div>}</td>
             <td className="num strong">{formatAmount(o.amount)}</td>
           </tr>
         ))}
@@ -56,24 +57,30 @@ export default function OutcomePage() {
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
-      setData(await api(`/outcomes?${period.query}`));
+      const result = await api(`/outcomes?${period.query}`);
+      if (!isLatest()) return;
+      setData(result);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [period.query]);
+  }, [track, period.query]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnect(load);
   useSocketEvent('outcome:changed', load);
 
   const remove = async () => {
     setBusy(true);
     try {
-      await api(`/outcomes/${confirm.id}`, { method: 'DELETE' });
-      toast('Outcome deleted');
+      const { removed } = await api(`/outcomes/${confirm.id}`, { method: 'DELETE' });
+      toast(removed > 1 ? `Shared outcome deleted for ${removed} members` : 'Outcome deleted');
       setConfirm(null);
       load();
     } catch (err) {
@@ -198,7 +205,23 @@ export default function OutcomePage() {
                   </td>
                   <td data-label="Reason">
                     {o.reason}
+                    {o.split && (
+                      <span className="tag split-tag" title={`${formatAmount(o.split.total)} shared equally by ${o.split.count} people`}>
+                        {o.split.label} · 1/{o.split.count} of {formatAmount(o.split.total)}
+                      </span>
+                    )}
                     {o.comment && <div className="muted small">{o.comment}</div>}
+                    {o.images.length > 0 && (
+                      <ul className="image-thumbs small-thumbs" aria-label="Attached images">
+                        {o.images.map((img) => (
+                          <li key={img.file}>
+                            <button type="button" className="thumb-open" onClick={() => setLightbox({ images: o.images, index: o.images.indexOf(img), title: o.reason })}>
+                              <img src={img.url} alt={img.name} title={img.name} loading="lazy" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </td>
                   <td data-label="Amount" className="num strong">{formatAmount(o.amount)}</td>
                   <td className="cell-actions">
@@ -206,8 +229,8 @@ export default function OutcomePage() {
                       <Dropdown
                         label="Outcome actions"
                         items={[
-                          { label: 'Edit', icon: 'edit', onClick: () => setForm(o) },
-                          { label: 'Delete', icon: 'trash', danger: true, onClick: () => setConfirm(o) },
+                          { label: o.split ? 'Edit shared outcome' : 'Edit', icon: 'edit', onClick: () => setForm(o) },
+                          { label: o.split ? `Delete for all ${o.split.count}` : 'Delete', icon: 'trash', danger: true, onClick: () => setConfirm(o) },
                         ]}
                       />
                     )}
@@ -231,10 +254,26 @@ export default function OutcomePage() {
           onSaved={() => { setForm(null); load(); }}
         />
       )}
+      {lightbox && (
+        <Modal title={`${lightbox.title} · ${lightbox.index + 1} / ${lightbox.images.length}`} onClose={() => setLightbox(null)} width={900}>
+          <div className="lightbox">
+            <img src={lightbox.images[lightbox.index].url} alt={lightbox.images[lightbox.index].name} />
+            {lightbox.images.length > 1 && (
+              <div className="lightbox-nav">
+                <button className="btn small-btn" type="button" disabled={lightbox.index === 0} onClick={() => setLightbox({ ...lightbox, index: lightbox.index - 1 })}>Previous</button>
+                <span className="muted small">{lightbox.images[lightbox.index].name}</span>
+                <button className="btn small-btn" type="button" disabled={lightbox.index === lightbox.images.length - 1} onClick={() => setLightbox({ ...lightbox, index: lightbox.index + 1 })}>Next</button>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
       {confirm && (
         <ConfirmDialog
-          title="Delete this outcome record?"
-          message={`${formatAmount(confirm.amount)} for ${confirm.reason} on ${formatDay(confirm.date)} will be removed.`}
+          title={confirm.split ? 'Delete this shared outcome?' : 'Delete this outcome record?'}
+          message={confirm.split
+            ? `${confirm.reason} on ${formatDay(confirm.date)}: ${formatAmount(confirm.split.total)} shared by ${confirm.split.count} people. All ${confirm.split.count} records will be removed.`
+            : `${formatAmount(confirm.amount)} for ${confirm.reason} on ${formatDay(confirm.date)} will be removed.`}
           confirmLabel="Delete"
           danger
           busy={busy}

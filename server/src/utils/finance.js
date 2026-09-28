@@ -20,7 +20,8 @@ const DAY_LABEL = { day: 'numeric', month: 'short', year: 'numeric', timeZone: '
 
 function parseDay(value, what) {
   const day = new Date(`${value}T00:00:00.000Z`);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value)) || Number.isNaN(day.getTime())) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value)) || Number.isNaN(day.getTime())
+    || day.toISOString().slice(0, 10) !== value) {
     throw badRequest(`Invalid ${what}, expected YYYY-MM-DD`);
   }
   return day;

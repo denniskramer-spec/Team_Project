@@ -1,8 +1,9 @@
-// Who an outcome is for: one member, or a team cost of
-// one group or of the whole team. Value: { team, member, group }.
+// Who an outcome is for: one member, or a team cost that is split equally
+// over the members of one group (or of the whole team). Bosses and members
+// share a team cost; the team leader does not. Value: { team, member, group }.
 
 export const targetFrom = (record) => ({
-  team: Boolean(record) && !record.member,
+  team: false,
   member: record?.member?.id ?? '',
   group: record?.group?.id ?? '',
 });
@@ -28,6 +29,7 @@ export default function TargetFields({ value, onChange, members, groups, wholeTe
             {wholeTeam && <option value="">Whole team</option>}
             {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
+          <span className="muted small field-help">Split equally over its members and bosses, one record each. The team leader is not included.</span>
         </label>
       ) : (
         <label>

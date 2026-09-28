@@ -247,7 +247,8 @@ router.post('/:id/read', async (req, res) => {
 // POST /api/instructions/read-all { title? } — acknowledge everything (optionally one title).
 router.post('/read-all', async (req, res) => {
   const filter = unreadFilter(req.user);
-  if (req.body?.title === 'all') filter.$or = [{ target: 'all' }];
+  // "All" also lists the instructions sent directly to this user.
+  if (req.body?.title === 'all') filter.$or = [{ target: 'all' }, { target: 'member', recipient: req.user._id }];
   else if (req.body?.title) filter.$or = [{ target: 'group', group: req.user.group }];
   const result = await Instruction.updateMany(filter, { $push: { readBy: { user: req.user._id, at: new Date() } } });
   if (result.modifiedCount) navChangedFor(req.user._id);

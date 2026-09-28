@@ -1,6 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
-import { useSocket } from './socket/SocketContext.jsx';
+import { useReconnect, useSocket } from './socket/SocketContext.jsx';
+
+// For pages that load on their own: call `track()` when a request starts; the
+// function it returns says whether that request is still the latest one, so a
+// slow older response cannot overwrite a newer one (e.g. Week, then Year).
+export function useLatestRequest() {
+  const seq = useRef(0);
+  return useCallback(() => {
+    seq.current += 1;
+    const id = seq.current;
+    return () => id === seq.current;
+  }, []);
+}
+
+// `value`, once it has stopped changing for `ms` (for search boxes).
+export function useDebounced(value, ms = 250) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return debounced;
+}
 
 // Loads `path` and reloads it whenever one of `events` arrives over the socket.
 // Pass path = null to skip loading.
@@ -26,11 +48,13 @@ export function useLiveData(path, events = []) {
     }
   }, []);
 
+  // Previous data stays on screen while the next path loads (no flash of an
+  // empty page on every keystroke of a search).
   useEffect(() => {
     setLoading(Boolean(path));
-    setData(null);
     reload();
   }, [path, reload]);
+  useReconnect(reload);
 
   const eventKey = events.join('|');
   useEffect(() => {

@@ -58,7 +58,7 @@ router.get('/', async (req, res) => {
   // Everything that falls inside the period.
   const inside = { periodStart: { $gte: period.start }, periodEnd: { $lte: period.end } };
 
-  const [plans, reports, tasks, incomes, people] = await Promise.all([
+  const [allPlans, reports, tasks, incomes, people] = await Promise.all([
     // Personal plans only: a boss's group plan repeats their members' targets.
     Plan.find(withGroup({ ...owners, ...inside, scope: 'personal' }, 'owner')).populate('owner', 'name role').lean(),
     Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).populate('author', 'name role').lean(),
@@ -74,6 +74,13 @@ router.get('/', async (req, res) => {
     }, '_id'), 'name role group').populate('group', 'name slug').sort('name').lean(),
   ]);
 
+  // A member's monthly plan already covers their weeks, so planned targets
+  // count weekly plans only for members with no monthly plan in the period
+  // (the same rule as the Finance chart). Plan states still count every plan.
+  const idOf = (doc, field) => String(doc[field]?._id ?? doc[field]);
+  const withMonthly = new Set(allPlans.filter((p) => p.type === 'monthly').map((p) => idOf(p, 'owner')));
+  const plans = allPlans.filter((p) => p.type === 'monthly' || !withMonthly.has(idOf(p, 'owner')));
+
   // The three bar charts from the guide.
   const income = {
     planned: sum(plans, 'income'),
@@ -88,14 +95,14 @@ router.get('/', async (req, res) => {
     salary: sum(tasks, 'salary'),
   };
 
-  const planStates = PLAN_STATES.reduce((acc, state) => ({ ...acc, [state]: plans.filter((p) => p.status === state).length }), {});
+  const planStates = PLAN_STATES.reduce((acc, state) => ({ ...acc, [state]: allPlans.filter((p) => p.status === state).length }), {});
 
   // Per-member breakdown, so a leader can see who is behind.
-  const idOf = (doc, field) => String(doc[field]?._id ?? doc[field]);
   const rows = people.map((person) => {
     const id = String(person._id);
     const mine = {
       plans: plans.filter((p) => idOf(p, 'owner') === id),
+      allPlans: allPlans.filter((p) => idOf(p, 'owner') === id),
       reports: reports.filter((r) => idOf(r, 'author') === id),
       tasks: tasks.filter((t) => idOf(t, 'owner') === id),
       incomes: incomes.filter((i) => idOf(i, 'member') === id),
@@ -112,7 +119,7 @@ router.get('/', async (req, res) => {
       upcoming: sum(mine.reports, 'upcomingAmount'),
       actualIncome: sum(mine.incomes, 'amount'),
       tasks: { total: mine.tasks.length, done: mine.tasks.filter((t) => t.status === 'done').length, salary: sum(mine.tasks, 'salary') },
-      planStates: PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: mine.plans.filter((p) => p.status === s).length }), {}),
+      planStates: PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: mine.allPlans.filter((p) => p.status === s).length }), {}),
     };
   });
 
@@ -133,7 +140,7 @@ router.get('/', async (req, res) => {
     planStates,
     rows,
     taskSalary: sum(tasks, 'salary'),
-    counts: { plans: plans.length, reports: reports.length, tasks: tasks.length, incomes: incomes.length, members: people.length },
+    counts: { plans: allPlans.length, reports: reports.length, tasks: tasks.length, incomes: incomes.length, members: people.length },
     groups: allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
     scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
   });

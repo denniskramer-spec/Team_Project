@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
-import { requireAuth, signToken, TOKEN_COOKIE, cookieOptions } from '../middleware/auth.js';
+import bcrypt from 'bcryptjs';
+import { requireAuth, setSessionCookie, TOKEN_COOKIE, cookieOptions } from '../middleware/auth.js';
 import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
@@ -22,13 +23,26 @@ const authLimiter = rateLimit({
   message: { message: 'Too many attempts, please try again in a few minutes' },
 });
 
+// Compared against when the username does not exist (hash of a random string).
+const DUMMY_HASH = bcrypt.hashSync(Math.random().toString(36), 12);
+
 async function publicUser(user) {
   await user.populate('group', 'name slug');
   return user.toPublic();
 }
 
+// Sign-ups are limited whether they succeed or not, so a script cannot flood
+// the approvals queue: 5 new accounts per hour per IP.
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many sign-ups from this network, please try again later' },
+});
+
 // New accounts start as "pending" members until an admin, leader or boss approves them.
-router.post('/signup', authLimiter, async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
   requireFields(req.body, ['username', 'name', 'password']);
   const username = checkUsername(req.body.username);
   const name = checkName(req.body.name);
@@ -60,8 +74,10 @@ router.post('/login', authLimiter, async (req, res) => {
   const user = await User.findOne({ username: req.body.username.trim().toLowerCase() })
     .select('+passwordHash');
 
-  // Same message for unknown user and wrong password, so usernames can't be probed.
-  if (!user || !(await user.checkPassword(req.body.password))) {
+  // Same message and about the same time for an unknown user and a wrong
+  // password, so usernames can't be probed.
+  const ok = user ? await user.checkPassword(req.body.password) : await bcrypt.compare(req.body.password, DUMMY_HASH);
+  if (!user || !ok) {
     throw unauthorized('Wrong username or password');
   }
   if (user.status === 'pending') throw forbidden('Your account is waiting for approval');
@@ -70,7 +86,7 @@ router.post('/login', authLimiter, async (req, res) => {
   user.lastLoginAt = new Date();
   await user.save();
 
-  res.cookie(TOKEN_COOKIE, signToken(user), { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+  setSessionCookie(res, user);
   res.json({ user: await publicUser(user) });
 });
 
@@ -111,7 +127,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   await user.save();
 
   // Old tokens are now invalid, so issue a fresh one for this session.
-  res.cookie(TOKEN_COOKIE, signToken(user), { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+  setSessionCookie(res, user);
   res.json({ message: 'Password changed', user: await publicUser(user) });
 });
 

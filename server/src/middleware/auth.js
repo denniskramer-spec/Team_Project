@@ -19,6 +19,14 @@ export function signToken(user) {
   });
 }
 
+// Issues a fresh token in the session cookie. The cookie lives exactly as
+// long as the token (JWT_EXPIRES_IN), so the two never disagree.
+export function setSessionCookie(res, user) {
+  const token = signToken(user);
+  const { exp } = jwt.decode(token);
+  res.cookie(TOKEN_COOKIE, token, { ...cookieOptions, maxAge: exp * 1000 - Date.now() });
+}
+
 function readToken(req) {
   const header = req.get('authorization');
   if (header?.startsWith('Bearer ')) return header.slice(7);

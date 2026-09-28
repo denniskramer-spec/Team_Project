@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { formatBirthday } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
@@ -9,6 +9,7 @@ import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
 import AssetForm from './AssetForm.jsx';
+import { useLatestRequest } from '../../useLiveData.js';
 
 // Section 3 for the Assets channel: a table of assets for All, one group or
 // one member — whatever the tree has selected, within this role's scope.
@@ -24,22 +25,27 @@ export default function AssetChannel({ title }) {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
       const params = new URLSearchParams({ group });
       if (member) params.set('member', member);
       if (query.trim()) params.set('q', query.trim());
-      setData(await api(`/assets?${params}`));
+      const result = await api(`/assets?${params}`);
+      if (!isLatest()) return;
+      setData(result);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [group, member, query]);
+  }, [track, group, member, query]);
 
   useEffect(() => {
     const id = setTimeout(load, query ? 250 : 0);
     return () => clearTimeout(id);
   }, [load, query]);
+  useReconnect(load);
   useSocketEvent('asset:changed', load);
 
   const remove = async () => {

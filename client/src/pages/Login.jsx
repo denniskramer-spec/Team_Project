@@ -3,8 +3,9 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { load, save } from '../storage.js';
 
-// "Remember me" keeps the username and password in this browser's localStorage
-// so the form is pre-filled next time. Unticking it forgets them.
+// "Remember me" keeps only the username in this browser's localStorage so the
+// form is pre-filled next time; the password is left to the browser's password
+// manager. Unticking it forgets the username.
 const REMEMBER_KEY = 'bm.login';
 
 export default function Login() {
@@ -12,7 +13,9 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const remembered = load(REMEMBER_KEY, null);
-  const [form, setForm] = useState({ username: remembered?.username ?? '', password: remembered?.password ?? '' });
+  // Older versions also stored the password: drop it from storage.
+  if (remembered?.password !== undefined) save(REMEMBER_KEY, { username: remembered.username });
+  const [form, setForm] = useState({ username: remembered?.username ?? '', password: '' });
   const [remember, setRemember] = useState(Boolean(remembered));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,7 +28,7 @@ export default function Login() {
     setError('');
     try {
       const u = await login(form.username, form.password);
-      if (remember) save(REMEMBER_KEY, { username: form.username, password: form.password });
+      if (remember) save(REMEMBER_KEY, { username: form.username });
       else save(REMEMBER_KEY, null);
       const dest = u.mustChangePassword ? '/change-password' : location.state?.from?.pathname || '/';
       navigate(dest, { replace: true });
@@ -46,7 +49,7 @@ export default function Login() {
         <label>
           Username
           <input
-            autoFocus={!remembered}
+            autoFocus={!remembered?.username}
             autoComplete="username"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
@@ -57,6 +60,7 @@ export default function Login() {
           Password
           <input
             type="password"
+            autoFocus={Boolean(remembered?.username)}
             autoComplete="current-password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -69,7 +73,7 @@ export default function Login() {
             checked={remember}
             onChange={(e) => { setRemember(e.target.checked); if (!e.target.checked) save(REMEMBER_KEY, null); }}
           />
-          Remember my username and password on this device
+          Remember my username on this device
         </label>
         <button className="btn primary" disabled={busy}>{busy ? 'Logging in...' : 'Log in'}</button>
         <p className="muted small">

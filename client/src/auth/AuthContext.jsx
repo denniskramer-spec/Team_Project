@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { api, onUnauthorized } from '../api.js';
 
 const AuthContext = createContext(null);
 
@@ -12,8 +12,9 @@ export function AuthProvider({ children }) {
       const { user } = await api('/auth/me');
       setUser(user);
       return user;
-    } catch {
-      setUser(null);
+    } catch (err) {
+      // Only a rejected session logs the user out; a network blip keeps them in.
+      if (err.status === 401 || err.status === 403) setUser(null);
       return null;
     } finally {
       setLoading(false);
@@ -23,6 +24,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Any request that finds the session expired sends the user back to /login.
+  useEffect(() => {
+    onUnauthorized(() => setUser(null));
+    return () => onUnauthorized(null);
+  }, []);
 
   // Role-based styling hooks off this attribute (see index.css).
   useEffect(() => {

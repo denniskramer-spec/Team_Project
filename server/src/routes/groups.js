@@ -40,11 +40,15 @@ router.get('/', async (req, res) => {
   });
 });
 
+const RESERVED_SLUGS = ['all', 'me'];
+
 function checkGroupName(body) {
   requireFields(body, ['name']);
   const name = body.name.trim();
   if (name.length > 50) throw badRequest('Group name must be 50 characters or fewer');
   if (!/[a-z0-9]/i.test(name)) throw badRequest('Group name must contain a letter or number');
+  // Group slugs share the channel tree's keys with these fixed titles.
+  if (RESERVED_SLUGS.includes(slugify(name))) throw badRequest(`"${name}" is reserved, choose another group name`);
   return name;
 }
 

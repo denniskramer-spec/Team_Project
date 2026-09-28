@@ -5,13 +5,23 @@ import Icon from './Icon.jsx';
 export default function Modal({ title, onClose, children, footer, width = 480 }) {
   const ref = useRef(null);
 
+  // Callers usually pass a new onClose on every render; keep the latest in a
+  // ref so the effect below runs once and doesn't steal focus on re-renders.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    const esc = (e) => { if (e.key === 'Escape') onCloseRef.current(); };
     document.addEventListener('keydown', esc);
-    // Focus the first field so keyboard users can start typing straight away.
+    // Focus the first field so keyboard users can start typing straight away,
+    // and give focus back to whatever opened the modal when it closes.
+    const opener = document.activeElement;
     ref.current?.querySelector('input, select, textarea, button:not(.modal-close)')?.focus();
-    return () => document.removeEventListener('keydown', esc);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener('keydown', esc);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

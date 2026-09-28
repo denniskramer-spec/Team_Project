@@ -113,7 +113,9 @@ router.get('/', async (req, res) => {
   const personal = plans.filter((p) => p.scope === 'personal');
   const byOwner = new Map(personal.map((p) => [String(p.owner._id), p]));
   const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: plans.filter((p) => p.status === s).length }), {});
-  const totals = plans.reduce((acc, p) => ({
+  // Totals add up personal plans only: a boss's group plan repeats their
+  // members' targets (Checkout leaves it out for the same reason).
+  const totals = personal.reduce((acc, p) => ({
     jobBid: acc.jobBid + (p.jobBid || p.bid || 0),
     aiBid: acc.aiBid + (p.aiBid || 0),
     income: acc.income + p.income,

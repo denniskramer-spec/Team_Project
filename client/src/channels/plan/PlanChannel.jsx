@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount, timeAgo } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import PlanForm from './PlanForm.jsx';
 import StatusPicker, { STATUSES, StatusPill } from './StatusPicker.jsx';
+import { useLatestRequest } from '../../useLiveData.js';
 
 const PLAN_TYPES = ['weekly', 'monthly'];
 
@@ -97,19 +98,24 @@ export default function PlanChannel({ title }) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('mine');
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
       const params = new URLSearchParams({ type, group });
       if (period) params.set('period', period);
       if (member) params.set('member', member);
-      setData(await api(`/plans?${params}`));
+      const result = await api(`/plans?${params}`);
+      if (!isLatest()) return;
+      setData(result);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [type, period, group, member]);
+  }, [track, type, period, group, member]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnect(load);
   useSocketEvent('plan:changed', (e) => { if (e.type === type) load(); });
 
   const setPeriod = (value) => {

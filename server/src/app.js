@@ -18,10 +18,27 @@ import outcomeRoutes from './routes/outcomes.js';
 import financeRoutes from './routes/finance.js';
 import checkoutRoutes from './routes/checkout.js';
 import assetRoutes from './routes/assets.js';
+import { requireAuth } from './middleware/auth.js';
+import { uploadsDir } from './utils/uploads.js';
 
 const app = express();
 
-app.set('trust proxy', 1);
+app.set('trust proxy', env.trustProxy);
+// Every query parameter is a plain string: a repeated key (?q=a&q=b) keeps
+// its last value instead of turning into an array that routes don't expect.
+app.set('query parser', (str) => Object.fromEntries(new URLSearchParams(str)));
+app.disable('x-powered-by');
+// Basic security headers. Uploaded files in particular must never be
+// sniffed into HTML or framed by another site.
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+  next();
+});
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
@@ -53,6 +70,8 @@ app.use('/api/outcomes', outcomeRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/assets', assetRoutes);
+// Uploaded images (outcome attachments), behind login.
+app.use('/api/files', requireAuth, express.static(uploadsDir, { fallthrough: false, index: false, maxAge: '1d' }));
 
 app.use('/api', (req, res) => {
   res.status(404).json({ message: `Not found: ${req.method} ${req.originalUrl}` });
@@ -62,6 +81,9 @@ app.use('/api', (req, res) => {
 app.use((err, req, res, next) => {
   if (err.name === 'ValidationError') {
     return res.status(400).json({ message: Object.values(err.errors).map((e) => e.message).join(', ') });
+  }
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: `Invalid ${err.path}` });
   }
   if (err.code === 11000) {
     return res.status(409).json({ message: `${Object.keys(err.keyValue || {}).join(', ')} already exists` });

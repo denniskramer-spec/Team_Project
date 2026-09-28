@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { timeAgo } from '../../format.js';
@@ -20,7 +20,24 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => { setForm(toForm(plan)); setDirty(false); }, [plan?.id, plan?.updatedAt, period]);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const shownPeriod = useRef(period);
+
+  // Reload the form when the period or the saved plan changes. A reload for
+  // the same period (a status change, a save in another tab) keeps what the
+  // user is still typing and only takes the new result state.
+  useEffect(() => {
+    const samePeriod = shownPeriod.current === period;
+    shownPeriod.current = period;
+    if (samePeriod && dirtyRef.current) {
+      setForm((f) => ({ ...f, status: plan?.status ?? f.status }));
+      return;
+    }
+    setForm(toForm(plan));
+    setDirty(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.id, plan?.updatedAt, period]);
 
   const set = (key) => (e) => { setForm({ ...form, [key]: e.target.value }); setDirty(true); };
 

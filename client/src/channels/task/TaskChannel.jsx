@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api.js';
-import { useLiveData } from '../../useLiveData.js';
+import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatDay, formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
@@ -72,9 +72,11 @@ export default function TaskChannel({ title }) {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const q = useDebounced(query);
+
   const params = new URLSearchParams();
   if (status) params.set('status', status);
-  if (query.trim()) params.set('q', query.trim());
+  if (q.trim()) params.set('q', q.trim());
   const { data, error, reload } = useLiveData(`/tasks?${params}`, ['task:changed']);
 
   const all = data?.tasks ?? [];

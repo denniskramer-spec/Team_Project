@@ -805,3 +805,40 @@ textarea:focus { border-color: var(--accent); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Outcome attachments: drop box in the form, thumbnails in the table, lightbox. */
+.image-drop-wrap { display: grid; gap: 8px; }
+.image-drop {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 16px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+.image-drop:hover, .image-drop:focus-visible, .image-drop.over { border-color: var(--accent); color: var(--text); outline: none; }
+.image-drop.invalid { border-color: var(--bad); }
+.required-mark { color: var(--bad); }
+.image-drop .icon { color: var(--accent); }
+.image-thumbs { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.image-thumbs li { position: relative; }
+.image-thumbs img { display: block; width: 88px; height: 88px; object-fit: cover; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.image-thumbs .is-new img { border-color: var(--accent); }
+.thumb-remove {
+  position: absolute; top: -6px; right: -6px;
+  display: grid; place-items: center; width: 20px; height: 20px;
+  border: 0; border-radius: 50%; background: var(--bad); color: #fff; cursor: pointer;
+}
+.small-thumbs { margin-top: 6px; gap: 6px; }
+.small-thumbs img { width: 44px; height: 44px; }
+.thumb-open { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.lightbox { display: grid; gap: 10px; }
+.lightbox img { display: block; max-width: 100%; max-height: 70vh; margin: 0 auto; border-radius: 6px; background: var(--surface-2); }
+.lightbox-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.split-tag { margin-left: 8px; background: rgb(169 112 255 / 0.2); color: #cfb3ff; text-transform: none; }
+.field-help { text-transform: none; letter-spacing: normal; font-weight: 400; }

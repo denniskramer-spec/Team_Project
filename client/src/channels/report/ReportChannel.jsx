@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { formatAmount, timeAgo } from '../../format.js';
 import Icon from '../../components/Icon.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import ReportForm from './ReportForm.jsx';
 import TeamReports from './TeamReports.jsx';
+import { useLatestRequest } from '../../useLiveData.js';
 
 // Reports are daily; the title says whose reports to show.
 const TYPE = 'daily';
@@ -86,20 +87,24 @@ export default function ReportChannel({ title }) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('mine');
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
       const params = new URLSearchParams({ type, group });
       if (period) params.set('period', period);
       if (member) params.set('member', member);
       const d = await api(`/reports?${params}`);
+      if (!isLatest()) return;
       setData(d);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [type, period, group, member]);
+  }, [track, type, period, group, member]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnect(load);
   useSocketEvent('report:changed', (e) => { if (e.type === type) load(); });
 
   const setParam = (key, value) => {

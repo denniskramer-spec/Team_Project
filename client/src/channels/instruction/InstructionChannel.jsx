@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useAlerts } from '../../alerts/AlertsContext.jsx';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import Icon from '../../components/Icon.jsx';
 import Composer from './Composer.jsx';
 import InstructionCard from './InstructionCard.jsx';
@@ -42,6 +42,11 @@ export default function InstructionChannel({ title }) {
   const [error, setError] = useState('');
   const cardRefs = useRef(new Map());
   const olderLoaded = useRef(false);
+  // Which list is showing. Picking another member in the tree keeps this
+  // component mounted, so responses for the previous one must be dropped.
+  const scope = `${title.key}|${memberId}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const send = sendTarget(user, title, member);
 
   // Who is selected in the tree, for the composer label and the header.
@@ -52,11 +57,21 @@ export default function InstructionChannel({ title }) {
       .catch(() => setMember(null));
   }, [memberId]);
 
+  // A new list starts empty rather than showing the previous member's items.
+  useEffect(() => {
+    olderLoaded.current = false;
+    setItems([]);
+    setHasMore(false);
+    setLoading(true);
+  }, [scope]);
+
   // Reload the newest page; keep any older pages already loaded.
   const loadFirst = useCallback(async () => {
+    const requested = scopeRef.current;
     try {
       const query = memberId ? `member=${memberId}` : `title=${encodeURIComponent(title.key)}`;
       const d = await api(`/instructions?${query}`);
+      if (requested !== scopeRef.current) return;
       setItems((prev) => {
         const fresh = new Set(d.instructions.map((i) => i.id));
         const oldest = d.instructions.at(-1)?.createdAt;
@@ -67,24 +82,25 @@ export default function InstructionChannel({ title }) {
       if (!olderLoaded.current) setHasMore(d.hasMore);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (requested === scopeRef.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (requested === scopeRef.current) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title.key, memberId]);
 
   useEffect(() => { loadFirst(); }, [loadFirst]);
-
-  useEffect(() => { olderLoaded.current = false; }, [title.key, memberId]);
+  useReconnect(loadFirst);
 
   const loadMore = async () => {
     const oldest = items.at(-1)?.createdAt;
-    if (!oldest) return;
+    if (!oldest || loadingMore) return;
+    const requested = scopeRef.current;
     setLoadingMore(true);
     try {
       const query = memberId ? `member=${memberId}` : `title=${encodeURIComponent(title.key)}`;
       const d = await api(`/instructions?${query}&before=${encodeURIComponent(oldest)}`);
+      if (requested !== scopeRef.current) return;
       setItems((prev) => [...prev, ...d.instructions.filter((i) => !prev.some((p) => p.id === i.id))]);
       setHasMore(d.hasMore);
       olderLoaded.current = true;
@@ -108,7 +124,12 @@ export default function InstructionChannel({ title }) {
     const el = cardRefs.current.get(focusId);
     if (!el) return undefined;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const id = setTimeout(() => setSearchParams({}, { replace: true }), 2500);
+    // Drop only ?focus, keeping the member or group picked in the tree.
+    const id = setTimeout(() => setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('focus');
+      return next;
+    }, { replace: true }), 2500);
     return () => clearTimeout(id);
   }, [focusId, loading, items, setSearchParams]);
 

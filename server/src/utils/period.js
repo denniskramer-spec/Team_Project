@@ -51,7 +51,15 @@ const DAY_LABEL = { weekday: 'short', day: 'numeric', month: 'short', year: 'num
 const RANGE_LABEL = { day: 'numeric', month: 'short', timeZone: 'UTC' };
 
 // Turns a key into { key, start, end, label }. `end` is exclusive.
+// Keys that only look valid (2026-02-31, week 53 of a 52-week year) would
+// roll over into another period, so they are rejected.
 export function parsePeriod(type, key) {
+  const period = parseKey(type, key);
+  if (periodKey(type, period.start) !== key) throw badRequest(`"${key}" is not a real ${type} period`);
+  return period;
+}
+
+function parseKey(type, key) {
   if (!PERIOD_TYPES.includes(type)) throw badRequest('Unknown report type');
   let start;
   let end;

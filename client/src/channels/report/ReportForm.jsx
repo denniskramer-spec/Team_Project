@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { timeAgo, toDateInput } from '../../format.js';
@@ -34,8 +34,20 @@ export default function ReportForm({ title, type, period, scope = 'personal', re
     api('/tasks').then((d) => setTasks(d.tasks.filter((t) => String(t.owner?.id) === String(user.id)))).catch(() => setTasks([]));
   }, [scope, user.id]);
 
-  // Reload the form when the period or the saved report changes.
-  useEffect(() => { setForm(toForm(report)); setDirty(false); }, [report?.id, report?.updatedAt, period]);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const shownPeriod = useRef(period);
+
+  // Reload the form when the period or the saved report changes, except that
+  // a save from another tab for the same period doesn't wipe unsaved typing.
+  useEffect(() => {
+    const samePeriod = shownPeriod.current === period;
+    shownPeriod.current = period;
+    if (samePeriod && dirtyRef.current) return;
+    setForm(toForm(report));
+    setDirty(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report?.id, report?.updatedAt, period]);
 
   const set = (key) => (e) => { setForm({ ...form, [key]: e.target.value }); setDirty(true); };
 

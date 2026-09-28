@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useSocket } from '../../socket/SocketContext.jsx';
-import { useLiveData } from '../../useLiveData.js';
+import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatBirthday, isBirthdayToday } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
@@ -11,15 +11,6 @@ import Icon from '../../components/Icon.jsx';
 import TempPassword from '../../components/TempPassword.jsx';
 import MemberForm from './MemberForm.jsx';
 import MemberActions from './MemberActions.jsx';
-
-function useDebounced(value, ms = 250) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(id);
-  }, [value, ms]);
-  return debounced;
-}
 
 // Section 3 for the Member channel: the directory for "All" or one group.
 export default function MemberChannel({ title }) {

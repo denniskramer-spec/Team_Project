@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import { STATUSES } from '../plan/StatusPicker.jsx';
 import BarCompare from './BarCompare.jsx';
+import { useLatestRequest } from '../../useLiveData.js';
 
 const TYPES = ['weekly', 'monthly', 'yearly'];
 
@@ -42,20 +43,25 @@ export default function CheckoutChannel({ title }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
       const params = new URLSearchParams({ type, group });
       if (period) params.set('period', period);
       if (member) params.set('member', member);
-      setData(await api(`/checkout?${params}`));
+      const result = await api(`/checkout?${params}`);
+      if (!isLatest()) return;
+      setData(result);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [type, period, group, member]);
+  }, [track, type, period, group, member]);
 
   useEffect(() => { load(); }, [load]);
   // Checkout reads the other channels, so any of their changes refresh it.
+  useReconnect(load);
   useSocketEvent('plan:changed', load);
   useSocketEvent('report:changed', load);
   useSocketEvent('task:changed', load);

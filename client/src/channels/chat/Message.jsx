@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
-import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import MessageText from './MessageText.jsx';
 
 const time = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // One message. `grouped` hides the avatar and name for consecutive messages
-// from the same person, like Discord.
-export default function Message({ message: m, grouped, canDelete, canEdit, onChanged }) {
+// from the same person, like Discord. The list is updated from the server's
+// reply (`onChanged(message)`, `onDeleted(id)`), not only via the socket.
+// Memoised: typing in the composer re-renders the chat, not every message.
+export default memo(function Message({ message: m, grouped, canDelete, canEdit, onChanged, onDeleted }) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
@@ -22,9 +23,9 @@ export default function Message({ message: m, grouped, canDelete, canEdit, onCha
     if (!draft.trim() || draft === m.content) return setEditing(false);
     setBusy(true);
     try {
-      await api(`/chat/messages/${m.id}`, { method: 'PATCH', body: { content: draft } });
+      const { message } = await api(`/chat/messages/${m.id}`, { method: 'PATCH', body: { content: draft } });
       setEditing(false);
-      onChanged();
+      onChanged(message);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -37,9 +38,10 @@ export default function Message({ message: m, grouped, canDelete, canEdit, onCha
     try {
       await api(`/chat/messages/${m.id}`, { method: 'DELETE' });
       setConfirm(false);
-      onChanged();
+      onDeleted(m.id);
     } catch (err) {
       toast.error(err.message);
+    } finally {
       setBusy(false);
     }
   };
@@ -89,7 +91,6 @@ export default function Message({ message: m, grouped, canDelete, canEdit, onCha
           />
         </div>
       )}
-      {busy && editing && <Icon name="dot" size={12} />}
       {confirm && (
         <ConfirmDialog
           title="Delete message?"
@@ -103,4 +104,4 @@ export default function Message({ message: m, grouped, canDelete, canEdit, onCha
       )}
     </li>
   );
-}
+});

@@ -36,7 +36,7 @@ function checkFields(body) {
     if (value === undefined || value === null || value === '') return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw badRequest(`${label} must be a date (YYYY-MM-DD)`);
     const d = new Date(`${value}T00:00:00.000Z`);
-    if (Number.isNaN(d.getTime())) throw badRequest(`${label} is not a valid date`);
+    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) throw badRequest(`${label} is not a valid date`);
     return d;
   };
   return {

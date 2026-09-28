@@ -28,6 +28,16 @@ export function SocketProvider({ children }) {
         refreshRef.current().then((u) => { if (u && !u.mustChangePassword) s.connect(); });
       }
     });
+    // The server refused the connection (expired session, disabled account...).
+    // socket.io does not retry that on its own: reload the session, which logs
+    // the user out if it is gone, and otherwise try again shortly.
+    let retry = null;
+    s.on('connect_error', () => {
+      if (s.active) return; // a network error: socket.io is already retrying
+      refreshRef.current().then((u) => {
+        if (u && !u.mustChangePassword) retry = setTimeout(() => s.connect(), 5000);
+      });
+    });
     s.on('session:changed', () => refreshRef.current());
     s.on('presence:list', (ids) => setOnline(new Set(ids)));
     s.on('presence:online', (id) => setOnline((prev) => new Set(prev).add(id)));
@@ -39,6 +49,7 @@ export function SocketProvider({ children }) {
 
     setSocket(s);
     return () => {
+      clearTimeout(retry);
       s.disconnect();
       setSocket(null);
       setConnected(false);
@@ -67,4 +78,19 @@ export function useSocketEvent(event, handler) {
     socket.on(event, fn);
     return () => socket.off(event, fn);
   }, [socket, event]);
+}
+
+// Runs handler after the socket reconnects (sleep, network blip). Events sent
+// while it was down are lost, so pages reload what they show.
+export function useReconnect(handler) {
+  const { socket } = useSocket();
+  const ref = useRef(handler);
+  ref.current = handler;
+
+  useEffect(() => {
+    if (!socket) return undefined;
+    const fn = () => ref.current();
+    socket.io.on('reconnect', fn);
+    return () => socket.io.off('reconnect', fn);
+  }, [socket]);
 }

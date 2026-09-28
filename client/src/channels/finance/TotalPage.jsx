@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { formatAmount, formatDay, toDateInput } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
+import { useLatestRequest } from '../../useLiveData.js';
 
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--series-3)' },
@@ -107,16 +108,21 @@ export default function TotalPage() {
   const [error, setError] = useState('');
   const [by, setBy] = useState('person');
 
+  const track = useLatestRequest();
   const load = useCallback(async () => {
+    const isLatest = track();
     try {
-      setData(await api(`/finance/total?${period.query}`));
+      const result = await api(`/finance/total?${period.query}`);
+      if (!isLatest()) return;
+      setData(result);
       setError('');
     } catch (err) {
-      setError(err.message);
+      if (isLatest()) setError(err.message);
     }
-  }, [period.query]);
+  }, [track, period.query]);
 
   useEffect(() => { load(); }, [load]);
+  useReconnect(load);
   useSocketEvent('income:changed', load);
   useSocketEvent('outcome:changed', load);
 

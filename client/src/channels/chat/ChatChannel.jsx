@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { useSocket, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useReconnect, useSocket, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import Icon from '../../components/Icon.jsx';
 import Message from './Message.jsx';
@@ -40,6 +40,8 @@ export default function ChatChannel({ title }) {
   const bottomRef = useRef(null);
   const lastTypingSent = useRef(0);
   const shouldStick = useRef(true);
+  const olderLoaded = useRef(false);
+  const loadingOlder = useRef(false);
 
   const markRead = useCallback(() => {
     api(`/chat/${title.key}/read`, { method: 'POST' }).catch(() => {});
@@ -48,8 +50,14 @@ export default function ChatChannel({ title }) {
   const load = useCallback(async () => {
     try {
       const d = await api(`/chat/${title.key}/messages`);
-      setMessages(d.messages);
-      setHasMore(d.hasMore);
+      // Replace the newest page; keep older pages the reader already loaded
+      // (this also runs after a reconnect).
+      setMessages((prev) => {
+        const oldest = d.messages[0]?.createdAt;
+        const older = oldest ? prev.filter((m) => m.createdAt < oldest) : [];
+        return [...older, ...d.messages];
+      });
+      if (!olderLoaded.current) setHasMore(d.hasMore);
       setLastReadAt(d.lastReadAt);
       setError('');
       markRead();
@@ -61,6 +69,8 @@ export default function ChatChannel({ title }) {
   }, [title.key, markRead]);
 
   useEffect(() => { load(); }, [load]);
+  // Messages sent while the socket was down never arrived: fetch them.
+  useReconnect(load);
 
   // Keep the newest message in view unless the reader has scrolled up.
   useLayoutEffect(() => {
@@ -78,20 +88,34 @@ export default function ChatChannel({ title }) {
 
   const loadOlder = async () => {
     const oldest = messages[0]?.createdAt;
-    if (!oldest) return;
+    if (!oldest || loadingOlder.current) return; // one request at a time
+    loadingOlder.current = true;
     const el = listRef.current;
     const before = el.scrollHeight;
     try {
       const d = await api(`/chat/${title.key}/messages?before=${encodeURIComponent(oldest)}`);
       shouldStick.current = false;
-      setMessages((prev) => [...d.messages, ...prev]);
+      olderLoaded.current = true;
+      setMessages((prev) => {
+        const have = new Set(prev.map((m) => m.id));
+        return [...d.messages.filter((m) => !have.has(m.id)), ...prev];
+      });
       setHasMore(d.hasMore);
       // Keep the reader's position after older messages are added on top.
       requestAnimationFrame(() => { el.scrollTop += el.scrollHeight - before; });
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      loadingOlder.current = false;
     }
   };
+
+  const applyChange = useCallback((message) => {
+    setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
+  }, []);
+  const applyDelete = useCallback((id) => {
+    setMessages((prev) => prev.filter((m) => String(m.id) !== String(id)));
+  }, []);
 
   useSocketEvent('chat:new', ({ titleKey, message }) => {
     if (titleKey !== title.key) return;
@@ -101,12 +125,10 @@ export default function ChatChannel({ title }) {
     else if (message.author?.id !== user.id) setNewBelow((n) => n + 1);
   });
   useSocketEvent('chat:changed', ({ titleKey, message }) => {
-    if (titleKey !== title.key) return;
-    setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
+    if (titleKey === title.key) applyChange(message);
   });
   useSocketEvent('chat:deleted', ({ titleKey, id }) => {
-    if (titleKey !== title.key) return;
-    setMessages((prev) => prev.filter((m) => String(m.id) !== String(id)));
+    if (titleKey === title.key) applyDelete(id);
   });
   useSocketEvent('chat:typing', ({ titleKey, user: who }) => {
     if (titleKey !== title.key || who.id === user.id) return;
@@ -203,7 +225,8 @@ export default function ChatChannel({ title }) {
                 grouped={row.grouped}
                 canEdit={mine}
                 canDelete={mine || ['leader', 'admin'].includes(user.role)}
-                onChanged={() => {}}
+                onChanged={applyChange}
+                onDeleted={applyDelete}
               />
             );
           })}
