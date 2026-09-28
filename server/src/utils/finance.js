@@ -3,7 +3,7 @@ import Group from '../models/Group.js';
 import User from '../models/User.js';
 import { parsePeriod, periodKey, shiftPeriod } from './period.js';
 import { scopeFilter, canReadTeam, canSeeMember } from './visibility.js';
-import { visibleGroups } from './scope.js';
+import { visibleGroups, seesAllGroups } from './scope.js';
 import { badRequest, notFound } from './httpError.js';
 
 // Shared by the Finance routes (income, outcome, total): which period a
@@ -93,32 +93,77 @@ export async function financeScope(req, field = 'member') {
   return { period, filter, allowed, groupId: filter.group, memberId: filter[field] };
 }
 
-// Active members and bosses whose records are in scope: everyone gets a
-// chart column, so people with nothing recorded still show up.
-export function peopleInScope(user, { groupId, memberId }) {
+// Everyone with a column in the charts and a row in the tables: the active
+// members and bosses in scope (so people with nothing recorded still show
+// up), plus whoever else owns a record being shown — someone since disabled,
+// promoted or left without a group. Totals count their records, so they must
+// be listed, or the breakdown would not add up to the total.
+export async function peopleInScope(user, { groupId, memberId }, recordOwners = []) {
   const filter = { ...scopeFilter(user, '_id'), status: 'active', role: { $in: ['member', 'boss'] } };
   if (groupId) filter.group = groupId;
   if (memberId) filter._id = memberId;
-  return User.find(filter, 'name role').sort('name').lean();
+  const current = await User.find(filter, PERSON_FIELDS).lean();
+  const listed = new Set(current.map((u) => String(u._id)));
+  const missing = [...new Set(recordOwners.filter(Boolean).map(String))].filter((id) => !listed.has(id));
+  const others = missing.length ? await User.find({ _id: { $in: missing } }, PERSON_FIELDS).lean() : [];
+  return [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+export const PERSON_FIELDS = 'name role status group';
+export const ownerId = (record, field) => record[field]?._id ?? record[field];
+
+// Records that belong to no group (their owner has none, or it was deleted).
+export const NO_GROUP = 'none';
 
 // Sum per group over everything this role may see — not narrowed by the
 // chosen group or member, so the group tiles always compare side by side.
+// For those who see every group, records outside all of them are summed
+// under NO_GROUP, so the tiles add up to the total.
 export async function perGroupSums(Model, user, allowed, period) {
   if (!allowed.length) return new Map();
+  const known = new Set(allowed.map((g) => String(g._id)));
+  const match = { ...scopeFilter(user, 'member'), date: inPeriod(period) };
+  if (!seesAllGroups(user)) match.group = { $in: allowed.map((g) => g._id) };
   const sums = await Model.aggregate([
-    { $match: { ...scopeFilter(user, 'member'), group: { $in: allowed.map((g) => g._id) }, date: inPeriod(period) } },
+    { $match: match },
     { $group: { _id: '$group', amount: { $sum: '$amount' }, count: { $sum: 1 } } },
   ]);
-  return new Map(sums.map((g) => [String(g._id), g]));
+  const out = new Map();
+  for (const g of sums) {
+    const key = known.has(String(g._id)) ? String(g._id) : NO_GROUP;
+    const sum = out.get(key) ?? { amount: 0, count: 0 };
+    out.set(key, { amount: sum.amount + g.amount, count: sum.count + g.count });
+  }
+  return out;
 }
+
+// The group tiles: one per group, plus "No group" when it holds anything.
+// `value(sumsKey)` builds the numbers of one tile.
+export function groupTiles(allowed, has, value) {
+  const tiles = allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug, ...value(String(g._id)) }));
+  if (has(NO_GROUP)) tiles.push({ id: NO_GROUP, name: 'No group', slug: null, ...value(NO_GROUP) });
+  return tiles;
+}
+
+// How many records a page lists, and how many one person's details hold.
+// Totals and charts always count everything.
+export const LIST_LIMIT = 500;
+export const DETAIL_LIMIT = 100;
 
 export const groupList = (allowed) => allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug }));
 
 export const scopeName = (user) => (canReadTeam(user) ? (user.role === 'boss' ? 'group' : 'all') : 'self');
 
-// { id, name, role } for a populated member, or null.
-export const person = (m) => (m?._id ? { id: m._id, name: m.name, role: m.role } : null);
+// { id, name, role } for a populated member, or null. `note` says why someone
+// who no longer takes part still has a column: a disabled account, or a
+// member who became team leader or admin.
+const NOTES = { leader: 'team leader', admin: 'admin' };
+export const person = (m) => (m?._id ? {
+  id: m._id,
+  name: m.name,
+  role: m.role,
+  ...(m.status && m.status !== 'active' ? { note: 'disabled' } : NOTES[m.role] ? { note: NOTES[m.role] } : {}),
+} : null);
 
 // A record with no member is a team cost: of one group, or of the whole
 // team. It is shown like a person, with a pseudo id, so charts and history

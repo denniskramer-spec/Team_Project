@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatAmount, formatDay } from '../../format.js';
+import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import IncomeChart from './IncomeChart.jsx';
@@ -49,8 +49,8 @@ export default function IncomePage() {
           </div>
         ))}
         <div className="stat role-border-member">
-          <span className="stat-value">{data.incomes.length}</span>
-          <span className="muted small">{data.incomes.length === 1 ? 'Record' : 'Records'}</span>
+          <span className="stat-value">{formatAmount(data.count)}</span>
+          <span className="muted small">{data.count === 1 ? 'Record' : 'Records'}</span>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ export default function IncomePage() {
           <ul className="bar-list">
             {data.perMember.map((row) => (
               <li key={row.member?.id ?? 'unknown'}>
-                <span className="bar-label">{row.member?.name ?? 'Unknown'}</span>
+                <span className="bar-label">{nameOf(row.member)}</span>
                 <span className="bar-track">
                   <span className="bar-fill" style={{ width: `${top ? (row.amount / top) * 100 : 0}%` }} />
                 </span>
@@ -80,6 +80,7 @@ export default function IncomePage() {
       {data.incomes.length > 0 && (
         <section className="card">
           <div className="report-section-head"><h3>Income records</h3></div>
+          {shownOf(data.incomes.length, data.count) && <p className="muted small list-note">{shownOf(data.incomes.length, data.count)}</p>}
           <table className="table finance-table">
             <thead>
               <tr><th>Date</th><th>Member</th><th>From</th><th className="num">Amount</th></tr>
@@ -91,7 +92,7 @@ export default function IncomePage() {
                   <td data-label="Member">
                     <div className="cell-user">
                       <Avatar name={i.member?.name ?? '?'} role={i.member?.role ?? 'member'} size={26} />
-                      <span>{i.member?.name}</span>
+                      <span>{nameOf(i.member, '')}</span>
                     </div>
                   </td>
                   <td data-label="From">

@@ -8,14 +8,15 @@ export const slugify = (name) =>
 const groupSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, unique: true, maxlength: 50 },
-    // URL-friendly key used in routes such as /plan/group1.
+    // URL-friendly key used in routes such as /plan/group1. Set once: renaming
+    // a group keeps its address, so links and bookmarks keep working.
     slug: { type: String, unique: true },
   },
   { timestamps: true },
 );
 
 groupSchema.pre('save', function setSlug() {
-  if (this.isModified('name') || !this.slug) this.slug = slugify(this.name);
+  if (!this.slug) this.slug = slugify(this.name);
 });
 
 export default mongoose.model('Group', groupSchema);

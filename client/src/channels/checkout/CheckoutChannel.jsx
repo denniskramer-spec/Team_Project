@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
-import { formatAmount } from '../../format.js';
+import { formatAmount, nameOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import { STATUSES } from '../plan/StatusPicker.jsx';
@@ -180,7 +180,7 @@ export default function CheckoutChannel({ title }) {
                     <div className="cell-user">
                       <Avatar name={row.member.name} role={row.member.role} size={28} />
                       <div>
-                        <div className="strong">{row.member.name}</div>
+                        <div className="strong">{nameOf(row.member)}</div>
                         <div className="muted small">{row.member.group?.name ?? '—'}</div>
                       </div>
                     </div>

@@ -27,20 +27,25 @@
   --role-boss: #a970ff;
   --role-member: #5865f2;
   --accent: var(--role-member);
+  /* Text on top of those colours. White only reads well on the member blue
+     (4.6:1); on the others it is 1.9-3.8:1, so they take dark text (5-10:1). */
+  --on-accent: #fff;
+  --on-strong: #111214;
 
   font-family: 'gg sans', 'Segoe UI', system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
 }
 
-body[data-role='admin'] { --accent: var(--role-admin); }
-body[data-role='leader'] { --accent: var(--role-leader); }
-body[data-role='boss'] { --accent: var(--role-boss); }
-body[data-role='member'] { --accent: var(--role-member); }
+body[data-role='admin'] { --accent: var(--role-admin); --on-accent: var(--on-strong); }
+body[data-role='leader'] { --accent: var(--role-leader); --on-accent: var(--on-strong); }
+body[data-role='boss'] { --accent: var(--role-boss); --on-accent: var(--on-strong); }
+body[data-role='member'] { --accent: var(--role-member); --on-accent: #fff; }
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: var(--bg); }
 a { color: var(--link); text-decoration: none; }
+p a, p .link, .note a { text-decoration: underline; }
 a:hover { text-decoration: underline; }
 
 .muted { color: var(--muted); }
@@ -109,8 +114,8 @@ input:user-invalid:not(:focus) { border-color: var(--bad); }
 }
 .btn:hover { filter: brightness(1.1); text-decoration: none; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn.primary { background: var(--accent); color: #fff; }
-.btn.danger { background: var(--bad); color: #fff; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.danger { background: var(--bad); color: var(--on-strong); }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--link); cursor: pointer; }
 
 .alert { padding: 10px 12px; border-radius: 4px; font-size: 14px; }
@@ -129,9 +134,9 @@ input:user-invalid:not(:focus) { border-color: var(--bad); }
   font-weight: 700;
   color: #fff;
 }
-.role-admin { background: var(--role-admin); }
-.role-leader { background: var(--role-leader); color: #1e1f22; }
-.role-boss { background: var(--role-boss); }
+.role-admin { background: var(--role-admin); color: var(--on-strong); }
+.role-leader { background: var(--role-leader); color: var(--on-strong); }
+.role-boss { background: var(--role-boss); color: var(--on-strong); }
 .role-member { background: var(--role-member); }
 
 .profile { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; }

@@ -8,6 +8,7 @@ import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { visibleGroups } from '../utils/scope.js';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { checkOptionalAmount, checkText } from '../utils/validate.js';
 import { planChanged } from '../socket/events.js';
 
 const router = Router();
@@ -24,15 +25,8 @@ function checkType(type) {
 }
 
 function checkFields(body) {
-  const num = (value, label) => {
-    if (value === undefined || value === null || value === '') return 0;
-    const n = Number(value);
-    if (!Number.isFinite(n) || n < 0) throw badRequest(`${label} must be 0 or more`);
-    if (n > 1e12) throw badRequest(`${label} is too large`);
-    return Math.round(n * 100) / 100;
-  };
-  const note = typeof body.note === 'string' ? body.note.trim() : '';
-  if (note.length > 2000) throw badRequest('Note can be at most 2000 characters');
+  const num = checkOptionalAmount;
+  const note = checkText(body.note, 'Note', 2000);
   const fields = {
     jobBid: num(body.jobBid, 'Job bids'),
     aiBid: num(body.aiBid, 'AI training bids'),

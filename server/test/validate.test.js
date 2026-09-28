@@ -50,3 +50,14 @@ test('only members and bosses own records', () => {
   assert.ok(!ownsRecords({ role: 'leader' }));
   assert.ok(!ownsRecords({ role: 'admin' }));
 });
+
+test('control characters are dropped, line breaks kept', async () => {
+  const { clean, checkOptionalAmount } = await import('../src/utils/validate.js');
+  assert.equal(clean('a\u0000b\u001bc'), 'abc');
+  assert.equal(clean('line 1\nline 2\tend'), 'line 1\nline 2\tend');
+  assert.equal(checkText('\u0000', 'Name', 10), '');
+  assert.equal(checkOptionalAmount('', 'Salary'), 0);
+  assert.equal(checkOptionalAmount(undefined, 'Salary'), 0);
+  assert.equal(checkOptionalAmount('7.5', 'Salary'), 7.5);
+  for (const bad of [{ toString: 'x' }, {}, [], true, 'abc', -2]) assert.throws(() => checkOptionalAmount(bad, 'Salary'), { status: 400 });
+});

@@ -54,7 +54,7 @@ export default function FinanceToolbar({ period, type, from, to, onType, onRange
             </button>
           ))}
           <button
-            type="button" role="radio" aria-checked={type === RANGE} aria-expanded={open}
+            type="button" role="radio" aria-checked={type === RANGE}
             className={type === RANGE ? 'on' : ''}
             onClick={openPicker}
           >

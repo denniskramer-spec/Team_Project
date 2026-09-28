@@ -16,3 +16,9 @@ export function topRounded(x, y, w, h) {
   if (h <= 0) return '';
   return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
 }
+
+// A category label cut to what fits in a column `width` pixels wide.
+export function fitLabel(text, width) {
+  const max = Math.max(2, Math.floor(width / 7.5));
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1))}…`;
+}

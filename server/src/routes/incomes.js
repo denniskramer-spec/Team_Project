@@ -7,7 +7,10 @@ import Report from '../models/Report.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canReadTeam, assignableFilter } from '../utils/visibility.js';
-import { financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, scopeName } from '../utils/finance.js';
+import {
+  financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName,
+  person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
+} from '../utils/finance.js';
 import { badRequest, forbidden } from '../utils/httpError.js';
 import { checkAmount, checkDay, checkText } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
@@ -18,7 +21,7 @@ router.use(requireAuth);
 
 const serialize = (i) => ({
   id: i._id,
-  member: i.member?._id ? { id: i.member._id, name: i.member.name, role: i.member.role } : null,
+  member: personOf(i.member),
   group: i.group?._id ? { id: i.group._id, name: i.group.name, slug: i.group.slug } : null,
   date: i.date,
   amount: i.amount,
@@ -66,7 +69,7 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
   if (period.type === 'weekly') planFilter.type = 'weekly';
 
   const [people, plans, reports] = await Promise.all([
-    peopleInScope(user, { groupId, memberId }),
+    peopleInScope(user, { groupId, memberId }, incomes.map((i) => ownerId(i, 'member'))),
     Plan.find(planFilter, 'owner type income').lean(),
     Report.find(reportFilter, 'author upcomingAmount upcomingDate upcomingNote task periodStart')
       .populate('task', 'name').sort({ periodStart: -1 }).lean(),
@@ -74,15 +77,16 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
 
   return people.map((person) => {
     const id = String(person._id);
-    const own = plans.filter((p) => String(p.owner) === id);
-    const monthly = own.filter((p) => p.type === 'monthly');
-    const planned = (monthly.length ? monthly : own).reduce((sum, p) => sum + (p.income || 0), 0);
+    const ownPlans = plans.filter((p) => String(p.owner) === id);
+    const monthly = ownPlans.filter((p) => p.type === 'monthly');
+    const planned = (monthly.length ? monthly : ownPlans).reduce((sum, p) => sum + (p.income || 0), 0);
     const ownReports = reports.filter((r) => String(r.author) === id);
     const upcoming = ownReports.reduce((sum, r) => sum + (r.upcomingAmount || 0), 0);
 
     // Each income record: when it came in, from which task (or client) and how much.
-    const incomeItems = incomes
-      .filter((i) => String(i.member?._id ?? i.member) === id)
+    const own = incomes.filter((i) => String(i.member?._id ?? i.member) === id);
+    const incomeItems = own
+      .slice(0, DETAIL_LIMIT)
       .map((i) => ({
         id: i._id,
         date: i.date,
@@ -93,7 +97,8 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
       }));
 
     return {
-      member: { id: person._id, name: person.name, role: person.role },
+      member: personOf(person),
+      incomeCount: own.length,
       planned,
       actual: byMember.get(id)?.amount ?? 0,
       upcoming,
@@ -117,7 +122,7 @@ router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
   const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
-    .populate('member', 'name role').populate('group', 'name slug').populate('task', 'name');
+    .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').lean();
 
   // Totals overall and per member, for the summary.
   const byMember = perMember(incomes);
@@ -126,17 +131,16 @@ router.get('/', async (req, res) => {
   const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, incomes);
 
   const sumFor = await perGroupSums(Income, req.user, allowed, period);
-  const perGroup = allowed.map((g) => ({
-    id: g._id,
-    name: g.name,
-    slug: g.slug,
-    amount: sumFor.get(String(g._id))?.amount ?? 0,
-    count: sumFor.get(String(g._id))?.count ?? 0,
+  const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
+    amount: sumFor.get(k)?.amount ?? 0,
+    count: sumFor.get(k)?.count ?? 0,
   }));
 
   res.json({
     period,
-    incomes: incomes.map((i) => serialize(i)),
+    // The newest records; `count` is how many there are in all.
+    incomes: incomes.slice(0, LIST_LIMIT).map((i) => serialize(i)),
+    count: incomes.length,
     total,
     perMember: [...byMember.values()].sort((a, b) => b.amount - a.amount),
     perGroup,

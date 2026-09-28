@@ -2,6 +2,10 @@ import { badRequest } from './httpError.js';
 
 export const USERNAME_RULE = /^[a-z0-9_.]{3,30}$/;
 
+// Invisible control characters (null bytes, escape codes...) have no place in
+// names or notes; line breaks and tabs stay.
+export const clean = (text) => text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+
 export function requireFields(body, fields) {
   const missing = fields.filter((f) => typeof body?.[f] !== 'string' || !body[f].trim());
   if (missing.length) throw badRequest(`Missing: ${missing.join(', ')}`);
@@ -26,7 +30,8 @@ export function checkPassword(password) {
 }
 
 export function checkName(name) {
-  const value = name.trim();
+  const value = clean(name).trim();
+  if (!value) throw badRequest('Missing: name');
   if (value.length > 60) throw badRequest('Name must be 60 characters or fewer');
   return value;
 }
@@ -47,7 +52,7 @@ export function parseBirthday(value) {
 export function checkText(value, label, max, { required = false } = {}) {
   if (value === undefined || value === null) value = '';
   if (typeof value !== 'string' && typeof value !== 'number') throw badRequest(`${label} must be text`);
-  const text = String(value).trim();
+  const text = clean(String(value)).trim();
   if (required && !text) throw badRequest(`${label} is required`);
   if (text.length > max) throw badRequest(`${label} can be at most ${max} characters`);
   return text;
@@ -83,3 +88,8 @@ export function checkAmount(value, label = 'Amount') {
   if (amount > 1e12) throw badRequest(`${label} is too large`);
   return Math.round(amount * 100) / 100;
 }
+
+// A number field that may be left empty (counts as 0): bids, targets, salary.
+export const checkOptionalAmount = (value, label) => (
+  value === undefined || value === null || value === '' ? 0 : checkAmount(value, label)
+);

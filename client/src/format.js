@@ -31,6 +31,20 @@ export function isBirthdayToday(value) {
   return b.getUTCDate() === now.getDate() && b.getUTCMonth() === now.getMonth();
 }
 
+// A person's name as shown in finance and checkout. Someone who no longer
+// takes part but still has records in the period carries a note saying why:
+// "Tess Novak (disabled)".
+export const nameOf = (person, fallback = 'Unknown') => (
+  person?.name ? `${person.name}${person.note ? ` (${person.note})` : ''}` : fallback
+);
+
+// "Showing the newest 500 of 1,234" when a list was cut short, else ''.
+export function shownOf(shown, total, what = 'records') {
+  if (!total || shown >= total) return '';
+  const n = new Intl.NumberFormat();
+  return `Showing the newest ${n.format(shown)} of ${n.format(total)} ${what}. Totals and charts count all of them; pick a shorter period to list the rest.`;
+}
+
 // 1234.5 -> "1,234.5"
 export const formatAmount = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(n) || 0);
 

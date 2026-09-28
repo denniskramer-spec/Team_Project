@@ -5,7 +5,7 @@ import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canManageFor, canReadTeam, assignableFilter } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay, checkText } from '../utils/validate.js';
+import { checkDay, checkOptionalAmount, checkText } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { taskChanged } from '../socket/events.js';
 
@@ -42,10 +42,7 @@ function checkFields(body) {
     if (!fields.name) throw badRequest('Give the task a name');
   }
   if (body.salary !== undefined) {
-    const salary = body.salary === '' || body.salary === null ? 0 : Number(body.salary);
-    if (!Number.isFinite(salary) || salary < 0) throw badRequest('Salary must be 0 or more');
-    if (salary > 1e12) throw badRequest('Salary is too large');
-    fields.salary = Math.round(salary * 100) / 100;
+    fields.salary = checkOptionalAmount(body.salary, 'Salary');
   }
   if (body.status !== undefined) {
     if (!TASK_STATES.includes(body.status)) throw badRequest('Unknown status');

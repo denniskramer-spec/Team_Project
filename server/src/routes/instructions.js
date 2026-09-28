@@ -9,6 +9,8 @@ import {
   canSendTo, canModify, canView, canSeeReceipts, audienceFilter, unreadFilter, isRecipient,
 } from '../utils/instructionPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { clean } from '../utils/validate.js';
+import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { instructionEvent, navChangedFor } from '../socket/events.js';
 
 const router = Router();
@@ -32,13 +34,13 @@ async function resolveRecipient(req, id) {
 function checkBody(body, { partial = false } = {}) {
   const out = {};
   if (!partial || body.content !== undefined) {
-    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    const content = typeof body.content === 'string' ? clean(body.content).trim() : '';
     if (!content) throw badRequest('Write the instruction first');
     if (content.length > 5000) throw badRequest('Instructions can be at most 5000 characters');
     out.content = content;
   }
   if (body.title !== undefined) {
-    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const title = typeof body.title === 'string' ? clean(body.title).trim() : '';
     if (title.length > 120) throw badRequest('Subject can be at most 120 characters');
     out.title = title;
   }
@@ -140,14 +142,10 @@ router.get('/', async (req, res) => {
     filter.target = 'group';
     filter.group = group._id;
   }
-  if (req.query.before) {
-    const before = new Date(req.query.before);
-    if (Number.isNaN(before.getTime())) throw badRequest('Invalid "before" date');
-    filter.createdAt = { $lt: before };
-  }
+  const older = olderThan(req.query);
 
-  const items = await Instruction.find(filter)
-    .sort({ createdAt: -1 })
+  const items = await Instruction.find(older ? { $and: [filter, older] } : filter)
+    .sort(NEWEST_FIRST)
     .limit(PAGE_SIZE + 1)
     .populate('author', AUTHOR_FIELDS)
     .populate('group', 'name slug')

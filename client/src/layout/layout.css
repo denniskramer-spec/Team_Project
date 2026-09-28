@@ -34,7 +34,7 @@
   height: 28px;
   border-radius: 8px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
 }
 .crumbs {
@@ -116,9 +116,9 @@
   cursor: pointer;
   text-align: left;
 }
-.menu-item:hover { background: var(--accent); color: #fff; text-decoration: none; }
+.menu-item:hover { background: var(--accent); color: var(--on-accent); text-decoration: none; }
 .menu-item.danger { color: #ff8a8d; }
-.menu-item.danger:hover { background: var(--bad); color: #fff; }
+.menu-item.danger:hover { background: var(--bad); color: var(--on-strong); }
 
 /* ---------- Avatars ---------- */
 .avatar {
@@ -130,9 +130,9 @@
   color: #fff;
   font-weight: 700;
 }
-.role-bg-admin { background: var(--role-admin); }
-.role-bg-leader { background: var(--role-leader); color: #1e1f22; }
-.role-bg-boss { background: var(--role-boss); }
+.role-bg-admin { background: var(--role-admin); color: var(--on-strong); }
+.role-bg-leader { background: var(--role-leader); color: var(--on-strong); }
+.role-bg-boss { background: var(--role-boss); color: var(--on-strong); }
 .role-bg-member { background: var(--role-member); }
 .presence {
   position: absolute;
@@ -181,7 +181,7 @@
   transition: border-radius 0.15s, background 0.15s;
 }
 .rail-item:hover .rail-icon,
-.rail-item.active .rail-icon { border-radius: 16px; background: var(--accent); color: #fff; }
+.rail-item.active .rail-icon { border-radius: 16px; background: var(--accent); color: var(--on-accent); }
 .rail-admin .rail-icon { color: var(--role-admin); }
 .rail-label { font-size: 11px; font-weight: 600; }
 .rail-item.active .rail-label { color: var(--text); }
@@ -303,7 +303,7 @@
   cursor: pointer;
   transition: right 0.2s ease;
 }
-.panel-toggle:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+.panel-toggle:hover { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 .panel-toggle.open { right: 252px; }
 
 .side-panel {

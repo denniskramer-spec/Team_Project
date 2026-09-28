@@ -75,7 +75,7 @@ export default function InstructionChannel({ title }) {
       setItems((prev) => {
         const fresh = new Set(d.instructions.map((i) => i.id));
         const oldest = d.instructions.at(-1)?.createdAt;
-        const older = prev.filter((i) => !fresh.has(i.id) && oldest && i.createdAt < oldest);
+        const older = prev.filter((i) => !fresh.has(i.id) && oldest && i.createdAt <= oldest);
         return [...d.instructions, ...older];
       });
       // Older pages stay loaded, so only trust hasMore when none are.
@@ -99,7 +99,7 @@ export default function InstructionChannel({ title }) {
     setLoadingMore(true);
     try {
       const query = memberId ? `member=${memberId}` : `title=${encodeURIComponent(title.key)}`;
-      const d = await api(`/instructions?${query}&before=${encodeURIComponent(oldest)}`);
+      const d = await api(`/instructions?${query}&before=${encodeURIComponent(oldest)}&beforeId=${items.at(-1).id}`);
       if (requested !== scopeRef.current) return;
       setItems((prev) => [...prev, ...d.instructions.filter((i) => !prev.some((p) => p.id === i.id))]);
       setHasMore(d.hasMore);

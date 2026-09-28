@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -20,6 +23,8 @@ import checkoutRoutes from './routes/checkout.js';
 import assetRoutes from './routes/assets.js';
 import { requireAuth } from './middleware/auth.js';
 import { uploadsDir } from './utils/uploads.js';
+
+const clientDir = fileURLToPath(new URL('../../client/dist/', import.meta.url));
 
 const app = express();
 
@@ -76,11 +81,29 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/assets', assetRoutes);
 // Uploaded images (outcome attachments), behind login.
-app.use('/api/files', requireAuth, express.static(uploadsDir, { fallthrough: false, index: false, maxAge: '1d' }));
+app.use('/api/files', requireAuth, express.static(uploadsDir, {
+  fallthrough: false,
+  index: false,
+  // Only the browser of the person who may see it keeps a copy, never a
+  // shared cache or proxy.
+  setHeaders: (res) => res.set('Cache-Control', 'private, max-age=86400'),
+}));
 
 app.use('/api', (req, res) => {
   res.status(404).json({ message: `Not found: ${req.method} ${req.originalUrl}` });
 });
+
+// In production the API also serves the built client (client/dist), so one
+// process on one port is the whole app. Any other path is a page of the
+// single-page app. During development Vite serves the client instead.
+if (env.isProd && fs.existsSync(path.join(clientDir, 'index.html'))) {
+  app.use(express.static(clientDir, { index: false, maxAge: '1h' }));
+  app.get(/^\/(?!api\/|socket\.io\/).*/, (req, res) => {
+    // A missing file (/assets/old.js, /.env) is a 404, not a page.
+    if (path.extname(req.path) || req.path.includes('/.')) return res.status(404).type('text').send('Not found');
+    res.set('Cache-Control', 'no-cache').sendFile(path.join(clientDir, 'index.html'));
+  });
+}
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

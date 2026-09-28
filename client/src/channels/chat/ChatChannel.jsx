@@ -54,7 +54,8 @@ export default function ChatChannel({ title }) {
       // (this also runs after a reconnect).
       setMessages((prev) => {
         const oldest = d.messages[0]?.createdAt;
-        const older = oldest ? prev.filter((m) => m.createdAt < oldest) : [];
+        const fresh = new Set(d.messages.map((m) => m.id));
+        const older = oldest ? prev.filter((m) => m.createdAt <= oldest && !fresh.has(m.id)) : [];
         return [...older, ...d.messages];
       });
       if (!olderLoaded.current) setHasMore(d.hasMore);
@@ -88,12 +89,13 @@ export default function ChatChannel({ title }) {
 
   const loadOlder = async () => {
     const oldest = messages[0]?.createdAt;
+    const oldestId = messages[0]?.id;
     if (!oldest || loadingOlder.current) return; // one request at a time
     loadingOlder.current = true;
     const el = listRef.current;
     const before = el.scrollHeight;
     try {
-      const d = await api(`/chat/${title.key}/messages?before=${encodeURIComponent(oldest)}`);
+      const d = await api(`/chat/${title.key}/messages?before=${encodeURIComponent(oldest)}&beforeId=${oldestId}`);
       shouldStick.current = false;
       olderLoaded.current = true;
       setMessages((prev) => {

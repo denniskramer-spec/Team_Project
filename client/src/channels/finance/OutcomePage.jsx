@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
-import { formatAmount, formatDay } from '../../format.js';
+import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
@@ -74,7 +74,7 @@ export default function OutcomePage() {
   if (!data) return <div className="page muted">Loading...</div>;
   const p = data.period;
   const top = data.perMember[0]?.amount ?? 0;
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: c.member.name, values: { outcome: c.amount }, items: c.items }));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count }));
 
   return (
     <div className="page finance-page">
@@ -102,8 +102,8 @@ export default function OutcomePage() {
           </div>
         ))}
         <div className="stat role-border-member">
-          <span className="stat-value">{data.outcomes.length}</span>
-          <span className="muted small">{data.outcomes.length === 1 ? 'Record' : 'Records'}</span>
+          <span className="stat-value">{formatAmount(data.count)}</span>
+          <span className="muted small">{data.count === 1 ? 'Record' : 'Records'}</span>
         </div>
       </div>
 
@@ -117,7 +117,7 @@ export default function OutcomePage() {
           emptyNote={`No outcome recorded for ${p.label}.`}
           tooltip={(row) => {
             if (!row.items.length) return null;
-            if (row.items.length > TOOLTIP_LIMIT) return <span className="tooltip-hint">{row.items.length} records · click for details</span>;
+            if (row.items.length > TOOLTIP_LIMIT) return <span className="tooltip-hint">{row.count} records · click for details</span>;
             return (
               <>
                 <ul className="tooltip-detail">
@@ -137,9 +137,10 @@ export default function OutcomePage() {
               <div className="stat-row">
                 <div className="stat stat-bad">
                   <span className="stat-value">{formatAmount(row.values.outcome)}</span>
-                  <span className="muted small">Outcome · {row.items.length} {row.items.length === 1 ? 'record' : 'records'}</span>
+                  <span className="muted small">Outcome · {row.count} {row.count === 1 ? 'record' : 'records'}</span>
                 </div>
               </div>
+              {shownOf(row.items.length, row.count) && <p className="muted small list-note">{shownOf(row.items.length, row.count)}</p>}
               {row.items.length ? <ItemsTable items={row.items} /> : <p className="muted small">No outcome recorded.</p>}
             </div>
           )}
@@ -152,7 +153,7 @@ export default function OutcomePage() {
           <ul className="bar-list">
             {data.perMember.map((row) => (
               <li key={row.member?.id ?? 'unknown'}>
-                <span className="bar-label">{row.member?.name ?? 'Unknown'}</span>
+                <span className="bar-label">{nameOf(row.member)}</span>
                 <span className="bar-track">
                   <span className="bar-fill out" style={{ width: `${top ? (row.amount / top) * 100 : 0}%` }} />
                 </span>
@@ -170,6 +171,7 @@ export default function OutcomePage() {
       {data.outcomes.length > 0 && (
         <section className="card">
           <div className="report-section-head"><h3>Outcome records</h3></div>
+          {shownOf(data.outcomes.length, data.count) && <p className="muted small list-note">{shownOf(data.outcomes.length, data.count)}</p>}
           <table className="table finance-table">
             <thead>
               <tr><th>Date</th><th>For</th><th>Reason</th><th className="num">Amount</th><th aria-label="Actions" /></tr>
@@ -181,7 +183,7 @@ export default function OutcomePage() {
                   <td data-label="For">
                     <div className="cell-user">
                       <Avatar name={o.who.name} role={o.who.role} size={26} />
-                      <span>{o.who.name}</span>
+                      <span>{nameOf(o.who)}</span>
                     </div>
                   </td>
                   <td data-label="Reason">

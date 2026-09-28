@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatAmount, formatDay, toDateInput } from '../../format.js';
+import { formatAmount, formatDay, toDateInput, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
@@ -51,7 +51,7 @@ function HistoryTable({ rows, by }) {
               {by === 'person' ? formatDay(r.date) : (
                 <div className="cell-user">
                   <Avatar name={r.member?.name ?? '?'} role={r.member?.role ?? 'member'} size={26} />
-                  <span>{r.member?.name}</span>
+                  <span>{nameOf(r.member, '')}</span>
                 </div>
               )}
             </td>
@@ -109,7 +109,8 @@ export default function TotalPage() {
   if (!data) return <div className="page muted">Loading...</div>;
   const p = data.period;
   const net = signed(data.net);
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: c.member.name, values: { income: c.income, outcome: c.outcome } }));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: c.income, outcome: c.outcome } }));
+  const recordCount = data.counts.income + data.counts.outcome;
   const groups = groupHistory(data.history, by);
 
   return (
@@ -183,7 +184,7 @@ export default function TotalPage() {
         <section className="card">
           <div className="report-section-head history-toolbar">
             <h3>History</h3>
-            <span className="muted small">{data.history.length} {data.history.length === 1 ? 'record' : 'records'}</span>
+            <span className="muted small">{formatAmount(recordCount)} {recordCount === 1 ? 'record' : 'records'}</span>
             <div className="segmented small-segmented" role="radiogroup" aria-label="Group history by">
               {[['person', 'By person'], ['date', 'By date']].map(([value, label]) => (
                 <button key={value} type="button" role="radio" aria-checked={by === value} className={by === value ? 'on' : ''} onClick={() => setBy(value)}>
@@ -192,13 +193,14 @@ export default function TotalPage() {
               ))}
             </div>
           </div>
+          {shownOf(data.history.length, recordCount) && <p className="muted small list-note">{shownOf(data.history.length, recordCount)}</p>}
           {groups.map((g) => (
             <div key={g.key} className="history-group">
               <div className="history-head">
                 {by === 'person' ? (
                   <>
                     <Avatar name={g.member?.name ?? '?'} role={g.member?.role ?? 'member'} size={28} />
-                    <strong>{g.member?.name ?? 'Unknown'}</strong>
+                    <strong>{nameOf(g.member)}</strong>
                   </>
                 ) : <strong>{formatDay(g.date)}</strong>}
                 <span className="muted small">{g.rows.length} {g.rows.length === 1 ? 'record' : 'records'}</span>

@@ -12,6 +12,7 @@ import {
 import { visibleGroups } from '../utils/scope.js';
 import { canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { checkOptionalAmount, checkText } from '../utils/validate.js';
 import { reportChanged } from '../socket/events.js';
 
 const router = Router();
@@ -20,18 +21,8 @@ router.use(requireAuth);
 const HISTORY_LENGTH = 8;
 
 function checkFields(body) {
-  const num = (value, label) => {
-    if (value === undefined || value === null || value === '') return 0;
-    const n = Number(value);
-    if (!Number.isFinite(n) || n < 0) throw badRequest(`${label} must be 0 or more`);
-    if (n > 1e12) throw badRequest(`${label} is too large`);
-    return Math.round(n * 100) / 100;
-  };
-  const text = (value, label) => {
-    const s = typeof value === 'string' ? value.trim() : '';
-    if (s.length > 2000) throw badRequest(`${label} can be at most 2000 characters`);
-    return s;
-  };
+  const num = checkOptionalAmount;
+  const text = (value, label) => checkText(value, label, 2000);
   const day = (value, label) => {
     if (value === undefined || value === null || value === '') return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw badRequest(`${label} must be a date (YYYY-MM-DD)`);

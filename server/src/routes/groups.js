@@ -3,8 +3,9 @@ import mongoose from 'mongoose';
 import Group, { slugify } from '../models/Group.js';
 import User from '../models/User.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
-import { requireFields } from '../utils/validate.js';
+import { requireFields, clean } from '../utils/validate.js';
 import { badRequest, notFound, conflict } from '../utils/httpError.js';
+import { clearGroupFromRecords } from '../utils/moveRecords.js';
 import { directoryChanged, navChanged } from '../socket/events.js';
 
 const router = Router();
@@ -44,7 +45,7 @@ const RESERVED_SLUGS = ['all', 'me'];
 
 function checkGroupName(body) {
   requireFields(body, ['name']);
-  const name = body.name.trim();
+  const name = clean(body.name).trim();
   if (name.length > 50) throw badRequest('Group name must be 50 characters or fewer');
   if (!/[a-z0-9]/i.test(name)) throw badRequest('Group name must contain a letter or number');
   // Group slugs share the channel tree's keys with these fixed titles.
@@ -57,7 +58,12 @@ async function assertUnique(name, exceptId) {
     $or: [{ name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, { slug: slugify(name) }],
     ...(exceptId ? { _id: { $ne: exceptId } } : {}),
   });
-  if (clash) throw conflict(`A group called "${clash.name}" already exists`);
+  if (!clash) return;
+  // A renamed group keeps its first address, which a new name can collide with.
+  const sameName = clash.name.toLowerCase() === name.toLowerCase();
+  throw conflict(sameName
+    ? `A group called "${clash.name}" already exists`
+    : `"${name}" would share its address (${clash.slug}) with the group "${clash.name}"; choose another name`);
 }
 
 async function findGroup(id) {
@@ -94,6 +100,8 @@ router.delete('/:id', requireCapability('manageGroups'), async (req, res) => {
   const members = await User.countDocuments({ group: group._id, status: 'active' });
   if (members) throw conflict(`Move this group's ${members} member(s) to another group first`);
   await User.updateMany({ group: group._id }, { $set: { group: null } });
+  // Their records keep no pointer to a group that is gone.
+  await clearGroupFromRecords(group._id);
   await group.deleteOne();
   changed();
   res.json({ ok: true });

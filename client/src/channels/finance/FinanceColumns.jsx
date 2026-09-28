@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatAmount } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
-import { compact, niceMax, topRounded } from './chartMath.js';
+import { compact, fitLabel, niceMax, topRounded } from './chartMath.js';
 
 // Grouped columns: one group per member, one column per series. Shared by
 // the Outcome chart (one series) and the Total chart (income and outcome).
@@ -60,7 +60,7 @@ export default function FinanceColumns({ title, periodLabel, rows, series, tag, 
 
       <div className="income-chart-plot" ref={wrap} onMouseLeave={() => setHover(null)}>
         {width > 0 && (
-          <svg width={width} height={height} role="img"
+          <svg width={width} height={height} role="group"
             aria-label={rows.map((r) => `${r.name}: ${series.map((s) => `${s.label} ${formatAmount(value(r, s))}`).join(', ')}`).join('; ')}
           >
             {ticks.map((t) => (
@@ -97,7 +97,7 @@ export default function FinanceColumns({ title, periodLabel, rows, series, tag, 
                     </>
                   )}
                   <text x={MARGIN.left + slot * (i + 0.5)} y={height - 10} textAnchor="middle" className="axis-label category-label">
-                    {r.name.split(' ')[0]}
+                    {fitLabel(r.name.split(' ')[0], slot)}
                   </text>
                 </g>
               );

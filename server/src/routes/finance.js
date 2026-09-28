@@ -2,7 +2,10 @@ import { Router } from 'express';
 import Income from '../models/Income.js';
 import Outcome from '../models/Outcome.js';
 import { requireAuth } from '../middleware/auth.js';
-import { financeScope, peopleInScope, perGroupSums, groupList, scopeName, person, who, whoKey } from '../utils/finance.js';
+import {
+  financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, who, whoKey,
+  ownerId, PERSON_FIELDS, LIST_LIMIT,
+} from '../utils/finance.js';
 
 // Total: income and outcome side by side for one period, and the history
 // behind them, grouped on the client by person or by date.
@@ -15,11 +18,11 @@ const sum = (rows) => rows.reduce((acc, r) => acc + r.amount, 0);
 router.get('/total', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
-  const [incomes, outcomes, people] = await Promise.all([
-    Income.find(filter).populate('member', 'name role').populate('task', 'name').lean(),
-    Outcome.find(filter).populate('member', 'name role').populate('group', 'name slug').lean(),
-    peopleInScope(req.user, { groupId, memberId }),
+  const [incomes, outcomes] = await Promise.all([
+    Income.find(filter).populate('member', PERSON_FIELDS).populate('task', 'name').lean(),
+    Outcome.find(filter).populate('member', PERSON_FIELDS).populate('group', 'name slug').lean(),
   ]);
+  const people = await peopleInScope(req.user, { groupId, memberId }, [...incomes, ...outcomes].map((r) => ownerId(r, 'member')));
 
   const income = sum(incomes);
   const outcome = sum(outcomes);
@@ -49,10 +52,10 @@ router.get('/total', async (req, res) => {
     perGroupSums(Income, req.user, allowed, period),
     perGroupSums(Outcome, req.user, allowed, period),
   ]);
-  const perGroup = allowed.map((g) => {
-    const inn = incomeSums.get(String(g._id))?.amount ?? 0;
-    const out = outcomeSums.get(String(g._id))?.amount ?? 0;
-    return { id: g._id, name: g.name, slug: g.slug, income: inn, outcome: out, net: inn - out };
+  const perGroup = groupTiles(allowed, (k) => incomeSums.has(k) || outcomeSums.has(k), (k) => {
+    const inn = incomeSums.get(k)?.amount ?? 0;
+    const out = outcomeSums.get(k)?.amount ?? 0;
+    return { income: inn, outcome: out, net: inn - out };
   });
 
   res.json({
@@ -62,7 +65,8 @@ router.get('/total', async (req, res) => {
     net: income - outcome,
     counts: { income: incomes.length, outcome: outcomes.length },
     chart,
-    history,
+    // The newest records; `counts` says how many there are in all.
+    history: history.slice(0, LIST_LIMIT * 2),
     perGroup,
     groups: groupList(allowed),
     scope: scopeName(req.user),

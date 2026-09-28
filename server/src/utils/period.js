@@ -54,6 +54,7 @@ const RANGE_LABEL = { day: 'numeric', month: 'short', timeZone: 'UTC' };
 // Keys that only look valid (2026-02-31, week 53 of a 52-week year) would
 // roll over into another period, so they are rejected.
 export function parsePeriod(type, key) {
+  if (typeof key !== 'string') throw badRequest('Invalid period');
   const period = parseKey(type, key);
   if (periodKey(type, period.start) !== key) throw badRequest(`"${key}" is not a real ${type} period`);
   return period;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatAmount, formatDay } from '../../format.js';
+import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
-import { compact, niceMax, topRounded } from './chartMath.js';
+import { compact, fitLabel, niceMax, topRounded } from './chartMath.js';
 
 // Planned vs real income per member, as grouped columns:
 //   blue          = planned income (from the member's plan)
@@ -24,7 +24,7 @@ function MemberDetail({ row, periodLabel, onClose }) {
   const items = row.incomeItems ?? [];
   const upcoming = row.upcomingItems ?? [];
   return (
-    <Modal title={`${row.member.name} · ${periodLabel}`} onClose={onClose} width={640}>
+    <Modal title={`${nameOf(row.member)} · ${periodLabel}`} onClose={onClose} width={640}>
       <div className="income-detail">
         <div className="stat-row">
           {SERIES.map((s) => (
@@ -36,7 +36,8 @@ function MemberDetail({ row, periodLabel, onClose }) {
         </div>
 
         <section>
-          <h4>Income · {items.length} {items.length === 1 ? 'record' : 'records'}</h4>
+          <h4>Income · {row.incomeCount ?? items.length} {(row.incomeCount ?? items.length) === 1 ? 'record' : 'records'}</h4>
+          {shownOf(items.length, row.incomeCount) && <p className="muted small list-note">{shownOf(items.length, row.incomeCount)}</p>}
           {items.length ? (
             <table className="table">
               <thead><tr><th>Date</th><th>Task / from</th><th className="num">Amount</th></tr></thead>
@@ -126,8 +127,8 @@ export default function IncomeChart({ rows, periodLabel }) {
 
       <div className="income-chart-plot" ref={wrap} onMouseLeave={() => setHover(null)}>
         {width > 0 && (
-          <svg width={width} height={height} role="img"
-            aria-label={rows.map((r) => `${r.member.name}: planned ${formatAmount(r.planned)}, income ${formatAmount(r.actual)}, upcoming ${formatAmount(r.upcoming)}`).join('; ')}
+          <svg width={width} height={height} role="group"
+            aria-label={rows.map((r) => `${nameOf(r.member)}: planned ${formatAmount(r.planned)}, income ${formatAmount(r.actual)}, upcoming ${formatAmount(r.upcoming)}`).join('; ')}
           >
             {/* Gridlines and axis labels stay recessive. */}
             {ticks.map((t) => (
@@ -172,7 +173,7 @@ export default function IncomeChart({ rows, periodLabel }) {
                     </>
                   )}
                   <text x={MARGIN.left + slot * (i + 0.5)} y={height - 10} textAnchor="middle" className="axis-label category-label">
-                    {r.member.name.split(' ')[0]}
+                    {fitLabel(r.member.name.split(' ')[0], slot)}
                   </text>
                 </g>
               );
@@ -183,7 +184,7 @@ export default function IncomeChart({ rows, periodLabel }) {
 
         {hover && rows[hover.index] && (
           <div className="chart-tooltip" style={{ left: hover.x, top: MARGIN.top }}>
-            <strong>{rows[hover.index].member.name}</strong>
+            <strong>{nameOf(rows[hover.index].member)}</strong>
             {SERIES.map((s) => (
               <span key={s.key} className="tooltip-row">
                 <span className="legend-swatch" style={{ background: s.color }} />

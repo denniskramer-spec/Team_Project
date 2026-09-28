@@ -23,3 +23,9 @@ export async function moveRecordsToGroup(userId, groupId) {
     Report.updateMany({ author: userId, scope: 'personal' }, { group }),
   ]);
 }
+
+// A deleted group leaves its (disabled or pending) members' records without
+// one; they show up under "No group".
+export async function clearGroupFromRecords(groupId) {
+  await Promise.all([Task, Asset, Income, Outcome, Plan, Report].map((M) => M.updateMany({ group: groupId }, { group: null })));
+}

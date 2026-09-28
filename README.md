@@ -31,8 +31,12 @@ choose a new password at first login.
 
 ```
 npm run seed:demo             # only when there are no members yet
-npm run seed:demo -- --force  # replace the existing demo data
+npm run seed:demo -- --force --confirm=<database name>   # DELETES everything first
 ```
+
+`--force` deletes every account except admins, and all reports, plans, tasks, income,
+outcome, chat and instructions. It only runs when `--confirm` names the database it
+is about to empty, and never with `NODE_ENV=production`.
 
 Creates a team with instructions, chat, three weeks of reports and plans, tasks and
 income, so every channel has something to show. **Password for all of them: `demo1234`.**
@@ -45,7 +49,7 @@ income, so every channel has something to show. **Password for all of them: `dem
 | `kai`, `rita` | Members of Group2 |
 | `sam` | Waiting for approval (try Admin → Approvals) |
 
-The admin account is left alone, and `--force` only clears the demo collections.
+The admin account is left alone.
 
 ## Roles
 
@@ -120,6 +124,10 @@ Channel titles come from `GET /api/nav`, built per user in
   for the people they manage (**Record income**). Income records are history and
   cannot be changed afterwards. Outcome is recorded by the leader and bosses, with
   at least one image as proof; a team or group outcome is split into one share per member.
+- **Totals always add up** — finance and checkout list everyone who has records in
+  the period, including an account since disabled ("Tess Novak (disabled)") or a member
+  since promoted, and a **No group** tile holds records that belong to no group. Long
+  lists show the newest 500 records; totals and charts count all of them.
 - **Who owns records** — tasks, income, outcome and assets belong to members and
   bosses. The leader and admins record them for someone, never for themselves.
 - **Moving a member to another group** moves their records with them: the new boss
@@ -138,6 +146,8 @@ Channel titles come from `GET /api/nav`, built per user in
   scope. The Member channel shows each member's assets as **one sentence per asset**
   ("Ana Silva, 30 years old, Brazilian, English: Advanced, ana@example.com"), and only
   to people who may see that member's assets.
+- **Groups** — a group keeps its address (`/chat/group-group1`) when it is renamed, so
+  links and bookmarks keep working. Deleting a group leaves its records under "No group".
 - **Periods** — ISO weeks in UTC, so `2026-W39` means the same for everyone
   (`server/src/utils/period.js`). Period and group live in the URL, so any view can
   be bookmarked.
@@ -148,12 +158,23 @@ Channel titles come from `GET /api/nav`, built per user in
 |---|---|
 | `npm run dev` | API (nodemon) + client watch build + client on http://localhost:3000 |
 | `npm run build` | Production build of the client into `client/dist` |
-| `npm start` | Runs the API only |
+| `npm start` | Runs the API; with `NODE_ENV=production` it also serves the built client (see below) |
 | `npm test` | Server unit tests (periods, permission rules, outcome splits) |
 | `npm run seed:demo` | Fills the database with the demo team (see above) |
 | `npm --prefix server run reset-password -- <user>` | Gives one account a temporary password (printed) to change at next login. To set a chosen one, pass it as `RESET_PASSWORD=...` (add `--no-must-change` to keep it) |
 | `npm --prefix server run split-legacy-outcomes` | One-off: splits old team costs (outcomes with no member) into one share per member of their group, or of the whole team. Shows the plan; add `-- --apply` to change the data |
 | `npm run install:all` | Installs root, server and client dependencies |
+
+## Running in production
+
+```
+npm run build                      # builds the client into client/dist
+NODE_ENV=production npm start      # API + client on PORT (default 5000)
+```
+
+One process serves everything. Put it behind HTTPS (the session cookie is marked
+`Secure` in production, so it is not sent over plain HTTP) and set `TRUST_PROXY=1`
+when a reverse proxy is in front. `CLIENT_ORIGIN` should be the public address.
 
 ## API
 

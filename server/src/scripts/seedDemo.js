@@ -1,7 +1,12 @@
 // Fills the database with a realistic team so every channel has something to show.
 //
 //   npm run seed:demo            — only if there are no members yet
-//   npm run seed:demo -- --force — wipe the demo collections first
+//   npm run seed:demo -- --force --confirm=<database name>
+//                                — DELETE every account except admins and all
+//                                  their data first, then seed
+//
+// --force never runs with NODE_ENV=production, and only when --confirm names
+// the database it is about to empty.
 //
 // Everyone's password is demo1234 (the admin keeps its own password).
 
@@ -23,6 +28,7 @@ import { seedGroups } from '../utils/seed.js';
 
 const PASSWORD = 'demo1234';
 const force = process.argv.includes('--force');
+const confirmed = process.argv.find((a) => a.startsWith('--confirm='))?.slice('--confirm='.length);
 
 const day = (offset) => {
   const d = new Date();
@@ -323,10 +329,20 @@ async function main() {
   await connectDB(env.mongoUri);
 
   const existing = await User.countDocuments({ role: { $ne: 'admin' } });
-  if (existing && !force) {
-    console.error(`There are already ${existing} non-admin accounts. Re-run with --force to replace the demo data.`);
+  const database = mongoose.connection.db.databaseName;
+  const stop = async (message) => {
+    console.error(message);
     await mongoose.disconnect();
     process.exit(1);
+  };
+  if (existing && !force) {
+    await stop(`There are already ${existing} non-admin accounts in "${database}". Nothing was changed.\n`
+      + `To DELETE them and all their data and seed the demo team, re-run with: --force --confirm=${database}`);
+  }
+  if (existing && env.isProd) await stop('Refusing to wipe a production database (NODE_ENV=production).');
+  if (existing && confirmed !== database) {
+    await stop(`--force would delete ${existing} accounts and all reports, plans, tasks, income, outcome, chat and instructions in "${database}".\n`
+      + `Nothing was changed. If that is what you want, add: --confirm=${database}`);
   }
   if (existing) await wipe();
 

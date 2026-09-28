@@ -11,6 +11,7 @@ import mongoose from 'mongoose';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, notFound } from '../utils/httpError.js';
+import { person as personOf } from '../utils/finance.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -58,21 +59,33 @@ router.get('/', async (req, res) => {
   // Everything that falls inside the period.
   const inside = { periodStart: { $gte: period.start }, periodEnd: { $lte: period.end } };
 
-  const [allPlans, reports, tasks, incomes, people] = await Promise.all([
+  const [allPlans, reports, tasks, incomes, current] = await Promise.all([
     // Personal plans only: a boss's group plan repeats their members' targets.
-    Plan.find(withGroup({ ...owners, ...inside, scope: 'personal' }, 'owner')).populate('owner', 'name role').lean(),
-    Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).populate('author', 'name role').lean(),
+    Plan.find(withGroup({ ...owners, ...inside, scope: 'personal' }, 'owner')).lean(),
+    Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).lean(),
     // Tasks that overlap the period at all.
-    Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, endDate: { $gte: period.start } }, 'owner')).populate('owner', 'name role').lean(),
-    Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member')).populate('member', 'name role').lean(),
+    Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, endDate: { $gte: period.start } }, 'owner')).lean(),
+    Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member')).lean(),
     // The people listed follow the same role rules: a boss sees their group,
     // a member only themselves.
     User.find(withGroup({
       ...scopeFilter(req.user, '_id'),
       status: 'active',
       role: { $in: ['member', 'boss'] },
-    }, '_id'), 'name role group').populate('group', 'name slug').sort('name').lean(),
+    }, '_id'), 'name role status group').populate('group', 'name slug').lean(),
   ]);
+
+  // Whoever else owns something counted here (an account since disabled, a
+  // member since promoted) gets a row too, so the rows add up to the totals.
+  const listed = new Set(current.map((u) => String(u._id)));
+  const owners2 = [
+    ...allPlans.map((p) => p.owner), ...reports.map((r) => r.author),
+    ...tasks.map((t) => t.owner), ...incomes.map((i) => i.member),
+  ].map(String).filter((id) => !listed.has(id));
+  const others = owners2.length
+    ? await User.find({ _id: { $in: [...new Set(owners2)] } }, 'name role status group').populate('group', 'name slug').lean()
+    : [];
+  const people = [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
 
   // A member's monthly plan already covers their weeks, so planned targets
   // count weekly plans only for members with no monthly plan in the period
@@ -109,9 +122,7 @@ router.get('/', async (req, res) => {
     };
     return {
       member: {
-        id: person._id,
-        name: person.name,
-        role: person.role,
+        ...personOf(person),
         group: person.group ? { name: person.group.name, slug: person.group.slug } : null,
       },
       planned: { jobBid: sumJobBids(mine.plans), aiBid: sum(mine.plans, 'aiBid'), income: sum(mine.plans, 'income') },

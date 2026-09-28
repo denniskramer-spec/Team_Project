@@ -7,6 +7,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
 import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage } from '../utils/chatPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { clean } from '../utils/validate.js';
+import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { chatEvent, navChangedFor } from '../socket/events.js';
 
 const router = Router();
@@ -26,7 +28,7 @@ const serialize = (m) => ({
 });
 
 function checkContent(value) {
-  const content = typeof value === 'string' ? value.trim() : '';
+  const content = typeof value === 'string' ? clean(value).trim() : '';
   if (!content) throw badRequest('Write a message first');
   if (content.length > 2000) throw badRequest('Messages can be at most 2000 characters');
   return content;
@@ -59,14 +61,9 @@ export async function chatUnreadCounts(user) {
 // GET /api/chat/:titleKey/messages?before=<ISO>
 router.get('/:titleKey/messages', async (req, res) => {
   const channel = await resolveChannel(req.user, req.params.titleKey);
-  const filter = { channelKey: channel.key };
-  if (req.query.before) {
-    const before = new Date(req.query.before);
-    if (Number.isNaN(before.getTime())) throw badRequest('Invalid "before" date');
-    filter.createdAt = { $lt: before };
-  }
+  const filter = { channelKey: channel.key, ...olderThan(req.query) };
 
-  const found = await Message.find(filter).sort({ createdAt: -1 }).limit(PAGE_SIZE + 1)
+  const found = await Message.find(filter).sort(NEWEST_FIRST).limit(PAGE_SIZE + 1)
     .populate('author', AUTHOR_FIELDS);
   const page = found.slice(0, PAGE_SIZE).reverse(); // oldest first for display
   const read = await ChatRead.findOne({ user: req.user._id, channelKey: channel.key }).lean();

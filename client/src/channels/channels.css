@@ -35,10 +35,10 @@ code {
 .check input { width: 16px; height: 16px; accent-color: var(--accent); }
 
 .btn .icon { margin-right: 6px; }
-.btn.success { background: var(--good); color: #fff; }
+.btn.success { background: var(--good); color: var(--on-strong); }
 .small-btn { padding: 6px 10px; font-size: 13px; }
 .danger-outline { background: transparent; color: #ff8a8d; box-shadow: inset 0 0 0 1px rgb(242 63 67 / 0.5); }
-.danger-outline:hover:not(:disabled) { background: var(--bad); color: #fff; }
+.danger-outline:hover:not(:disabled) { background: var(--bad); color: var(--on-strong); }
 
 .empty-inline {
   display: flex;
@@ -59,7 +59,7 @@ code {
   border-radius: 9px;
   font-size: 11px;
   font-weight: 800;
-  color: #fff;
+  color: var(--on-strong);
   background: var(--bad);
 }
 .rail-icon { position: relative; }
@@ -282,7 +282,7 @@ textarea:focus { border-color: var(--accent); }
   border-radius: 4px;
   cursor: pointer;
 }
-.segmented button.on { background: var(--accent); color: #fff; }
+.segmented button.on { background: var(--accent); color: var(--on-accent); }
 .segmented button.urgent.on { background: var(--bad); }
 
 .instruction-list { display: grid; gap: 12px; }
@@ -302,8 +302,8 @@ textarea:focus { border-color: var(--accent); }
 .receipt-bar span { display: block; height: 100%; background: var(--good); }
 
 .tag { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.urgent-tag { background: var(--bad); color: #fff; margin-left: 6px; }
-.new-tag { background: var(--accent); color: #fff; }
+.urgent-tag { background: var(--bad); color: var(--on-strong); margin-left: 6px; }
+.new-tag { background: var(--accent); color: var(--on-accent); }
 .load-more { justify-self: center; }
 
 .readers h4 { margin: 12px 0 8px; font-size: 13px; text-transform: uppercase; color: var(--muted); }
@@ -347,7 +347,7 @@ textarea:focus { border-color: var(--accent); }
 .urgent-alarm { max-width: 520px; border-top: 4px solid var(--bad); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgb(242 63 67 / 0.25); } }
 .urgent-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px 0; }
-.urgent-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--bad); color: #fff; }
+.urgent-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--bad); color: var(--on-strong); }
 .urgent-label { font-weight: 800; text-transform: uppercase; color: #ff8a8d; letter-spacing: 0.02em; }
 .urgent-subject { margin: 12px 0 4px; font-size: 18px; }
 .urgent-text { margin: 0; white-space: pre-wrap; line-height: 1.5; }
@@ -466,7 +466,7 @@ textarea:focus { border-color: var(--accent); }
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   border: 0;
   border-radius: 14px;
@@ -500,7 +500,8 @@ textarea:focus { border-color: var(--accent); }
 .report-section-head .muted { margin-left: auto; }
 .report-table .num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .report-table tfoot td { border-top: 1px solid var(--border); padding-top: 10px; }
-.report-table tr.is-missing td { opacity: 0.75; }
+/* Dimmed, except the "missing" pill, which has to stay readable. */
+.report-table tr.is-missing td:not(:has(.status-pill)) { opacity: 0.75; }
 .detail-row td { background: var(--surface-2); border-radius: 0 0 6px 6px; }
 .detail-row p { margin: 0 0 8px; white-space: pre-wrap; }
 
@@ -543,9 +544,9 @@ textarea:focus { border-color: var(--accent); }
 .plan-status-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* Result states always pair colour with an icon and a label. */
-.status-picker button.on.done { background: var(--status-good); color: #fff; }
+.status-picker button.on.done { background: var(--status-good); color: var(--on-strong); }
 .status-picker button.on.progress { background: var(--status-warning); color: #1e1f22; }
-.status-picker button.on.not_done { background: var(--status-neutral); color: #fff; }
+.status-picker button.on.not_done { background: var(--status-neutral); color: var(--on-strong); }
 .status-picker.small button { padding: 4px 8px; font-size: 12px; }
 .status-picker .icon { margin-right: 4px; vertical-align: -2px; }
 
@@ -727,9 +728,9 @@ textarea:focus { border-color: var(--accent); }
   font-weight: 700;
   color: #0b0b0b;
 }
-.plan-dot.done { background: var(--status-good); color: #fff; }
+.plan-dot.done { background: var(--status-good); color: var(--on-strong); }
 .plan-dot.progress { background: var(--status-warning); }
-.plan-dot.not_done { background: var(--status-neutral); color: #fff; }
+.plan-dot.not_done { background: var(--status-neutral); color: var(--on-strong); }
 
 /* Narrow screens: the three charts stack instead. */
 @media (max-width: 900px) {
@@ -770,7 +771,7 @@ textarea:focus { border-color: var(--accent); }
 }
 
 /* Team costs (no member) get a neutral avatar. */
-.role-bg-team { background: var(--status-neutral); }
+.role-bg-team { background: var(--status-neutral); color: var(--on-strong); }
 .target-fields { display: grid; gap: 14px; }
 .target-pick { display: grid; gap: 6px; }
 .field-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
@@ -778,7 +779,7 @@ textarea:focus { border-color: var(--accent); }
 .report-section-head .btn { margin-left: 0; }
 .report-section-head .btn .icon { margin-right: 4px; }
 
-.direct-tag { background: var(--accent); color: #fff; }
+.direct-tag { background: var(--accent); color: var(--on-accent); }
 
 /* ---------- Assets channel ---------- */
 .asset-page { max-width: 1120px; }
@@ -832,7 +833,7 @@ textarea:focus { border-color: var(--accent); }
 .thumb-remove {
   position: absolute; top: -6px; right: -6px;
   display: grid; place-items: center; width: 20px; height: 20px;
-  border: 0; border-radius: 50%; background: var(--bad); color: #fff; cursor: pointer;
+  border: 0; border-radius: 50%; background: var(--bad); color: var(--on-strong); cursor: pointer;
 }
 .small-thumbs { margin-top: 6px; gap: 6px; }
 .small-thumbs img { width: 44px; height: 44px; }
@@ -842,3 +843,6 @@ textarea:focus { border-color: var(--accent); }
 .lightbox-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .split-tag { margin-left: 8px; background: rgb(169 112 255 / 0.2); color: #cfb3ff; text-transform: none; }
 .field-help { text-transform: none; letter-spacing: normal; font-weight: 400; }
+
+/* "Showing the newest N of M" under a list that was cut short. */
+.list-note { margin: 0 0 8px; }

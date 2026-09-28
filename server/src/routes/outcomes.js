@@ -5,7 +5,10 @@ import Outcome from '../models/Outcome.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canRecordOutcome, canManageOutcome, assignableFilter } from '../utils/visibility.js';
-import { financeScope, peopleInScope, perGroupSums, perMember, groupList, scopeName, person, who, whoKey } from '../utils/finance.js';
+import {
+  financeScope, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName, person, who, whoKey,
+  ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
+} from '../utils/finance.js';
 import { resolveTarget, shares, checkMoneyFields, inScope } from '../utils/outcomeTarget.js';
 import { imageUpload, describeUpload, checkImages, removeUnusedFiles } from '../utils/uploads.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
@@ -61,17 +64,15 @@ async function checkFields(body, partial = false) {
 }
 
 const item = (o) => ({ id: o._id, date: o.date, amount: o.amount, reason: o.reason, comment: o.comment || '', split: o.split?.id ? o.split.label : null });
-const populate = (q) => q.populate('member', 'name role').populate('group', 'name slug');
+const populate = (q) => q.populate('member', PERSON_FIELDS).populate('group', 'name slug');
 const stillUsed = (file) => Outcome.exists({ 'images.file': file });
 
 // GET /api/outcomes — same query as /api/incomes (type, period/date or from/to, group, member).
 router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
-  const [outcomes, people] = await Promise.all([
-    populate(Outcome.find(filter).sort({ date: -1, createdAt: -1 })),
-    peopleInScope(req.user, { groupId, memberId }),
-  ]);
+  const outcomes = await populate(Outcome.find(filter).sort({ date: -1, createdAt: -1 })).lean();
+  const people = await peopleInScope(req.user, { groupId, memberId }, outcomes.map((o) => ownerId(o, 'member')));
 
   const byMember = perMember(outcomes);
   const total = outcomes.reduce((sum, o) => sum + o.amount, 0);
@@ -79,26 +80,28 @@ router.get('/', async (req, res) => {
   // One column per person in scope, with the records behind it.
   const chart = people.map((p) => {
     const id = String(p._id);
+    const own = outcomes.filter((o) => whoKey(o) === id);
     return {
       member: person(p),
       amount: byMember.get(id)?.amount ?? 0,
-      items: outcomes.filter((o) => whoKey(o) === id).map(item),
+      count: own.length,
+      items: own.slice(0, DETAIL_LIMIT).map(item),
     };
   });
 
   const sumFor = await perGroupSums(Outcome, req.user, allowed, period);
-  const perGroup = allowed.map((g) => ({
-    id: g._id,
-    name: g.name,
-    slug: g.slug,
-    amount: sumFor.get(String(g._id))?.amount ?? 0,
-    count: sumFor.get(String(g._id))?.count ?? 0,
+  const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
+    amount: sumFor.get(k)?.amount ?? 0,
+    count: sumFor.get(k)?.count ?? 0,
   }));
 
-  const locked = await lockedSplits(req.user, outcomes);
+  // The newest records; `count` is how many there are in all.
+  const listed = outcomes.slice(0, LIST_LIMIT);
+  const locked = await lockedSplits(req.user, listed);
   res.json({
     period,
-    outcomes: outcomes.map((o) => serialize(o, req.user, locked)),
+    outcomes: listed.map((o) => serialize(o, req.user, locked)),
+    count: outcomes.length,
     total,
     perMember: [...byMember.values()].sort((a, b) => b.amount - a.amount),
     perGroup,
