@@ -7,7 +7,8 @@
     "start": "node src/index.js",
     "test": "node --test",
     "seed:demo": "node src/scripts/seedDemo.js",
-    "reset-password": "node src/scripts/resetPassword.js"
+    "reset-password": "node src/scripts/resetPassword.js",
+    "split-legacy-outcomes": "node src/scripts/splitLegacyOutcomes.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

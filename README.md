@@ -143,6 +143,7 @@ Channel titles come from `GET /api/nav`, built per user in
 | `npm test` | Server unit tests (periods, permission rules, outcome splits) |
 | `npm run seed:demo` | Fills the database with the demo team (see above) |
 | `npm --prefix server run reset-password -- <user>` | Gives one account a temporary password (printed) to change at next login. To set a chosen one, pass it as `RESET_PASSWORD=...` (add `--no-must-change` to keep it) |
+| `npm --prefix server run split-legacy-outcomes` | One-off: splits old team costs (outcomes with no member) into one share per member of their group, or of the whole team. Shows the plan; add `-- --apply` to change the data |
 | `npm run install:all` | Installs root, server and client dependencies |
 
 ## API
