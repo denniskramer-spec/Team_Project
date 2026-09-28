@@ -148,6 +148,13 @@ Channel titles come from `GET /api/nav`, built per user in
   to people who may see that member's assets.
 - **Groups** — a group keeps its address (`/chat/group-group1`) when it is renamed, so
   links and bookmarks keep working. Deleting a group leaves its records under "No group".
+- **Group reports and plans** — a group has one per period. Any of its bosses can
+  write it; the last save wins and names its author.
+- **A period belongs to where it starts** — the week of Sep 28 – Oct 4 counts for
+  September in Checkout and Finance alike, and the last week of a year for that year.
+- **Limits** — per person: 120 changes a minute, 20 chat messages in 10 seconds, 10
+  instructions a minute (3 urgent), 10 open tabs or devices. Far above normal use;
+  they stop a script or a stuck client from flooding everyone's screen.
 - **Periods** — ISO weeks in UTC, so `2026-W39` means the same for everyone
   (`server/src/utils/period.js`). Period and group live in the URL, so any view can
   be bookmarked.
@@ -162,6 +169,7 @@ Channel titles come from `GET /api/nav`, built per user in
 | `npm test` | Server unit tests (periods, permission rules, outcome splits) |
 | `npm run seed:demo` | Fills the database with the demo team (see above) |
 | `npm --prefix server run reset-password -- <user>` | Gives one account a temporary password (printed) to change at next login. To set a chosen one, pass it as `RESET_PASSWORD=...` (add `--no-must-change` to keep it) |
+| `npm --prefix server run dedupe-group-records` | One-off: keeps the newest group report and group plan per group and period where several bosses each saved one, and updates the database indexes. Shows the plan; add `-- --apply` to change the data |
 | `npm --prefix server run split-legacy-outcomes` | One-off: splits old team costs (outcomes with no member) into one share per member of their group, or of the whole team. Shows the plan; add `-- --apply` to change the data |
 | `npm run install:all` | Installs root, server and client dependencies |
 

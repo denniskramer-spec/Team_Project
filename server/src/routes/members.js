@@ -53,6 +53,16 @@ async function resolveGroup(id) {
   return group;
 }
 
+// The check above can pass for two requests at the same moment (two admins
+// removing each other). So after saving, look again: if no active admin is
+// left, put this one back and refuse.
+async function keepAnAdmin(target, before) {
+  if (before.role !== 'admin' || before.status !== 'active') return;
+  if (await User.exists({ role: 'admin', status: 'active' })) return;
+  await User.updateOne({ _id: target._id }, before);
+  throw conflict('There must always be at least one active admin');
+}
+
 async function assertNotLastAdmin(target) {
   if (target.role !== 'admin') return;
   const others = await User.countDocuments({ role: 'admin', status: 'active', _id: { $ne: target._id } });
@@ -198,8 +208,10 @@ router.post('/:id/status', async (req, res) => {
   if (target.status === 'pending') throw badRequest('Use approve or reject for pending sign-ups');
 
   if (req.body.status === 'disabled') await assertNotLastAdmin(target);
+  const before = { role: target.role, status: target.status };
   target.status = req.body.status;
   await target.save();
+  await keepAnAdmin(target, before);
 
   broadcast(target._id, { disconnect: target.status === 'disabled' });
   res.json({ member: serialize(target, req.user) });
@@ -222,8 +234,10 @@ router.patch('/:id/role', requireCapability('manageUsers'), async (req, res) => 
   }
   if (req.body.role === 'boss' && !target.group) throw badRequest('Choose the group this boss leads');
 
+  const before = { role: target.role, status: target.status };
   target.role = req.body.role;
   await target.save();
+  await keepAnAdmin(target, before);
   if (String(target.group?._id ?? target.group ?? '') !== groupBefore) await moveRecordsToGroup(target._id, target.group);
   await target.populate('group', 'name slug');
 

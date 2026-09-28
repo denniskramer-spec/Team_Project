@@ -30,7 +30,8 @@ export default function Signup() {
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
     try {
-      const { confirm, ...body } = form;
+      const body = { ...form };
+      delete body.confirm; // only checked here, never sent
       const { message } = await signup(body);
       navigate('/login', { replace: true, state: { notice: message } });
     } catch (err) {

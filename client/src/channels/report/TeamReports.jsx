@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatAmount, formatDay, timeAgo } from '../../format.js';
+import { formatAmount, formatDay, timeAgo, nameOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 
@@ -15,7 +15,7 @@ function Row({ row }) {
           <div className="cell-user">
             <Avatar name={row.member.name} role={row.member.role} size={30} />
             <div>
-              <div className={`strong role-text-${row.member.role}`}>{row.member.name}</div>
+              <div className={`strong role-text-${row.member.role}`}>{nameOf(row.member)}</div>
               <div className="muted small">{row.member.group?.name ?? '—'}</div>
             </div>
           </div>

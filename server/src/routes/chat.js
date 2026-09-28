@@ -9,6 +9,7 @@ import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage } from '.
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
+import { chatLimit } from '../middleware/limits.js';
 import { chatEvent, navChangedFor } from '../socket/events.js';
 
 const router = Router();
@@ -77,7 +78,7 @@ router.get('/:titleKey/messages', async (req, res) => {
 });
 
 // POST /api/chat/:titleKey/messages { content }
-router.post('/:titleKey/messages', async (req, res) => {
+router.post('/:titleKey/messages', chatLimit, async (req, res) => {
   const channel = await resolveChannel(req.user, req.params.titleKey);
   const content = checkContent(req.body.content);
 

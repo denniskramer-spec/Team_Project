@@ -24,7 +24,7 @@ export default function ReadersModal({ instruction, onClose }) {
         <li key={r.id}>
           <Avatar name={r.name} role={r.role} size={28} />
           <span className="strong">{r.name}</span>
-          <span className="muted small">{r.group ?? ''}</span>
+          <span className="muted small">{r.note ?? r.group ?? ''}</span>
           {r.readAt && <span className="muted small reader-time">{timeAgo(r.readAt)}</span>}
         </li>
       ))}

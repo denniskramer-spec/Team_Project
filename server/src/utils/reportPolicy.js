@@ -21,6 +21,13 @@ export function readableAuthorFilter(user) {
   return { _id: user._id };
 }
 
+// The same rule, as a filter on the reports themselves.
+export function readableReportFilter(user) {
+  if (seesAllGroups(user)) return {};
+  if (user.role === 'boss' && user.group) return { group: user.group };
+  return { author: user._id };
+}
+
 // Who sees the team table and the group reports at all.
 export const canReadTeam = (user) => seesAllGroups(user) || (user.role === 'boss' && Boolean(user.group));
 export const canReadGroupReports = canReadTeam;

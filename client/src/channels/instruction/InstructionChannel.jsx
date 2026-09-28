@@ -86,7 +86,6 @@ export default function InstructionChannel({ title }) {
     } finally {
       if (requested === scopeRef.current) setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title.key, memberId]);
 
   useEffect(() => { loadFirst(); }, [loadFirst]);

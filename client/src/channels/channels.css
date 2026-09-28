@@ -1,5 +1,5 @@
 /* ---------- Shared page building blocks for section 3 ---------- */
-.page { display: grid; gap: 16px; max-width: none; }
+.page { display: grid; gap: 16px; max-width: none; grid-template-columns: minmax(0, 1fr); }
 .page-intro { margin: 0; }
 .strong { font-weight: 600; }
 code {
@@ -500,8 +500,10 @@ textarea:focus { border-color: var(--accent); }
 .report-section-head .muted { margin-left: auto; }
 .report-table .num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .report-table tfoot td { border-top: 1px solid var(--border); padding-top: 10px; }
-/* Dimmed, except the "missing" pill, which has to stay readable. */
-.report-table tr.is-missing td:not(:has(.status-pill)) { opacity: 0.75; }
+/* A row without a report is toned down through its text colour; fading the
+   whole row would also fade the avatar and the "missing" pill below what is
+   readable. */
+.report-table tr.is-missing td, .report-table tr.is-missing .strong { color: var(--muted); }
 .detail-row td { background: var(--surface-2); border-radius: 0 0 6px 6px; }
 .detail-row p { margin: 0 0 8px; white-space: pre-wrap; }
 

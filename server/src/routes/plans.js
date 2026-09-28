@@ -9,6 +9,7 @@ import { visibleGroups } from '../utils/scope.js';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkOptionalAmount, checkText } from '../utils/validate.js';
+import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
 import { planChanged } from '../socket/events.js';
 
 const router = Router();
@@ -56,7 +57,8 @@ const serialize = (p, user) => ({
   status: p.status,
   statusUpdatedAt: p.statusUpdatedAt,
   updatedAt: p.updatedAt,
-  mine: String(p.owner?._id ?? p.owner) === String(user._id),
+  // A group plan belongs to its group's bosses, whoever saved it last.
+  mine: p.scope === 'group' ? canChangeGroupRecord(user, p) : String(p.owner?._id ?? p.owner) === String(user._id),
 });
 
 // Plans this user may read: everything (leader, admin), their group (boss)
@@ -90,10 +92,10 @@ router.get('/', async (req, res) => {
   const readable = await readFilter(req, groups);
   const base = { type, period: period.key };
 
-  const [mine, myGroupPlan, plans] = await Promise.all([
+  const [mine, myGroupPlan, found] = await Promise.all([
     Plan.findOne({ ...base, owner: req.user._id, scope: 'personal' }).populate('owner', 'name role').populate('group', 'name slug'),
     canPlanGroup(req.user)
-      ? Plan.findOne({ ...base, owner: req.user._id, scope: 'group' }).populate('owner', 'name role').populate('group', 'name slug')
+      ? findGroupRecord(Plan, { ...base, group: req.user.group }).populate('owner', 'name role').populate('group', 'name slug')
       : null,
     Plan.find({ ...base, ...readable }).populate('owner', 'name role').populate('group', 'name slug').sort('scope'),
   ]);
@@ -104,9 +106,11 @@ router.get('/', async (req, res) => {
   if (readable.owner) memberFilter._id = readable.owner;
   const members = await User.find(memberFilter, 'name role group').populate('group', 'name slug').sort('name').lean();
 
-  const personal = plans.filter((p) => p.scope === 'personal');
+  const personal = found.filter((p) => p.scope === 'personal');
+  const plans = [...personal, ...latestPerGroup(found.filter((p) => p.scope === 'group'))];
   const byOwner = new Map(personal.map((p) => [String(p.owner._id), p]));
-  const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: plans.filter((p) => p.status === s).length }), {});
+  // Counts and totals cover the same plans: the personal ones.
+  const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: personal.filter((p) => p.status === s).length }), {});
   // Totals add up personal plans only: a boss's group plan repeats their
   // members' targets (Checkout leaves it out for the same reason).
   const totals = personal.reduce((acc, p) => ({
@@ -152,16 +156,14 @@ router.put('/', async (req, res) => {
     throw forbidden('Only a boss plans for their own group');
   }
 
-  const plan = await Plan.findOneAndUpdate(
-    { owner: req.user._id, type, period: period.key, scope },
-    {
-      ...checkFields(req.body),
-      group: scope === 'group' ? req.user.group : (req.user.group ?? null),
-      periodStart: period.start,
-      periodEnd: period.end,
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
+  const fields = { ...checkFields(req.body), periodStart: period.start, periodEnd: period.end };
+  const plan = scope === 'group'
+    ? await saveGroupRecord(Plan, 'owner', req.user, { type, period: period.key }, fields)
+    : await Plan.findOneAndUpdate(
+      { owner: req.user._id, type, period: period.key, scope },
+      { ...fields, group: req.user.group ?? null },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
   await plan.populate('owner', 'name role');
   await plan.populate('group', 'name slug');
 
@@ -173,7 +175,10 @@ async function findOwnPlan(req) {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Plan not found');
   const plan = await Plan.findById(req.params.id).populate('owner', 'name role').populate('group', 'name slug');
   if (!plan) throw notFound('Plan not found');
-  if (String(plan.owner._id) !== String(req.user._id)) throw forbidden('You can only change your own plan');
+  const allowed = plan.scope === 'group'
+    ? canChangeGroupRecord(req.user, plan)
+    : String(plan.owner?._id ?? plan.owner) === String(req.user._id);
+  if (!allowed) throw forbidden('You can only change your own plan');
   return plan;
 }
 

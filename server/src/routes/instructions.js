@@ -11,6 +11,7 @@ import {
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
+import { instructionLimit, urgentLimit } from '../middleware/limits.js';
 import { instructionEvent, navChangedFor } from '../socket/events.js';
 
 const router = Router();
@@ -52,13 +53,17 @@ function checkBody(body, { partial = false } = {}) {
 }
 
 // Loads active users once so recipient counts don't need a query per instruction.
+// Recipients are today's audience plus everyone who already acknowledged it:
+// someone who read it and then moved group or was disabled still counts, so
+// "Read by 2 of 2" never turns into "Read by 2 of 0".
 async function audienceIndex() {
   const users = await User.find({ status: 'active' }, 'group createdAt').lean();
   return (instr) => {
     if (instr.target === 'member') return 1;
-    return users.filter((u) => String(u._id) !== String(instr.author._id ?? instr.author)
+    const audience = users.filter((u) => String(u._id) !== String(instr.author._id ?? instr.author)
       && u.createdAt <= instr.createdAt
-      && (instr.target === 'all' || String(u.group) === String(instr.group?._id ?? instr.group))).length;
+      && (instr.target === 'all' || String(u.group) === String(instr.group?._id ?? instr.group)));
+    return new Set([...audience.map((u) => String(u._id)), ...instr.readBy.map((r) => String(r.user))]).size;
   };
 }
 
@@ -170,7 +175,7 @@ router.get('/unread', async (req, res) => {
 });
 
 // POST /api/instructions { target, group?, title?, content, priority? }
-router.post('/', requireCapability('sendInstructions'), async (req, res) => {
+router.post('/', requireCapability('sendInstructions'), instructionLimit, urgentLimit, async (req, res) => {
   const fields = checkBody(req.body);
   const target = req.body.target;
   if (!['all', 'group', 'member'].includes(target)) throw badRequest('Target must be "all", "group" or "member"');
@@ -256,13 +261,26 @@ router.post('/read-all', async (req, res) => {
 router.get('/:id/reads', async (req, res) => {
   const instr = await findVisible(req);
   if (!canSeeReceipts(req.user, instr)) throw forbidden();
-  const recipients = await User.find(audienceFilter(instr), 'name role group')
-    .populate('group', 'name').sort('name').lean();
+  const audience = await User.find(audienceFilter(instr), 'name role group status')
+    .populate('group', 'name').lean();
   const readAt = new Map(instr.readBy.map((r) => [String(r.user), r.at]));
+  // Readers who have since left the audience (moved group, disabled).
+  const listed = new Set(audience.map((u) => String(u._id)));
+  const gone = [...readAt.keys()].filter((id) => !listed.has(id));
+  const former = gone.length
+    ? await User.find({ _id: { $in: gone } }, 'name role group status').populate('group', 'name').lean()
+    : [];
+  const row = (u, left) => ({
+    id: u._id,
+    name: u.name,
+    role: u.role,
+    group: u.group?.name ?? null,
+    readAt: readAt.get(String(u._id)) ?? null,
+    ...(left ? { note: u.status === 'active' ? 'no longer in this audience' : 'disabled' } : {}),
+  });
   res.json({
-    recipients: recipients.map((u) => ({
-      id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null, readAt: readAt.get(String(u._id)) ?? null,
-    })),
+    recipients: [...audience.map((u) => row(u, false)), ...former.map((u) => row(u, true))]
+      .sort((a, b) => a.name.localeCompare(b.name)),
   });
 });
 

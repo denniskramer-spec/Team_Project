@@ -33,7 +33,10 @@ const reportSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-reportSchema.index({ author: 1, type: 1, period: 1, scope: 1 }, { unique: true });
+// One personal report per person and period, and one group report per group and
+// period, whoever of its bosses saved it last.
+reportSchema.index({ author: 1, type: 1, period: 1 }, { unique: true, partialFilterExpression: { scope: 'personal' } });
+reportSchema.index({ group: 1, type: 1, period: 1 }, { unique: true, partialFilterExpression: { scope: 'group' } });
 reportSchema.index({ type: 1, period: 1, scope: 1 });
 reportSchema.index({ periodStart: 1, periodEnd: 1 });
 

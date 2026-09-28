@@ -56,12 +56,15 @@ router.get('/', async (req, res) => {
     return out;
   };
 
-  // Everything that falls inside the period.
-  const inside = { periodStart: { $gte: period.start }, periodEnd: { $lte: period.end } };
+  // Plans and reports belong to the period they start in, the same rule as
+  // Finance: the week of Sep 28 – Oct 4 counts for September, and the last
+  // week of a year for that year. A weekly checkout compares weekly plans only.
+  const inside = { periodStart: { $gte: period.start, $lt: period.end } };
+  const planned = type === 'weekly' ? { ...inside, type: 'weekly' } : inside;
 
   const [allPlans, reports, tasks, incomes, current] = await Promise.all([
     // Personal plans only: a boss's group plan repeats their members' targets.
-    Plan.find(withGroup({ ...owners, ...inside, scope: 'personal' }, 'owner')).lean(),
+    Plan.find(withGroup({ ...owners, ...planned, scope: 'personal' }, 'owner')).lean(),
     Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).lean(),
     // Tasks that overlap the period at all.
     Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, endDate: { $gte: period.start } }, 'owner')).lean(),

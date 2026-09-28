@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { can } from '../config/roles.js';
+import { writeLimit } from './limits.js';
 import User from '../models/User.js';
 import RevokedToken from '../models/RevokedToken.js';
 import { unauthorized, forbidden } from '../utils/httpError.js';
@@ -82,13 +83,16 @@ export const loadUserFromToken = async (token) => (await loadSession(token)).use
 // Paths a user can still reach while they are forced to change their password.
 const PASSWORD_CHANGE_ALLOWED = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout']);
 
-export async function requireAuth(req, res, next) {
+async function authenticate(req, res, next) {
   req.user = await loadUserFromToken(readToken(req));
   if (req.user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(req.originalUrl.split('?')[0])) {
     throw forbidden('You must change your password first');
   }
   next();
 }
+
+// Logged in, and not changing things faster than any person would.
+export const requireAuth = [authenticate, writeLimit];
 
 export const requireCapability = (capability) => (req, res, next) => {
   if (!can(req.user, capability)) throw forbidden();

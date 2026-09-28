@@ -31,7 +31,10 @@ const planSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-planSchema.index({ owner: 1, type: 1, period: 1, scope: 1 }, { unique: true });
+// One personal plan per person and period, and one group plan per group and
+// period, whoever of its bosses saved it last.
+planSchema.index({ owner: 1, type: 1, period: 1 }, { unique: true, partialFilterExpression: { scope: 'personal' } });
+planSchema.index({ group: 1, type: 1, period: 1 }, { unique: true, partialFilterExpression: { scope: 'group' } });
 planSchema.index({ type: 1, period: 1, group: 1 });
 planSchema.index({ periodStart: 1, periodEnd: 1 });
 

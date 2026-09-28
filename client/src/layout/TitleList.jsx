@@ -9,7 +9,7 @@ import Icon from '../components/Icon.jsx';
 //   title  ->  group (?g=)  ->  member (?m=)
 // A title with `queryKey` keeps the current title and sets a query value instead.
 export default function TitleList({ channel, current }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const isChat = channel.key === 'chat';
   const selectedMember = searchParams.get('m') ?? '';
   const selectedGroup = searchParams.get('g') ?? '';

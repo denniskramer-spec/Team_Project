@@ -10,6 +10,10 @@ const connections = new Map();
 let io = null;
 
 const TYPING_ACCESS_TTL_MS = 60 * 1000;
+// The app sends "typing" every 2 seconds; anything faster is not relayed.
+const TYPING_RELAY_MS = 1500;
+// Open tabs and devices per account. More than this is a script, not a person.
+const MAX_SOCKETS_PER_USER = 10;
 
 export const onlineUserIds = () => [...connections.keys()];
 
@@ -40,6 +44,9 @@ export function initSocket(httpServer) {
       const session = await loadSession(token);
       const { user } = session;
       if (user.mustChangePassword) return next(new Error('Password change required'));
+      if ((connections.get(String(user._id)) || 0) >= MAX_SOCKETS_PER_USER) {
+        return next(new Error('Too many open connections for this account'));
+      }
       socket.data.jti = session.payload.jti ?? null;
       socket.data.user = {
         id: String(user._id),
@@ -70,10 +77,13 @@ export function initSocket(httpServer) {
     // Whatever a client sends must never take the server down: the payload is
     // read inside the try, not destructured in the parameter list.
     const typingAccess = new Map(); // titleKey -> { channel, at }
+    let lastTypingAt = 0;
     socket.on('chat:typing', async (payload) => {
       try {
         const titleKey = payload?.titleKey;
         if (typeof titleKey !== 'string' || titleKey.length > 100) return;
+        if (Date.now() - lastTypingAt < TYPING_RELAY_MS) return;
+        lastTypingAt = Date.now();
         let cached = typingAccess.get(titleKey);
         if (!cached || Date.now() - cached.at > TYPING_ACCESS_TTL_MS) {
           cached = { channel: await resolveChannel({ _id: id, role, group }, titleKey), at: Date.now() };

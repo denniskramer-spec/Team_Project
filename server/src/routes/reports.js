@@ -7,12 +7,14 @@ import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import {
-  canWritePersonal, canWriteGroup, readableAuthorFilter, canReadGroupReports, canReadTeam,
+  canWritePersonal, canWriteGroup, readableAuthorFilter, readableReportFilter, canReadGroupReports, canReadTeam,
 } from '../utils/reportPolicy.js';
 import { visibleGroups } from '../utils/scope.js';
 import { canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkOptionalAmount, checkText } from '../utils/validate.js';
+import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
+import { person as personOf } from '../utils/finance.js';
 import { reportChanged } from '../socket/events.js';
 
 const router = Router();
@@ -95,7 +97,7 @@ router.get('/', async (req, res) => {
   const mine = await Report.findOne({ ...base, author: req.user._id, scope: 'personal' })
     .populate('author', 'name role').populate('group', 'name slug').populate('task', 'name status');
   const myGroupReport = canWriteGroup(req.user)
-    ? await Report.findOne({ ...base, author: req.user._id, scope: 'group' })
+    ? await findGroupRecord(Report, { ...base, group: req.user.group })
       .populate('author', 'name role').populate('group', 'name slug')
     : null;
 
@@ -124,12 +126,18 @@ router.get('/', async (req, res) => {
     authorFilter._id = member._id;
   }
 
-  const members = await User.find(authorFilter, 'name role group memberId')
-    .populate('group', 'name slug').sort('name').lean();
-  const memberIds = members.map((m) => m._id);
+  const current = await User.find(authorFilter, 'name role status group memberId')
+    .populate('group', 'name slug').lean();
 
-  const [personalReports, groupReports] = await Promise.all([
-    Report.find({ ...base, scope: 'personal', author: { $in: memberIds } })
+  // Every personal report of the day in this role's scope, also one written
+  // by someone since disabled or promoted: the totals count it, so its
+  // author is listed (with a note) and the rows add up to the totals.
+  const reportScope = { ...readableReportFilter(req.user) };
+  if (groupFilter) reportScope.group = groupFilter;
+  if (authorFilter._id) reportScope.author = authorFilter._id;
+
+  const [personalReports, allGroupReports] = await Promise.all([
+    Report.find({ ...base, scope: 'personal', ...reportScope })
       .populate('author', 'name role').populate('group', 'name slug').populate('task', 'name status'),
     canReadGroupReports(req.user)
       ? Report.find({
@@ -140,10 +148,18 @@ router.get('/', async (req, res) => {
       : [],
   ]);
 
-  const byAuthor = new Map(personalReports.map((r) => [String(r.author._id), r]));
+  const groupReports = latestPerGroup(allGroupReports);
+  const listed = new Set(current.map((m) => String(m._id)));
+  const otherIds = personalReports.map((r) => String(r.author?._id ?? r.author)).filter((id) => !listed.has(id));
+  const others = otherIds.length
+    ? await User.find({ _id: { $in: otherIds } }, 'name role status group memberId').populate('group', 'name slug').lean()
+    : [];
+  const members = [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
+
+  const byAuthor = new Map(personalReports.map((r) => [String(r.author?._id ?? r.author), r]));
   const rows = members.map((m) => ({
     member: {
-      id: m._id, name: m.name, role: m.role, memberId: m.memberId,
+      ...personOf(m), memberId: m.memberId,
       group: m.group ? { id: m.group._id, name: m.group.name, slug: m.group.slug } : null,
     },
     report: serialize(byAuthor.get(String(m._id))),
@@ -208,17 +224,19 @@ router.put('/', async (req, res) => {
   }
   if (period.start > new Date()) throw badRequest('That period has not started yet');
 
-  const report = await Report.findOneAndUpdate(
-    { author: req.user._id, type, period: period.key, scope },
-    {
-      ...checkFields(req.body),
-      task: await resolveTask(req, scope),
-      group: scope === 'group' ? req.user.group : (req.user.group ?? null),
-      periodStart: period.start,
-      periodEnd: period.end,
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
+  const fields = {
+    ...checkFields(req.body),
+    task: await resolveTask(req, scope),
+    periodStart: period.start,
+    periodEnd: period.end,
+  };
+  const report = scope === 'group'
+    ? await saveGroupRecord(Report, 'author', req.user, { type, period: period.key }, fields)
+    : await Report.findOneAndUpdate(
+      { author: req.user._id, type, period: period.key, scope },
+      { ...fields, group: req.user.group ?? null },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
   await report.populate('author', 'name role');
   await report.populate('group', 'name slug');
   await report.populate('task', 'name status');
@@ -231,7 +249,10 @@ router.delete('/:id', async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Report not found');
   const report = await Report.findById(req.params.id);
   if (!report) throw notFound('Report not found');
-  if (String(report.author) !== String(req.user._id)) throw forbidden('You can only delete your own report');
+  const allowed = report.scope === 'group'
+    ? canChangeGroupRecord(req.user, report)
+    : String(report.author) === String(req.user._id);
+  if (!allowed) throw forbidden('You can only delete your own report');
   await report.deleteOne();
   reportChanged(req.user, report);
   res.json({ ok: true });
