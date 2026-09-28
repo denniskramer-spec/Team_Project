@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { toDateInput } from '../../format.js';
+import { toDateInput, todayInput } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 
 const LEVELS = ['Basic', 'Intermediate', 'Advanced', 'Fluent', 'Native'];
@@ -9,6 +10,9 @@ const LEVELS = ['Basic', 'Intermediate', 'Advanced', 'Fluent', 'Native'];
 // Create or edit an asset: name, birthday, nationality, contact and English level.
 export default function AssetForm({ asset, defaultOwner, onClose, onSaved }) {
   const toast = useToast();
+  const { user } = useAuth();
+  // Assets belong to members and bosses; the leader and admins pick one.
+  const canOwn = ['member', 'boss'].includes(user.role);
   const editing = Boolean(asset);
   const [members, setMembers] = useState([]);
   const [form, setForm] = useState({
@@ -68,7 +72,7 @@ export default function AssetForm({ asset, defaultOwner, onClose, onSaved }) {
         <div className="row">
           <label>
             Birthday
-            <input type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthday} onChange={set('birthday')} />
+            <input type="date" max={todayInput()} value={form.birthday} onChange={set('birthday')} />
           </label>
           <label>
             Nationality
@@ -84,8 +88,8 @@ export default function AssetForm({ asset, defaultOwner, onClose, onSaved }) {
           </label>
           <label>
             Belongs to
-            <select value={form.owner} onChange={set('owner')} disabled={members.length <= 1}>
-              <option value="">Me</option>
+            <select value={form.owner} onChange={set('owner')} disabled={canOwn && members.length <= 1} required={!canOwn}>
+              <option value="">{canOwn ? 'Me' : 'Choose a member'}</option>
               {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.group ? ` · ${m.group}` : ''}</option>)}
             </select>
           </label>

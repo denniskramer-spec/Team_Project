@@ -5,6 +5,8 @@ import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canManageFor, canReadTeam, assignableFilter } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { checkDay, checkText } from '../utils/validate.js';
+import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { taskChanged } from '../socket/events.js';
 
 const router = Router();
@@ -25,10 +27,10 @@ const serialize = (t, user) => ({
 });
 
 function checkDates(body, current = {}) {
-  const start = body.startDate !== undefined ? new Date(body.startDate) : current.startDate;
-  const end = body.endDate !== undefined ? new Date(body.endDate) : current.endDate;
-  if (!start || Number.isNaN(start.getTime())) throw badRequest('Choose a start date');
-  if (!end || Number.isNaN(end.getTime())) throw badRequest('Choose an end date');
+  const start = body.startDate !== undefined ? checkDay(body.startDate, 'a start date') : current.startDate;
+  const end = body.endDate !== undefined ? checkDay(body.endDate, 'an end date') : current.endDate;
+  if (!start) throw badRequest('Choose a start date');
+  if (!end) throw badRequest('Choose an end date');
   if (end < start) throw badRequest('The end date cannot be before the start date');
   return { startDate: start, endDate: end };
 }
@@ -36,10 +38,8 @@ function checkDates(body, current = {}) {
 function checkFields(body) {
   const fields = {};
   if (body.name !== undefined) {
-    const name = String(body.name).trim();
-    if (!name) throw badRequest('Give the task a name');
-    if (name.length > 120) throw badRequest('Task name can be at most 120 characters');
-    fields.name = name;
+    fields.name = checkText(body.name, 'Task name', 120);
+    if (!fields.name) throw badRequest('Give the task a name');
   }
   if (body.salary !== undefined) {
     const salary = body.salary === '' || body.salary === null ? 0 : Number(body.salary);
@@ -52,22 +52,16 @@ function checkFields(body) {
     fields.status = body.status;
   }
   if (body.note !== undefined) {
-    const note = String(body.note).trim();
-    if (note.length > 2000) throw badRequest('Note can be at most 2000 characters');
-    fields.note = note;
+    fields.note = checkText(body.note, 'Note', 2000);
   }
   return fields;
 }
 
-async function resolveOwner(req) {
-  // Members can only sign tasks up for themselves.
-  if (!req.body.owner || String(req.body.owner) === String(req.user._id)) return req.user;
-  if (!mongoose.isValidObjectId(req.body.owner)) throw badRequest('Unknown member');
-  const owner = await User.findById(req.body.owner);
-  if (!owner || owner.status !== 'active') throw badRequest('Unknown member');
-  if (!canManageFor(req.user, owner)) throw forbidden('You cannot sign tasks up for that member');
-  return owner;
-}
+// Members can only sign tasks up for themselves. When a task is edited, a
+// cleared owner is refused rather than read as "give it to me".
+const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, {
+  orSelf, denied: 'You cannot sign tasks up for that member',
+});
 
 // GET /api/tasks?status=&q=  — tasks this role may see.
 router.get('/', async (req, res) => {
@@ -90,7 +84,7 @@ router.get('/', async (req, res) => {
   res.json({
     tasks: tasks.map((t) => serialize(t, req.user)),
     totals: { ...totals, count: tasks.length },
-    can: { assignOthers: canReadTeam(req.user) },
+    can: { assignOthers: canReadTeam(req.user), own: ownsRecords(req.user) },
     scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
   });
 });
@@ -103,7 +97,7 @@ router.get('/assignees', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const owner = await resolveOwner(req);
+  const owner = await resolveOwner(req, { orSelf: true });
   const fields = checkFields(req.body);
   if (!fields.name) throw badRequest('Give the task a name');
 

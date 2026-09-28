@@ -7,6 +7,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canManageFor, canReadTeam, assignableFilter, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { checkText, parseBirthday } from '../utils/validate.js';
+import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { assetChanged } from '../socket/events.js';
 
 const router = Router();
@@ -52,24 +54,13 @@ const serialize = (a, user) => ({
 function checkFields(body, partial = false) {
   const fields = {};
   if (!partial || body.name !== undefined) {
-    const name = String(body.name ?? '').trim();
-    if (!name) throw badRequest('Give the asset a name');
-    if (name.length > 80) throw badRequest('Name can be at most 80 characters');
-    fields.name = name;
+    fields.name = checkText(body.name, 'Name', 80);
+    if (!fields.name) throw badRequest('Give the asset a name');
   }
   if (body.birthday !== undefined) {
-    if (!body.birthday) fields.birthday = null;
-    else {
-      const date = new Date(body.birthday);
-      if (Number.isNaN(date.getTime()) || date > new Date()) throw badRequest('Invalid birthday');
-      fields.birthday = date;
-    }
+    fields.birthday = parseBirthday(body.birthday);
   }
-  const text = (value, label, max) => {
-    const s = String(value ?? '').trim();
-    if (s.length > max) throw badRequest(`${label} can be at most ${max} characters`);
-    return s;
-  };
+  const text = checkText;
   if (body.nationality !== undefined) fields.nationality = text(body.nationality, 'Nationality', 60);
   if (body.contact !== undefined) fields.contact = text(body.contact, 'Contact info', 160);
   if (body.note !== undefined) fields.note = text(body.note, 'Note', 2000);
@@ -82,14 +73,9 @@ function checkFields(body, partial = false) {
 
 // Members can only add assets for themselves; a boss for their group; the
 // leader and admins for anyone.
-async function resolveOwner(req) {
-  if (!req.body.owner || String(req.body.owner) === String(req.user._id)) return req.user;
-  if (!mongoose.isValidObjectId(req.body.owner)) throw badRequest('Unknown member');
-  const owner = await User.findById(req.body.owner);
-  if (!owner || owner.status !== 'active') throw badRequest('Unknown member');
-  if (!canManageFor(req.user, owner)) throw forbidden('You cannot add assets for that member');
-  return owner;
-}
+const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, {
+  orSelf, denied: 'You cannot add assets for that member',
+});
 
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -120,7 +106,7 @@ router.get('/', async (req, res) => {
   res.json({
     assets: assets.map((a) => serialize(a, req.user)),
     levels: ENGLISH_LEVELS,
-    can: { addForOthers: canReadTeam(req.user) },
+    can: { addForOthers: canReadTeam(req.user), own: ownsRecords(req.user) },
     groups: allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
     scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
   });
@@ -134,7 +120,7 @@ router.get('/owners', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const owner = await resolveOwner(req);
+  const owner = await resolveOwner(req, { orSelf: true });
   const asset = await new Asset({
     ...checkFields(req.body),
     owner: owner._id,

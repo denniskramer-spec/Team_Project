@@ -42,6 +42,11 @@ app.use((req, res, next) => {
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+// A request sent without a body has none; routes read fields off an object.
+app.use((req, res, next) => {
+  if (req.body === undefined || req.body === null || typeof req.body !== 'object' || Array.isArray(req.body)) req.body = {};
+  next();
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', db: dbState(), time: new Date().toISOString() });

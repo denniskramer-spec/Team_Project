@@ -3,12 +3,15 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import multer from 'multer';
+import { env } from '../config/env.js';
 import { badRequest } from './httpError.js';
 
 // Image attachments (screenshots, receipts) live on disk in server/uploads
 // and are served, behind login, from /api/files/<name>. Names are generated
 // here, so a stored name never comes from the client.
-export const uploadsDir = fileURLToPath(new URL('../../uploads/', import.meta.url));
+export const uploadsDir = env.uploadsDir
+  ? path.resolve(env.uploadsDir)
+  : fileURLToPath(new URL('../../uploads/', import.meta.url));
 await fs.mkdir(uploadsDir, { recursive: true });
 
 const TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
@@ -26,10 +29,40 @@ const upload = multer({
   fileFilter: (req, file, cb) => (TYPES[file.mimetype] ? cb(null, true) : cb(badRequest('Only PNG, JPEG, GIF or WebP images can be attached'))),
 });
 
+// What each image type starts with. The type a browser claims is not proof.
+const SIGNATURES = {
+  'image/png': (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/gif': (b) => ['GIF87a', 'GIF89a'].includes(b.subarray(0, 6).toString('latin1')),
+  'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+};
+
+async function looksLikeItsType(file) {
+  const handle = await fs.open(file.path, 'r');
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(12), 0, 12, 0);
+    return bytesRead >= 12 && SIGNATURES[file.mimetype](buffer);
+  } finally {
+    await handle.close();
+  }
+}
+
 // Express middleware: accepts up to MAX_IMAGES files in the `images` field.
+// A file whose content is not the image it claims to be rejects the whole
+// upload, and nothing from it is kept.
 export function imageUpload(req, res, next) {
-  upload.array('images', MAX_IMAGES)(req, res, (err) => {
-    if (!err) return next();
+  upload.array('images', MAX_IMAGES)(req, res, async (err) => {
+    if (!err) {
+      try {
+        const files = req.files ?? [];
+        const checks = await Promise.all(files.map(looksLikeItsType));
+        if (checks.every(Boolean)) return next();
+        await Promise.all(files.map((f) => fs.unlink(f.path).catch(() => {})));
+        return next(badRequest(`"${files[checks.indexOf(false)].originalname.slice(0, 60)}" is not a valid image`));
+      } catch (e) {
+        return next(e);
+      }
+    }
     if (err.code === 'LIMIT_FILE_SIZE') return next(badRequest('Each image can be at most 5 MB'));
     if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') return next(badRequest(`At most ${MAX_IMAGES} images per record`));
     next(err.status ? err : badRequest(err.message));

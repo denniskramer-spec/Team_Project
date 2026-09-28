@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { toDateInput } from '../../format.js';
+import { toDateInput, todayInput } from '../../format.js';
 import { ROLE_LABELS } from '../../components/RoleBadge.jsx';
 import Modal from '../../components/Modal.jsx';
 
@@ -54,7 +54,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
     }
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInput();
 
   return (
     <Modal

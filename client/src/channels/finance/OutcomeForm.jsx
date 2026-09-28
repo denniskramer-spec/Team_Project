@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, upload } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
-import { formatAmount, toDateInput } from '../../format.js';
+import { formatAmount, toDateInput, todayInput } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
 import TargetFields, { targetFrom, targetBody } from './OutcomeTarget.jsx';
@@ -17,7 +17,7 @@ export default function OutcomeForm({ outcome, groups, wholeTeam, onClose, onSav
   const [target, setTarget] = useState(targetFrom(outcome));
   const [form, setForm] = useState({
     amount: split ? split.total : outcome?.amount ?? '',
-    date: toDateInput(outcome?.date) || new Date().toISOString().slice(0, 10),
+    date: toDateInput(outcome?.date) || todayInput(),
     reason: outcome?.reason ?? '',
     comment: outcome?.comment ?? '',
   });

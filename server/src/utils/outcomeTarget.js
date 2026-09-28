@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { canRecordOutcome, canManageOutcome } from './visibility.js';
 import { badRequest, forbidden } from './httpError.js';
+import { checkAmount, checkText } from './validate.js';
+import { ownsRecords } from './recordOwner.js';
 
 // Who an outcome is for, from the request body:
 //   { member: <id> }               one person; their group comes along
@@ -33,7 +35,7 @@ export async function resolveTarget(req) {
 
   if (!mongoose.isValidObjectId(req.body.member)) throw badRequest('Choose a member');
   const member = await User.findById(req.body.member);
-  if (!member || member.status !== 'active') throw badRequest('Unknown member');
+  if (!member || member.status !== 'active' || !ownsRecords(member)) throw badRequest('Unknown member');
   if (!canManageOutcome(req.user, member)) throw forbidden('You cannot record outcome for that member');
   return { member: member._id, group: member.group ?? null };
 }
@@ -50,23 +52,12 @@ export function shares(total, count) {
 // Shared checks for amount, reason and comment.
 export function checkMoneyFields(body, partial = false) {
   const fields = {};
-  if (!partial || body.amount !== undefined) {
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount < 0) throw badRequest('Amount must be 0 or more');
-    if (amount > 1e12) throw badRequest('Amount is too large');
-    fields.amount = Math.round(amount * 100) / 100;
-  }
+  if (!partial || body.amount !== undefined) fields.amount = checkAmount(body.amount);
   if (!partial || body.reason !== undefined) {
-    const reason = String(body.reason ?? '').trim();
-    if (!reason) throw badRequest('Give a reason for the outcome');
-    if (reason.length > 120) throw badRequest('Reason can be at most 120 characters');
-    fields.reason = reason;
+    fields.reason = checkText(body.reason, 'Reason', 120);
+    if (!fields.reason) throw badRequest('Give a reason for the outcome');
   }
-  if (body.comment !== undefined) {
-    const comment = String(body.comment).trim();
-    if (comment.length > 2000) throw badRequest('Comment can be at most 2000 characters');
-    fields.comment = comment;
-  }
+  if (body.comment !== undefined) fields.comment = checkText(body.comment, 'Comment', 2000);
   return fields;
 }
 

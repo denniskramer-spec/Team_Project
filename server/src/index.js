@@ -7,6 +7,9 @@ import app from './app.js';
 import Outcome from './models/Outcome.js';
 import { sweepOrphans } from './utils/uploads.js';
 
+// A bug in one handler should be logged, not end the process for everyone.
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+
 const server = http.createServer(app);
 initSocket(server);
 

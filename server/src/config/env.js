@@ -17,6 +17,9 @@ export const env = {
   // directly). Only then is X-Forwarded-For trusted for the client's IP,
   // which the login rate limit relies on.
   trustProxy: Number(process.env.TRUST_PROXY) || 0,
+  // Where uploaded images are kept (default: server/uploads). Each database
+  // needs its own folder: files no record points to are cleaned up.
+  uploadsDir: process.env.UPLOADS_DIR || null,
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   seedAdmin: {

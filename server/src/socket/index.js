@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import { env } from '../config/env.js';
-import { loadUserFromToken, TOKEN_COOKIE } from '../middleware/auth.js';
+import { loadSession, TOKEN_COOKIE } from '../middleware/auth.js';
 import { resolveChannel, roomsFor } from '../utils/chatPolicy.js';
 
 // Number of open sockets per user id. A user is online while this is > 0
@@ -16,6 +16,13 @@ export const onlineUserIds = () => [...connections.keys()];
 // Lets route handlers push real-time events (instruction alerts, chat, ...).
 export const getIO = () => io;
 
+// Drops the sockets that were opened with one session's token (logout).
+export async function disconnectSession(userId, jti) {
+  if (!io || !jti) return;
+  const sockets = await io.in(`user:${userId}`).fetchSockets();
+  sockets.filter((s) => s.data.jti === jti).forEach((s) => s.disconnect(true));
+}
+
 function readCookie(header = '', name) {
   const match = header.split(';').map((c) => c.trim()).find((c) => c.startsWith(`${name}=`));
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
@@ -30,8 +37,10 @@ export function initSocket(httpServer) {
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token || readCookie(socket.handshake.headers.cookie, TOKEN_COOKIE);
-      const user = await loadUserFromToken(token);
+      const session = await loadSession(token);
+      const { user } = session;
       if (user.mustChangePassword) return next(new Error('Password change required'));
+      socket.data.jti = session.payload.jti ?? null;
       socket.data.user = {
         id: String(user._id),
         name: user.name,
@@ -58,10 +67,13 @@ export function initSocket(httpServer) {
 
     // "X is typing" in chat. Only broadcast to chats this user may open.
     // Access is looked up once a minute per chat, not on every keystroke.
+    // Whatever a client sends must never take the server down: the payload is
+    // read inside the try, not destructured in the parameter list.
     const typingAccess = new Map(); // titleKey -> { channel, at }
-    socket.on('chat:typing', async ({ titleKey } = {}) => {
-      if (typeof titleKey !== 'string' || titleKey.length > 100) return;
+    socket.on('chat:typing', async (payload) => {
       try {
+        const titleKey = payload?.titleKey;
+        if (typeof titleKey !== 'string' || titleKey.length > 100) return;
         let cached = typingAccess.get(titleKey);
         if (!cached || Date.now() - cached.at > TYPING_ACCESS_TTL_MS) {
           cached = { channel: await resolveChannel({ _id: id, role, group }, titleKey), at: Date.now() };

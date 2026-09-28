@@ -11,18 +11,32 @@ import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
-import { approvalsChanged, directoryChanged } from '../socket/events.js';
+import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/events.js';
+import { disconnectSession } from '../socket/index.js';
 
 const router = Router();
 
-// Slows down password guessing: 10 failed attempts per 15 minutes per IP.
+// Slows down password guessing: 10 failed attempts per 15 minutes for one
+// username from one IP, so a colleague's typos (or an attack on one account)
+// don't lock out everyone else behind the same office router.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
+  keyGenerator: (req) => `${req.ip}|${String(req.body?.username ?? '').trim().toLowerCase().slice(0, 30)}`,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   message: { message: 'Too many attempts, please try again in a few minutes' },
+});
+
+// Behind it, a wider limit per IP stops one machine trying many usernames.
+const ipLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: 'Too many attempts from this network, please try again in a few minutes' },
 });
 
 // Compared against when the username does not exist (hash of a random string).
@@ -71,7 +85,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   });
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', ipLimiter, authLimiter, async (req, res) => {
   requireFields(req.body, ['username', 'password']);
   const user = await User.findOne({ username: req.body.username.trim().toLowerCase() })
     .select('+passwordHash');
@@ -93,7 +107,8 @@ router.post('/login', authLimiter, async (req, res) => {
 });
 
 router.post('/logout', async (req, res) => {
-  await revokeToken(req);
+  const ended = await revokeToken(req);
+  if (ended) await disconnectSession(ended.sub, ended.jti);
   res.clearCookie(TOKEN_COOKIE, cookieOptions);
   res.json({ ok: true });
 });
@@ -129,8 +144,12 @@ router.post('/change-password', requireAuth, async (req, res) => {
   user.mustChangePassword = false;
   await user.save();
 
-  // Old tokens are now invalid, so issue a fresh one for this session.
+  // Old tokens are now invalid, so issue a fresh one for this session, and
+  // drop every open socket: this session reconnects with the new cookie, the
+  // others find their session gone. That waits until the new cookie has
+  // reached the browser, or this session would reconnect with the old one.
   setSessionCookie(res, user);
+  res.on('finish', () => setTimeout(() => sessionChanged(String(user._id), { disconnect: true }), 1000));
   res.json({ message: 'Password changed', user: await publicUser(user) });
 });
 

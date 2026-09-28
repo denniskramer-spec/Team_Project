@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useToast } from './Toast.jsx';
-import { toDateInput } from '../format.js';
+import { toDateInput, todayInput } from '../format.js';
 import Modal from './Modal.jsx';
 
 // Lets any user edit their own name and birthday.
@@ -48,7 +48,7 @@ export default function ProfileForm({ onClose }) {
           Birthday
           <input
             type="date"
-            max={new Date().toISOString().slice(0, 10)}
+            max={todayInput()}
             value={form.birthday}
             onChange={(e) => setForm({ ...form, birthday: e.target.value })}
           />

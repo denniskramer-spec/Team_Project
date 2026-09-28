@@ -15,6 +15,15 @@ export const formatDay = (value) => formatDate(value, { utc: true });
 // yyyy-mm-dd for <input type="date">.
 export const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
+// Today as yyyy-mm-dd on the user's own calendar. (toISOString gives the UTC
+// day, which is already tomorrow in the evening west of Greenwich and still
+// yesterday in the morning east of it.)
+export function todayInput() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function isBirthdayToday(value) {
   if (!value) return false;
   const b = new Date(value);

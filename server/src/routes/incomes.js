@@ -6,9 +6,11 @@ import Plan from '../models/Plan.js';
 import Report from '../models/Report.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
-import { scopeFilter, canManageFor, canReadTeam, assignableFilter } from '../utils/visibility.js';
+import { scopeFilter, canReadTeam, assignableFilter } from '../utils/visibility.js';
 import { financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, scopeName } from '../utils/finance.js';
 import { badRequest, forbidden } from '../utils/httpError.js';
+import { checkAmount, checkDay, checkText } from '../utils/validate.js';
+import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { incomeChanged } from '../socket/events.js';
 
 const router = Router();
@@ -28,39 +30,19 @@ const serialize = (i) => ({
 
 function checkFields(body, partial = false) {
   const fields = {};
-  if (!partial || body.date !== undefined) {
-    const date = new Date(body.date);
-    if (!body.date || Number.isNaN(date.getTime())) throw badRequest('Choose a date');
-    fields.date = date;
-  }
-  if (!partial || body.amount !== undefined) {
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount < 0) throw badRequest('Amount must be 0 or more');
-    if (amount > 1e12) throw badRequest('Amount is too large');
-    fields.amount = Math.round(amount * 100) / 100;
-  }
+  if (!partial || body.date !== undefined) fields.date = checkDay(body.date, 'a date');
+  if (!partial || body.amount !== undefined) fields.amount = checkAmount(body.amount);
   if (!partial || body.from !== undefined) {
-    const from = String(body.from ?? '').trim();
-    if (!from) throw badRequest('Say where the income came from');
-    if (from.length > 120) throw badRequest('"From" can be at most 120 characters');
-    fields.from = from;
+    fields.from = checkText(body.from, '"From"', 120);
+    if (!fields.from) throw badRequest('Say where the income came from');
   }
-  if (body.note !== undefined) {
-    const note = String(body.note).trim();
-    if (note.length > 2000) throw badRequest('Note can be at most 2000 characters');
-    fields.note = note;
-  }
+  if (body.note !== undefined) fields.note = checkText(body.note, 'Note', 2000);
   return fields;
 }
 
-async function resolveMember(req) {
-  if (!req.body.member || String(req.body.member) === String(req.user._id)) return req.user;
-  if (!mongoose.isValidObjectId(req.body.member)) throw badRequest('Unknown member');
-  const member = await User.findById(req.body.member);
-  if (!member || member.status !== 'active') throw badRequest('Unknown member');
-  if (!canManageFor(req.user, member)) throw forbidden('You cannot record income for that member');
-  return member;
-}
+const resolveMember = (req) => resolveRecordOwner(req, req.body.member, {
+  orSelf: true, denied: 'You cannot record income for that member',
+});
 
 async function resolveTask(req, member) {
   if (!req.body.task) return null;
@@ -160,7 +142,7 @@ router.get('/', async (req, res) => {
     perGroup,
     chart,
     groups: groupList(allowed),
-    can: { recordForOthers: canReadTeam(req.user) },
+    can: { record: ownsRecords(req.user) || canReadTeam(req.user), recordForSelf: ownsRecords(req.user), recordForOthers: canReadTeam(req.user) },
     scope: scopeName(req.user),
   });
 });

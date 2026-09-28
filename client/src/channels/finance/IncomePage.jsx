@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatAmount, formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
@@ -5,13 +6,16 @@ import IncomeChart from './IncomeChart.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
+import IncomeForm from './IncomeForm.jsx';
 
 // Income for one period, for All or one group: totals, the planned vs real
-// chart, income per member and the records. Records are history: they are
-// shown as recorded and cannot be edited or deleted here.
+// chart, income per member and the records. Members record their own income,
+// bosses and the leader for the people they manage. Records are history: once
+// recorded they cannot be edited or deleted.
 export default function IncomePage() {
   const period = useFinancePeriod();
-  const { data, error } = useLiveData(`/incomes?${period.query}`, ['income:changed']);
+  const { data, error, reload } = useLiveData(`/incomes?${period.query}`, ['income:changed']);
+  const [recording, setRecording] = useState(false);
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
@@ -25,6 +29,11 @@ export default function IncomePage() {
         type={period.type} from={period.from} to={period.to}
         onType={period.setType} onRange={period.setRange}
         scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'income')}
+        actions={data.can.record && (
+          <button className="btn primary finance-add" onClick={() => setRecording(true)}>
+            <Icon name="plus" size={16} /> Record income
+          </button>
+        )}
       />
 
       <div className="stat-row finance-stats">
@@ -101,6 +110,14 @@ export default function IncomePage() {
         </section>
       )}
 
+      {recording && (
+        <IncomeForm
+          forSelf={data.can.recordForSelf}
+          forOthers={data.can.recordForOthers}
+          onClose={() => setRecording(false)}
+          onSaved={() => { setRecording(false); reload(); }}
+        />
+      )}
     </div>
   );
 }

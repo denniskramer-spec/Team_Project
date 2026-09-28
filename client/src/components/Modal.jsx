@@ -14,6 +14,10 @@ export default function Modal({ title, onClose, children, footer, width = 480 })
   // ref so the effect below runs once and doesn't steal focus on re-renders.
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // What had focus before the dialog. Read while rendering: by the time the
+  // effect runs, a field with autoFocus inside the dialog already has it.
+  const opener = useRef(undefined);
+  if (opener.current === undefined) opener.current = document.activeElement;
 
   useEffect(() => {
     const me = {};
@@ -36,14 +40,17 @@ export default function Modal({ title, onClose, children, footer, width = 480 })
       }
     };
     document.addEventListener('keydown', onKey);
-    // Focus the first field so keyboard users can start typing straight away,
-    // and give focus back to whatever opened the modal when it closes.
-    const opener = document.activeElement;
-    ref.current?.querySelector('input, select, textarea, button:not(.modal-close)')?.focus();
+    // Focus the first field so keyboard users can start typing straight away
+    // (unless the form chose its own with autoFocus), and give focus back to
+    // whatever opened the modal when it closes.
+    if (!ref.current?.contains(document.activeElement)) {
+      ref.current?.querySelector('input, select, textarea, button:not(.modal-close)')?.focus();
+    }
+    const from = opener.current;
     return () => {
       stack.splice(stack.indexOf(me), 1);
       document.removeEventListener('keydown', onKey);
-      if (opener?.isConnected) opener.focus();
+      if (from?.isConnected) from.focus();
     };
   }, []);
 

@@ -12,6 +12,7 @@ import {
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js';
 import Asset from '../models/Asset.js';
 import { scopeFilter } from '../utils/visibility.js';
+import { moveRecordsToGroup } from '../utils/moveRecords.js';
 import { assetSentence } from './assets.js';
 import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
@@ -169,6 +170,7 @@ router.patch('/:id', async (req, res) => {
   }
 
   await target.save();
+  if (groupChanged) await moveRecordsToGroup(target._id, target.group);
   await target.populate('group', 'name slug');
   broadcast(target._id, { disconnect: groupChanged });
   res.json({ member: serialize(target, req.user) });
@@ -212,6 +214,7 @@ router.patch('/:id/role', requireCapability('manageUsers'), async (req, res) => 
   if (!ROLES.includes(req.body.role)) throw badRequest('Unknown role');
   if (target.role === 'admin' && req.body.role !== 'admin') await assertNotLastAdmin(target);
 
+  const groupBefore = String(target.group?._id ?? target.group ?? '');
   if (req.body.role === 'boss' && req.body.group !== undefined) {
     const group = await resolveGroup(req.body.group);
     if (!group) throw badRequest('Choose the group this boss leads');
@@ -221,6 +224,7 @@ router.patch('/:id/role', requireCapability('manageUsers'), async (req, res) => 
 
   target.role = req.body.role;
   await target.save();
+  if (String(target.group?._id ?? target.group ?? '') !== groupBefore) await moveRecordsToGroup(target._id, target.group);
   await target.populate('group', 'name slug');
 
   broadcast(target._id, { disconnect: true });

@@ -74,7 +74,7 @@ Capabilities live in `server/src/config/roles.js`; the per-record rules in
 | **Task** | All tasks · each task name | Sign-up: owner, name, period, salary, progress |
 | **Assets** | All · each group · each member (a member sees "My assets") | Profiles: name, age, birthday, nationality, contact info, English level — each owned by one member |
 | **Member** | All · each group · each member | Directory (with each member's assets in one line); add members, reset passwords, disable accounts |
-| **Finance** | Income by month — then All · each group · each member | Income per member: date, amount, source; monthly totals |
+| **Finance** | Income · Outcome · Total — then All · each group · each member | Income and outcome per member: date, amount, source or reason; totals per period and group |
 | **Chat** | general · each group · finance | Live chat, typing indicators, unread markers |
 | **Admin** | Approvals · Users & roles · Groups | Sign-up approvals, role changes, group management |
 
@@ -116,6 +116,15 @@ Channel titles come from `GET /api/nav`, built per user in
   double-count), tasks that overlap the period, and income by its date. Refreshes
   live when any source channel changes. Chart colours were checked with the data-viz
   validator against this app's surface; every bar carries its own label and value.
+- **Finance** — members record their own income; bosses and the leader record it
+  for the people they manage (**Record income**). Income records are history and
+  cannot be changed afterwards. Outcome is recorded by the leader and bosses, with
+  at least one image as proof; a team or group outcome is split into one share per member.
+- **Who owns records** — tasks, income, outcome and assets belong to members and
+  bosses. The leader and admins record them for someone, never for themselves.
+- **Moving a member to another group** moves their records with them: the new boss
+  sees and manages everything, the old boss no longer does. A boss's group plans and
+  group reports stay with the group they were written for.
 - **Chat** — general and finance chat are open to every member; a group chat is for
   that group plus the leader and admins. Authors edit their own messages; the leader
   and admins can delete any.
@@ -158,14 +167,15 @@ Channel titles come from `GET /api/nav`, built per user in
 | Reports | `GET /api/reports`, `GET /api/reports/history`, `PUT /api/reports`, `DELETE /api/reports/:id` |
 | Plans | `GET /api/plans`, `PUT /api/plans`, `PATCH /api/plans/:id/status`, `DELETE /api/plans/:id` |
 | Tasks | `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id`, `GET /api/tasks/assignees` |
-| Finance | `GET/POST /api/incomes`, `PATCH/DELETE /api/incomes/:id`, `GET /api/incomes/members` |
+| Finance | `GET/POST /api/incomes`, `GET /api/incomes/members`, `GET/POST /api/outcomes`, `PATCH/DELETE /api/outcomes/:id`, `POST /api/outcomes/upload`, `GET /api/outcomes/members`, `GET /api/finance/total`, `GET /api/files/:name` |
 | Checkout | `GET /api/checkout?type=weekly\|monthly\|yearly&period=&group=` |
 | Assets | `GET/POST /api/assets`, `PATCH/DELETE /api/assets/:id`, `GET /api/assets/owners` |
 | Other | `GET /api/nav`, `GET /api/users/directory`, `GET /api/health` |
 
 Socket.IO events: `presence:*`, `session:changed`, `nav:changed`, `directory:changed`,
 `instruction:new\|changed\|deleted`, `chat:new\|changed\|deleted\|typing`,
-`report:changed`, `plan:changed`, `task:changed`, `income:changed`.
+`report:changed`, `plan:changed`, `task:changed`, `income:changed`, `outcome:changed`,
+`asset:changed`.
 
 ## Project layout
 
@@ -200,6 +210,10 @@ client/
 - If MongoDB is down the API stays up, retries every 5 seconds and answers 503 on
   `/api/*`, so the screen shows a clear message. `GET /api/health` reports both states.
 - Changing a password logs out that user's other sessions; disabling an account logs
-  them out immediately.
+  them out immediately. Logging out also closes that session's live connection.
+- Ten wrong passwords lock **that username from that network** for 15 minutes;
+  other people on the same network can still log in.
+- Uploaded images live in `server/uploads` (or `UPLOADS_DIR`). Images no record uses
+  are removed after a day, so each database needs its own folder.
 - Sound and desktop notifications for instructions are switched on per person in the
   right-hand panel's **Alerts** tab.

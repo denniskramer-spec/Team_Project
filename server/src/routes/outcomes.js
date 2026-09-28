@@ -9,6 +9,7 @@ import { financeScope, peopleInScope, perGroupSums, perMember, groupList, scopeN
 import { resolveTarget, shares, checkMoneyFields, inScope } from '../utils/outcomeTarget.js';
 import { imageUpload, describeUpload, checkImages, removeUnusedFiles } from '../utils/uploads.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { checkDay } from '../utils/validate.js';
 import { outcomeChanged } from '../socket/events.js';
 
 // Outcome: money going out, per member. A team or group outcome is split
@@ -51,11 +52,7 @@ const serialize = (o, user, locked = new Set()) => ({
 
 async function checkFields(body, partial = false) {
   const fields = checkMoneyFields(body, partial);
-  if (!partial || body.date !== undefined) {
-    const date = new Date(body.date);
-    if (!body.date || Number.isNaN(date.getTime())) throw badRequest('Choose a date');
-    fields.date = date;
-  }
+  if (!partial || body.date !== undefined) fields.date = checkDay(body.date, 'a date');
   // Every outcome needs proof: at least one image, on create and after an edit.
   const images = await checkImages(body.images);
   if (images !== undefined) fields.images = images;

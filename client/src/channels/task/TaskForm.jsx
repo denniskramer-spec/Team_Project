@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { toDateInput } from '../../format.js';
+import { toDateInput, todayInput as today } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 import StatusPicker from '../plan/StatusPicker.jsx';
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 // Sign up a task: owner, name, period and salary (from the guide).
 export default function TaskForm({ task, onClose, onSaved }) {
   const toast = useToast();
+  const { user } = useAuth();
+  // Tasks belong to members and bosses; the leader and admins pick one.
+  const canOwn = ['member', 'boss'].includes(user.role);
   const editing = Boolean(task);
   const [members, setMembers] = useState([]);
   const [form, setForm] = useState({
@@ -69,8 +71,8 @@ export default function TaskForm({ task, onClose, onSaved }) {
         <div className="row">
           <label>
             Task owner
-            <select value={form.owner} onChange={set('owner')} disabled={members.length <= 1}>
-              <option value="">Me</option>
+            <select value={form.owner} onChange={set('owner')} disabled={canOwn && members.length <= 1} required={!canOwn}>
+              <option value="">{canOwn ? 'Me' : 'Choose a member'}</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}{m.group ? ` · ${m.group}` : ''}</option>
               ))}

@@ -30,20 +30,22 @@ export function setSessionCookie(res, user) {
   res.cookie(TOKEN_COOKIE, token, { ...cookieOptions, maxAge: exp * 1000 - Date.now() });
 }
 
-// Ends the session this request's token belongs to (logout).
+// Ends the session this request's token belongs to (logout). Returns the
+// token's payload so its open sockets can be dropped too.
 export async function revokeToken(req) {
   let payload;
   try {
     payload = jwt.verify(readToken(req) ?? '', env.jwtSecret);
   } catch {
-    return; // no valid token: nothing to end
+    return null; // no valid token: nothing to end
   }
-  if (!payload.jti) return;
+  if (!payload.jti) return payload;
   await RevokedToken.updateOne(
     { _id: payload.jti },
     { expiresAt: new Date(payload.exp * 1000) },
     { upsert: true },
   );
+  return payload;
 }
 
 function readToken(req) {
@@ -55,7 +57,7 @@ function readToken(req) {
 // Verifies the token, loads the user and blocks inactive accounts.
 // Tokens issued before the last password change are rejected, so changing
 // a password logs out every other session.
-export async function loadUserFromToken(token) {
+export async function loadSession(token) {
   if (!token) throw unauthorized();
   let payload;
   try {
@@ -72,8 +74,10 @@ export async function loadUserFromToken(token) {
   if (user.passwordChangedAt && Math.floor(user.passwordChangedAt / 1000) > payload.iat) {
     throw unauthorized('Password was changed, please log in again');
   }
-  return user;
+  return { user, payload };
 }
+
+export const loadUserFromToken = async (token) => (await loadSession(token)).user;
 
 // Paths a user can still reach while they are forced to change their password.
 const PASSWORD_CHANGE_ALLOWED = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout']);

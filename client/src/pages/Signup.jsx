@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api.js';
+import { todayInput } from '../format.js';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
 
 const EMPTY = { name: '', username: '', birthday: '', group: '', password: '', confirm: '' };
@@ -39,7 +40,7 @@ export default function Signup() {
     }
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInput();
 
   return (
     <div className="center-screen">
