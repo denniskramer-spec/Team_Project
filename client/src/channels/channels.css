@@ -81,6 +81,7 @@ code {
 .table tbody tr:hover { background: rgb(255 255 255 / 0.03); }
 .table tr.is-disabled { opacity: 0.55; }
 .cell-user { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.table .presence { border-color: var(--bg); }
 .cell-actions { width: 48px; text-align: right; }
 .bday { margin-left: 6px; color: var(--warn); vertical-align: -2px; }
 
@@ -175,7 +176,6 @@ code {
   border-radius: 0 0 8px 8px;
 }
 .form-grid { display: grid; gap: 14px; }
-.form-note { margin: 0; }
 select:disabled, input:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .credential { display: grid; gap: 10px; padding: 14px; border-radius: 8px; background: var(--surface); }
@@ -212,7 +212,7 @@ select:disabled, input:disabled { opacity: 0.6; cursor: not-allowed; }
 /* ---------- Narrow screens: tables become cards ---------- */
 @media (max-width: 760px) {
   .table thead { display: none; }
-  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+  .table, .table tbody, .table tfoot, .table tr, .table td { display: block; width: 100%; }
   .table tr {
     position: relative;
     margin-bottom: 10px;
@@ -221,6 +221,9 @@ select:disabled, input:disabled { opacity: 0.6; cursor: not-allowed; }
     background: var(--surface);
   }
   .table td { padding: 4px 0; border: 0; }
+  /* colSpan fillers in totals rows would otherwise show as blank lines. */
+  .table td:empty { display: none; }
+  .table .presence { border-color: var(--surface); }
   .table td[data-label]:not(:first-child)::before {
     content: attr(data-label);
     display: inline-block;
@@ -283,11 +286,11 @@ textarea:focus { border-color: var(--accent); }
   cursor: pointer;
 }
 .segmented button.on { background: var(--accent); color: var(--on-accent); }
-.segmented button.urgent.on { background: var(--bad); }
+.segmented button.urgent.on { background: var(--bad); color: var(--on-strong); }
 
 .instruction-list { display: grid; gap: 12px; }
 .instruction { display: grid; gap: 8px; border-left: 3px solid transparent; }
-.instruction.unread { border-left-color: var(--accent); background: rgb(88 101 242 / 0.06); }
+.instruction.unread { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .instruction.urgent { border-left-color: var(--bad); }
 .instruction.focused { animation: flash 2.2s ease; }
 @keyframes flash { 0%, 40% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: none; } }
@@ -407,7 +410,7 @@ textarea:focus { border-color: var(--accent); }
   text-align: right;
   opacity: 0;
 }
-.msg:hover .msg-gutter-time { opacity: 1; }
+.msg:hover .msg-gutter-time, .msg:focus-within .msg-gutter-time { opacity: 1; }
 .msg-body { min-width: 0; }
 .msg-head { display: flex; align-items: baseline; gap: 8px; }
 .msg-text { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
@@ -541,7 +544,6 @@ textarea:focus { border-color: var(--accent); }
 
 /* ---------- Plan channel ---------- */
 .plan-page { max-width: none; }
-.type-tabs { align-self: start; }
 .plan-form { display: grid; gap: 12px; border-top: 3px solid var(--accent); }
 .plan-status-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
@@ -585,7 +587,6 @@ textarea:focus { border-color: var(--accent); }
 .missing-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; }
 .missing-list .muted { margin-left: auto; }
 .scope-label { margin-left: auto; }
-.report-note { margin: 0; }
 
 /* ---------- Task channel ---------- */
 .task-page { max-width: none; }
@@ -664,7 +665,8 @@ textarea:focus { border-color: var(--accent); }
   transform: translateX(-50%);
   display: grid;
   gap: 4px;
-  min-width: 170px;
+  min-width: 190px;
+  max-width: 300px;
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--surface-2);
@@ -680,10 +682,9 @@ textarea:focus { border-color: var(--accent); }
 .tooltip-detail { list-style: none; margin: 2px 0 0; padding: 4px 0 0; border-top: 1px solid var(--border); display: grid; gap: 2px; font-size: 12px; }
 .tooltip-detail li { display: flex; align-items: baseline; gap: 8px; }
 .tooltip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
-.chart-tooltip { min-width: 190px; max-width: 300px; }
 .tooltip-hint { color: var(--link); font-size: 12px; }
 .income-detail { display: grid; gap: 16px; }
-.income-detail .stat-row { grid-template-columns: repeat(3, 1fr); }
+.income-detail .stat-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .income-detail h4 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); }
 .income-detail .table td.num, .income-detail .table th.num { text-align: right; }
 
@@ -696,7 +697,7 @@ textarea:focus { border-color: var(--accent); }
 /* ---------- Checkout channel ---------- */
 .checkout-page { max-width: none; }
 .chart-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.chart-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.chart-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 12px; }
 .chart {
   margin: 0;
   padding: 16px;
@@ -848,3 +849,9 @@ textarea:focus { border-color: var(--accent); }
 
 /* "Showing the newest N of M" under a list that was cut short. */
 .list-note { margin: 0 0 8px; }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .toast, .alert-popup, .urgent-alarm, .typing-dots i { animation: none; }
+  .side-panel, .nav-drawer, .panel-toggle, .rail-icon, .rail-pill { transition: none; }
+}

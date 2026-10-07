@@ -112,11 +112,12 @@ input:user-invalid:not(:focus) { border-color: var(--bad); }
   border-radius: 4px;
   cursor: pointer;
 }
-.btn:hover { filter: brightness(1.1); text-decoration: none; }
+.btn:hover:not(:disabled) { filter: brightness(1.1); text-decoration: none; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
 .btn.danger { background: var(--bad); color: var(--on-strong); }
 .link { background: none; border: 0; padding: 0; font: inherit; color: var(--link); cursor: pointer; }
+.link:hover { text-decoration: underline; }
 
 .alert { padding: 10px 12px; border-radius: 4px; font-size: 14px; }
 .alert.error { background: rgb(242 63 67 / 0.15); color: #ffb3b5; }
