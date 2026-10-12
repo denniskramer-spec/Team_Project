@@ -43,44 +43,34 @@ function ResultSummary({ counts }) {
 }
 
 function PlanRow({ plan, onStatus }) {
-  const [open, setOpen] = useState(false);
   return (
-    <>
-      <tr className={plan.scope === 'group' ? 'group-plan' : ''}>
-        <td data-label="Owner">
-          <div className="cell-user">
-            <Avatar name={plan.owner?.name ?? '?'} role={plan.owner?.role ?? 'member'} size={30} />
-            <div>
-              <div className="strong">
-                {plan.scope === 'group' ? `${plan.group?.name ?? 'Group'} plan` : plan.owner?.name}
-                {plan.mine && <span className="muted small"> (you)</span>}
-              </div>
-              <div className="muted small">
-                {plan.scope === 'group' ? `by ${plan.owner?.name}` : plan.group?.name ?? '—'}
-              </div>
+    <tr className={plan.scope === 'group' ? 'group-plan' : ''}>
+      <td data-label="Owner">
+        <div className="cell-user">
+          <Avatar name={plan.owner?.name ?? '?'} role={plan.owner?.role ?? 'member'} size={30} />
+          <div>
+            <div className="strong">
+              {plan.scope === 'group' ? `${plan.group?.name ?? 'Group'} plan` : plan.owner?.name}
+              {plan.mine && <span className="muted small"> (you)</span>}
+            </div>
+            <div className="muted small">
+              {plan.scope === 'group' ? `by ${plan.owner?.name}` : plan.group?.name ?? '—'}
             </div>
           </div>
-        </td>
-        <td data-label="Job bids" className="num">{formatAmount(plan.jobBid)}</td>
-        <td data-label="AI bids" className="num">{formatAmount(plan.aiBid)}</td>
-        <td data-label="Income" className="num">{formatAmount(plan.income)}</td>
-        <td data-label="Result">
-          {plan.mine
-            ? <StatusPicker value={plan.status} onChange={(s) => onStatus(plan, s)} size="small" />
-            : <StatusPill status={plan.status} />}
-        </td>
-        <td className="cell-actions">
-          {plan.note && (
-            <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Plan note">
-              <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} />
-            </button>
-          )}
-        </td>
-      </tr>
-      {open && plan.note && (
-        <tr className="detail-row"><td colSpan={6}><p>{plan.note}</p></td></tr>
-      )}
-    </>
+        </div>
+      </td>
+      <td data-label="Job bids" className="num">{formatAmount(plan.jobBid)}</td>
+      <td data-label="AI bids" className="num">{formatAmount(plan.aiBid)}</td>
+      <td data-label="Income" className="num">{formatAmount(plan.income)}</td>
+      <td data-label="Result">
+        {plan.mine
+          ? <StatusPicker value={plan.status} onChange={(s) => onStatus(plan, s)} size="small" />
+          : <StatusPill status={plan.status} />}
+      </td>
+      <td data-label="Note" className="cell-note">
+        {plan.note ? <p className="plan-note">{plan.note}</p> : <span className="muted">—</span>}
+      </td>
+    </tr>
   );
 }
 
@@ -111,7 +101,7 @@ function TotalRow({ label, plans, grand }) {
       <td data-label="AI bids" className="num">{formatAmount(t.aiBid)}</td>
       <td data-label="Income" className="num">{formatAmount(t.income)}</td>
       <td data-label="Result"><span className="muted small">{t.done} of {t.count} done</span></td>
-      <td className="cell-actions" />
+      <td className="cell-note" />
     </tr>
   );
 }
@@ -245,7 +235,7 @@ export default function PlanChannel({ title }) {
           </div>
           <table className="table plan-table">
             <thead>
-              <tr><th>Owner</th><th className="num">Job bids</th><th className="num">AI bids</th><th className="num">Income</th><th>Result</th><th aria-label="Note" /></tr>
+              <tr><th>Owner</th><th className="num">Job bids</th><th className="num">AI bids</th><th className="num">Income</th><th>Result</th><th>Note</th></tr>
             </thead>
             <tbody>
               {sections.map((sec) => (
