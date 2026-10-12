@@ -13,7 +13,7 @@ import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js
 import Asset from '../models/Asset.js';
 import { scopeFilter } from '../utils/visibility.js';
 import { moveRecordsToGroup } from '../utils/moveRecords.js';
-import { assetSentence } from './assets.js';
+import { serialize as serializeAsset } from './assets.js';
 import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
@@ -97,17 +97,21 @@ router.get('/', async (req, res) => {
 
   const users = await User.find(filter).populate('group', 'name slug').sort('name');
 
-  // Each member's assets as one sentence, limited to the assets this role may
-  // read: a member only their own, a boss their group's, the leader and admins all.
+  // Each member's assets (a name chip each, with the full record behind a
+  // click), limited to the assets this role may read: a member only their
+  // own, a boss their group's, the leader and admins all.
   const scope = scopeFilter(req.user, 'owner');
   const assetFilter = { owner: { $in: users.map((u) => u._id) } };
   if (scope.owner) assetFilter.owner = scope.owner;   // a member: only themselves
   if (scope.group) assetFilter.group = scope.group;   // a boss: their group
-  const assets = await Asset.find(assetFilter).sort('name').lean();
+  const assets = await Asset.find(assetFilter)
+    .populate('owner', 'name role')
+    .populate('group', 'name slug')
+    .sort('name');
   const byOwner = new Map();
   assets.forEach((a) => {
-    const key = String(a.owner);
-    byOwner.set(key, [...(byOwner.get(key) ?? []), assetSentence(a)]);
+    const key = String(a.owner?._id ?? a.owner);
+    byOwner.set(key, [...(byOwner.get(key) ?? []), serializeAsset(a, req.user)]);
   });
 
   res.json({

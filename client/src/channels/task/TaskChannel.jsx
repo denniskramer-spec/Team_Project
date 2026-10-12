@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { api } from '../../api.js';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
-import { formatDay, formatAmount } from '../../format.js';
+import { formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
 import StatusPicker, { STATUSES, StatusPill } from '../plan/StatusPicker.jsx';
 import TaskForm from './TaskForm.jsx';
+import DateTag from '../../components/DateTag.jsx';
 
 const dayCount = (task) => Math.round((new Date(task.endDate) - new Date(task.startDate)) / 86400000) + 1;
 
@@ -29,7 +30,7 @@ function TaskCard({ task, onChanged, onEdit, onDelete }) {
         <div>
           <h3 className="task-name">{task.name}</h3>
           <div className="muted small">
-            {formatDay(task.startDate)} → {formatDay(task.endDate)} · {dayCount(task)} {dayCount(task) === 1 ? 'day' : 'days'}
+            <span className="date-range"><DateTag value={task.startDate} utc /> → <DateTag value={task.endDate} utc /></span> · {dayCount(task)} {dayCount(task) === 1 ? 'day' : 'days'}
           </div>
         </div>
         <div className="task-salary">

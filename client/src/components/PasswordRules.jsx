@@ -1,7 +1,6 @@
 // Mirrors the server's rules in server/src/utils/validate.js.
 export const passwordChecks = (pw) => [
   { ok: pw.length >= 8, label: 'At least 8 characters' },
-  { ok: /[A-Za-z]/.test(pw), label: 'A letter' },
   { ok: /\d/.test(pw), label: 'A number' },
 ];
 

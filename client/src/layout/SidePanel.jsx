@@ -63,14 +63,6 @@ export default function SidePanel({ open, onToggle, tab, setTab }) {
 
   return (
     <>
-      <button
-        className={`panel-toggle ${open ? 'open' : ''}`}
-        onClick={onToggle}
-        aria-label={open ? 'Hide side panel' : 'Show side panel'}
-        aria-expanded={open}
-      >
-        <Icon name={open ? 'chevronRight' : 'chevronLeft'} size={18} />
-      </button>
       <aside className={`side-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
         <div className="panel-tabs">
           <button className={tab === 'members' ? 'active' : ''} onClick={() => setTab('members')}>Members</button>

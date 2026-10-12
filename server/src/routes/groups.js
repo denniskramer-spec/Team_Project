@@ -6,7 +6,7 @@ import { requireAuth, requireCapability } from '../middleware/auth.js';
 import { requireFields, clean } from '../utils/validate.js';
 import { badRequest, notFound, conflict } from '../utils/httpError.js';
 import { clearGroupFromRecords } from '../utils/moveRecords.js';
-import { directoryChanged, navChanged } from '../socket/events.js';
+import { directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
 
@@ -95,16 +95,19 @@ router.patch('/:id', requireCapability('manageGroups'), async (req, res) => {
 
 // Only groups without active members can be deleted, so nobody is silently moved.
 // Pending sign-ups and disabled accounts in the group are left without a group.
+// Deleting a group leaves its members (and bosses) with no group. They keep
+// their accounts and records; an admin can put them in another group later.
 router.delete('/:id', requireCapability('manageGroups'), async (req, res) => {
   const group = await findGroup(req.params.id);
-  const members = await User.countDocuments({ group: group._id, status: 'active' });
-  if (members) throw conflict(`Move this group's ${members} member(s) to another group first`);
+  const members = await User.find({ group: group._id }, '_id').lean();
   await User.updateMany({ group: group._id }, { $set: { group: null } });
   // Their records keep no pointer to a group that is gone.
   await clearGroupFromRecords(group._id);
   await group.deleteOne();
   changed();
-  res.json({ ok: true });
+  // Each of them reloads their session and rejoins the right socket rooms.
+  members.forEach((m) => sessionChanged(m._id, { disconnect: true }));
+  res.json({ ok: true, detached: members.length });
 });
 
 export default router;

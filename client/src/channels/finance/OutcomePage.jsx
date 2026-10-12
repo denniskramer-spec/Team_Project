@@ -11,6 +11,7 @@ import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
+import DateTag from '../../components/DateTag.jsx';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
 // More items than this and the hover card only summarises; a click opens the full list.
@@ -36,7 +37,7 @@ function ItemsTable({ items }) {
       <tbody>
         {items.map((o) => (
           <tr key={o.id}>
-            <td>{formatDay(o.date)}</td>
+            <td><DateTag value={o.date} utc /></td>
             <td>{o.reason}{o.split && <span className="tag split-tag">{o.split}</span>}{o.comment && <div className="muted small">{o.comment}</div>}</td>
             <td className="num strong">{formatAmount(o.amount)}</td>
           </tr>
@@ -179,7 +180,7 @@ export default function OutcomePage() {
             <tbody>
               {data.outcomes.map((o) => (
                 <tr key={o.id}>
-                  <td data-label="Date">{formatDay(o.date)}</td>
+                  <td data-label="Date"><DateTag value={o.date} utc /></td>
                   <td data-label="For">
                     <div className="cell-user">
                       <Avatar name={o.who.name} role={o.who.role} size={26} />

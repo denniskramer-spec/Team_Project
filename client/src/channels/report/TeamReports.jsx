@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { formatAmount, formatDay, timeAgo, nameOf } from '../../format.js';
+import { formatAmount, timeAgo, nameOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
+import DateTag from '../../components/DateTag.jsx';
 
 function Row({ row }) {
   const [open, setOpen] = useState(false);
@@ -25,7 +26,7 @@ function Row({ row }) {
         <td data-label="Income" className="num">{r ? formatAmount(r.income) : '—'}</td>
         <td data-label="Upcoming" className="num">
           {r ? formatAmount(r.upcomingAmount) : '—'}
-          {r?.upcomingDate && <div className="muted small">{formatDay(r.upcomingDate)}</div>}
+          {r?.upcomingDate && <div className="small"><DateTag value={r.upcomingDate} utc /></div>}
         </td>
         <td data-label="Status">
           {r

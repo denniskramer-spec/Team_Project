@@ -4,13 +4,15 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useSocket } from '../../socket/SocketContext.jsx';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
-import { formatBirthday, isBirthdayToday } from '../../format.js';
+import { isBirthdayToday } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import RoleBadge from '../../components/RoleBadge.jsx';
 import Icon from '../../components/Icon.jsx';
 import TempPassword from '../../components/TempPassword.jsx';
 import MemberForm from './MemberForm.jsx';
 import MemberActions from './MemberActions.jsx';
+import AssetDetails from '../asset/AssetDetails.jsx';
+import DateTag from '../../components/DateTag.jsx';
 
 // Section 3 for the Member channel: the directory for "All" or one group.
 export default function MemberChannel({ title }) {
@@ -23,6 +25,8 @@ export default function MemberChannel({ title }) {
   const [showDisabled, setShowDisabled] = useState(false);
   const [adding, setAdding] = useState(false);
   const [created, setCreated] = useState(null);
+  // Which member's assets are open in the dialog, and which one it starts on.
+  const [viewing, setViewing] = useState(null);
   const q = useDebounced(query);
 
   const canAdd = ['admin', 'leader', 'boss'].includes(user.role);
@@ -31,12 +35,15 @@ export default function MemberChannel({ title }) {
   if (q.trim()) params.set('q', q.trim());
   if (showDisabled) params.set('status', 'disabled');
 
-  const { data, error, loading, reload } = useLiveData(`/members?${params}`, ['directory:changed']);
+  const { data, error, loading, reload } = useLiveData(`/members?${params}`, ['directory:changed', 'asset:changed']);
   const all = data?.members ?? [];
   // Picking a member in the tree narrows the list to that person.
   const members = selectedMember ? all.filter((m) => String(m.id) === selectedMember) : all;
 
   // Bosses may only add to their own group, so hide the button on other groups.
+  // The dialog reads the live list, so an edit shows up without reopening it.
+  const viewingMember = viewing && all.find((m) => String(m.id) === String(viewing.memberId) && m.assets?.length);
+
   const addHere = canAdd && (user.role !== 'boss' || title.key === 'all' || title.key === user.group?.slug);
 
   return (
@@ -105,17 +112,29 @@ export default function MemberChannel({ title }) {
                 </td>
                 <td data-label="ID"><code>{m.memberId}</code></td>
                 <td data-label="Birthday">
-                  {formatBirthday(m.birthday)}
+                  <DateTag value={m.birthday} utc  icon="cake" />
                   {isBirthdayToday(m.birthday) && <span className="bday" title="Birthday today!"><Icon name="cake" size={14} /></span>}
                 </td>
                 <td data-label="Group">{m.group?.name ?? <span className="muted">—</span>}</td>
                 <td data-label="Role"><RoleBadge role={m.role} /></td>
                 <td data-label="Assets" className="assets-cell">
                   {m.assets?.length
-                    ? m.assets.map((sentence, i) => (
-                      // eslint-disable-next-line react/no-array-index-key
-                      <div key={i} className="asset-line" title={sentence}>{sentence}</div>
-                    ))
+                    ? (
+                      <div className="asset-chips">
+                        {m.assets.map((a, i) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            className="asset-chip"
+                            title={a.sentence}
+                            onClick={() => setViewing({ memberId: m.id, index: i })}
+                          >
+                            <Icon name="idcard" size={13} />
+                            {a.name}
+                          </button>
+                        ))}
+                      </div>
+                    )
                     : <span className="muted">—</span>}
                 </td>
                 <td className="cell-actions"><MemberActions member={m} onChanged={reload} /></td>
@@ -135,6 +154,15 @@ export default function MemberChannel({ title }) {
             if (tempPassword) setCreated({ username: member.username, password: tempPassword });
             else toast(`${member.name} was added`);
           }}
+        />
+      )}
+      {viewingMember && (
+        <AssetDetails
+          member={viewingMember}
+          assets={viewingMember.assets}
+          initialIndex={viewing.index}
+          onClose={() => setViewing(null)}
+          onChanged={reload}
         />
       )}
       {created && (

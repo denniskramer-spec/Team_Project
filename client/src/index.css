@@ -1,15 +1,55 @@
+/* Inter, bundled so every platform renders the same type. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
+  color-scheme: dark;
   --bg: #313338;
   --surface: #2b2d31;
   --surface-2: #1e1f22;
+  --popover: #1e1f22;
   --input: #1e1f22;
   --border: #3f4147;
   --text: #dbdee1;
-  --muted: #949ba4;
+  --text-strong: #fff;
+  --muted: #a0a6ae;
   --link: #00a8fc;
   --good: #23a55a;
   --bad: #f23f43;
   --warn: #f0b232;
+  --btn: #4e5058;
+  --offline: #80848e;
+
+  /* Overlays: hover washes, shadows and the modal backdrop. */
+  --hover: rgb(255 255 255 / 0.06);
+  --hover-strong: rgb(255 255 255 / 0.1);
+  --shadow: rgb(0 0 0 / 0.4);
+  --shadow-soft: rgb(0 0 0 / 0.2);
+  --backdrop: rgb(0 0 0 / 0.6);
+
+  /* Coloured text that must stay readable on the surfaces above. */
+  --text-ok: #9be8b9;
+  --text-bad: #ff8a8d;
+  --text-warn: #f7d58c;
+  --text-info: #9be8ff;
+  --text-in: #7fe0b5;
+  --text-out: #ffb08a;
+  --text-admin: #ff7a7d;
+  --text-boss: #c29bff;
 
   /* Chart series (Planned / Reported / Actual), validated on this surface. */
   --series-1: #3987e5;
@@ -21,26 +61,60 @@
   --status-warning: #fab219;
   --status-neutral: #80848e;
 
-  /* Role colours. --accent follows the logged-in user's role. */
+  /* Role colours mark identity only: avatars, badges, the header band.
+     Actions (buttons, active tabs, focus) use one accent for every role, so
+     an admin's Save never looks like a Delete. */
   --role-admin: #f23f43;
   --role-leader: #f0b232;
   --role-boss: #a970ff;
   --role-member: #5865f2;
-  --accent: var(--role-member);
-  /* Text on top of those colours. White only reads well on the member blue
-     (4.6:1); on the others it is 1.9-3.8:1, so they take dark text (5-10:1). */
+  --accent: #5865f2;
   --on-accent: #fff;
+  --role: var(--role-member);
+  --on-role: #fff;
+  /* Text on top of the role colours. White only reads well on the member blue
+     (4.6:1); on the others it is 1.9-3.8:1, so they take dark text (5-10:1). */
   --on-strong: #111214;
 
-  font-family: 'gg sans', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
   color: var(--text);
   background: var(--bg);
 }
 
-body[data-role='admin'] { --accent: var(--role-admin); --on-accent: var(--on-strong); }
-body[data-role='leader'] { --accent: var(--role-leader); --on-accent: var(--on-strong); }
-body[data-role='boss'] { --accent: var(--role-boss); --on-accent: var(--on-strong); }
-body[data-role='member'] { --accent: var(--role-member); --on-accent: #fff; }
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f2f3f5;
+  --surface-2: #e3e5e8;
+  --popover: #ffffff;
+  --input: #e9eaed;
+  --border: #d4d7dc;
+  --text: #313338;
+  --text-strong: #060607;
+  --muted: #5f636b;
+  --link: #0062d1;
+  --btn: #d9dbdf;
+  --hover: rgb(0 0 0 / 0.05);
+  --hover-strong: rgb(0 0 0 / 0.09);
+  --shadow: rgb(0 0 0 / 0.16);
+  --shadow-soft: rgb(0 0 0 / 0.08);
+  --backdrop: rgb(0 0 0 / 0.4);
+  --text-ok: #127a3f;
+  --text-bad: #c62b2f;
+  --text-warn: #8a5600;
+  --text-info: #0a6e93;
+  --text-in: #0f7a4f;
+  --text-out: #b5441a;
+  --text-admin: #c62b2f;
+  --text-boss: #6b2fd6;
+  --status-neutral: #6d7179;
+}
+
+body[data-role='admin'] { --role: var(--role-admin); --on-role: var(--on-strong); }
+body[data-role='leader'] { --role: var(--role-leader); --on-role: var(--on-strong); }
+body[data-role='boss'] { --role: var(--role-boss); --on-role: var(--on-strong); }
+body[data-role='member'] { --role: var(--role-member); --on-role: #fff; }
 
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: var(--bg); }
@@ -65,7 +139,7 @@ a:hover { text-decoration: underline; }
   background: var(--surface);
   border-radius: 8px;
   border-top: 4px solid var(--accent);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  box-shadow: 0 8px 24px var(--shadow);
   display: grid;
   gap: 14px;
 }
@@ -107,7 +181,7 @@ input:user-invalid:not(:focus) { border-color: var(--bad); }
   font: inherit;
   font-weight: 600;
   color: var(--text);
-  background: #4e5058;
+  background: var(--btn);
   border: 0;
   border-radius: 4px;
   cursor: pointer;
@@ -120,9 +194,9 @@ input:user-invalid:not(:focus) { border-color: var(--bad); }
 .link:hover { text-decoration: underline; }
 
 .alert { padding: 10px 12px; border-radius: 4px; font-size: 14px; }
-.alert.error { background: rgb(242 63 67 / 0.15); color: #ffb3b5; }
-.alert.success { background: rgb(35 165 90 / 0.15); color: #9be8b9; }
-.alert.warning { background: rgb(240 178 50 / 0.15); color: #f7d58c; }
+.alert.error { background: rgb(242 63 67 / 0.15); color: var(--text-bad); }
+.alert.success { background: rgb(35 165 90 / 0.15); color: var(--text-ok); }
+.alert.warning { background: rgb(240 178 50 / 0.15); color: var(--text-warn); }
 
 .pw-rules { list-style: none; margin: -6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
 .pw-rules .ok { color: var(--good); }

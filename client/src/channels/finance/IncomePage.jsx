@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
+import { formatAmount, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import IncomeChart from './IncomeChart.jsx';
@@ -7,6 +7,7 @@ import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
 import IncomeForm from './IncomeForm.jsx';
+import DateTag from '../../components/DateTag.jsx';
 
 // Income for one period, for All or one group: totals, the planned vs real
 // chart, income per member and the records. Members record their own income,
@@ -88,7 +89,7 @@ export default function IncomePage() {
             <tbody>
               {data.incomes.map((i) => (
                 <tr key={i.id}>
-                  <td data-label="Date">{formatDay(i.date)}</td>
+                  <td data-label="Date"><DateTag value={i.date} utc /></td>
                   <td data-label="Member">
                     <div className="cell-user">
                       <Avatar name={i.member?.name ?? '?'} role={i.member?.role ?? 'member'} size={26} />

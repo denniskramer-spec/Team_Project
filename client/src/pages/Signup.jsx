@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { AuthFooter } from '../layout/Footer.jsx';
 import { api } from '../api.js';
 import { todayInput } from '../format.js';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
@@ -91,6 +92,7 @@ export default function Signup() {
           Already have an account? <Link to="/login">Log in</Link>
         </p>
       </form>
+      <AuthFooter />
     </div>
   );
 }

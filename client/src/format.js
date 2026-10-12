@@ -1,10 +1,15 @@
 // Dates from the API are ISO strings. Birthdays are stored at UTC midnight,
 // so they are formatted in UTC to avoid showing the previous day.
 
+// Short numeric date in the browser's own order: 23/11/1989 in Portugal or
+// the UK, 11/23/1989 in the US.
+const pad = (n) => String(n).padStart(2, '0');
 export function formatDate(value, { utc = false } = {}) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', ...(utc ? { timeZone: 'UTC' } : {}),
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, {
+    day: '2-digit', month: '2-digit', year: 'numeric', ...(utc ? { timeZone: 'UTC' } : {}),
   });
 }
 
@@ -20,7 +25,6 @@ export const toDateInput = (value) => (value ? new Date(value).toISOString().sli
 // yesterday in the morning east of it.)
 export function todayInput() {
   const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 

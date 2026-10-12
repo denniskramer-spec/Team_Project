@@ -9,6 +9,7 @@ import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
 import ContentArea from './ContentArea.jsx';
 import SidePanel from './SidePanel.jsx';
+import Footer from './Footer.jsx';
 
 const LAST_TITLES_KEY = 'bm.lastTitles';
 const PANEL_KEY = 'bm.panelOpen';
@@ -51,13 +52,15 @@ export default function Workspace() {
 
   const togglePanel = () => setPanelOpen((open) => { save(PANEL_KEY, !open); return !open; });
 
-  // The header bell opens the panel on the Alerts tab (and closes it again).
-  const toggleAlerts = () => {
-    if (panelOpen && panelTab === 'alerts') { setPanelOpen(false); save(PANEL_KEY, false); return; }
-    setPanelTab('alerts');
+  // The header bell and the footer links open the panel on a tab (and close
+  // it again when that tab is already showing).
+  const openPanelTab = (tab) => {
+    if (panelOpen && panelTab === tab) { setPanelOpen(false); save(PANEL_KEY, false); return; }
+    setPanelTab(tab);
     setPanelOpen(true);
     save(PANEL_KEY, true);
   };
+  const toggleAlerts = () => openPanelTab('alerts');
 
   const channel = channels?.find((c) => c.key === channelKey);
   const title = channel?.titles.find((t) => t.key === titleKey);
@@ -98,9 +101,10 @@ export default function Workspace() {
           <TitleList channel={channel} current={title.key} />
         </nav>
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
-        <ContentArea channel={channel} title={title} />
+        <ContentArea channel={channel} title={title} panelOpen={panelOpen} onTogglePanel={togglePanel} />
         <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
+      <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />
     </div>
   );
 }

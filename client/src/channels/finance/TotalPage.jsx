@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { formatAmount, formatDay, toDateInput, nameOf, shownOf } from '../../format.js';
+import { formatAmount, toDateInput, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
+import DateTag from '../../components/DateTag.jsx';
 
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--series-3)' },
@@ -48,7 +49,7 @@ function HistoryTable({ rows, by }) {
         {rows.map((r) => (
           <tr key={`${r.kind}-${r.id}`}>
             <td data-label={by === 'person' ? 'Date' : 'Member'}>
-              {by === 'person' ? formatDay(r.date) : (
+              {by === 'person' ? <DateTag value={r.date} utc /> : (
                 <div className="cell-user">
                   <Avatar name={r.member?.name ?? '?'} role={r.member?.role ?? 'member'} size={26} />
                   <span>{nameOf(r.member, '')}</span>
@@ -202,7 +203,7 @@ export default function TotalPage() {
                     <Avatar name={g.member?.name ?? '?'} role={g.member?.role ?? 'member'} size={28} />
                     <strong>{nameOf(g.member)}</strong>
                   </>
-                ) : <strong>{formatDay(g.date)}</strong>}
+                ) : <DateTag value={g.date} utc muted={false} />}
                 <span className="muted small">{g.rows.length} {g.rows.length === 1 ? 'record' : 'records'}</span>
                 <Sums rows={g.rows} />
               </div>

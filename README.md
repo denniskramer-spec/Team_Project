@@ -11,6 +11,8 @@ Header  ─ user, role badge, live dot, alerts bell
 │ Channels  │ Titles       │ Content                     │ ▶ Panel  │
 │ (section1)│ (section 2)  │ (section 3)                 │ (hidden) │
 └───────────┴──────────────┴─────────────────────────────┴──────────┘
+Footer  ─ version, quick links (members, alerts, password), who is online, clock
+Theme   ─ dark by default; the sun/moon button in the header switches to light
 ```
 
 ## Quick start
@@ -217,7 +219,7 @@ server/
   src/utils/      policies, periods, validation, seeding
   src/scripts/    seedDemo.js
 client/
-  src/layout/     header + the four sections
+  src/layout/     header, footer + the four sections
   src/channels/   one folder per channel (section 3)
   src/components/ modal, dropdown, toast, avatar, icons, ...
   src/alerts/     instruction alarm (sound, popup, desktop notification)

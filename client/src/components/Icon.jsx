@@ -31,6 +31,11 @@ const PATHS = {
   send: 'M4 12l16-8-7 16-2-6-7-2z',
   idcard: 'M3 6h18v12H3zM9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6 15c.6-1.3 1.7-2 3-2s2.4.7 3 2M14 9h4M14 13h4',
   dot: 'M12 12h.01',
+  sun: 'M12 4V2M12 22v-2M4 12H2M22 12h-2M5.6 5.6L4.2 4.2M19.8 19.8l-1.4-1.4M5.6 18.4l-1.4 1.4M19.8 4.2l-1.4 1.4M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z',
+  moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+  monitor: 'M3 5h18v11H3zM8 20h8M12 16v4',
+  sidebar: 'M3 5h18v14H3zM15 5v14',
+  calendar: 'M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 11h16M8 3v4M16 3v4M8 15h.01M12 15h.01M16 15h.01',
 };
 
 export default function Icon({ name, size = 20, className = '', title }) {

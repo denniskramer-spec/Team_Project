@@ -3,10 +3,11 @@ import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
-import { formatBirthday, timeAgo } from '../../format.js';
+import { timeAgo } from '../../format.js';
 import { ConfirmDialog } from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
+import DateTag from '../../components/DateTag.jsx';
 
 function PendingCard({ member, groups, canAssign, onDone }) {
   const toast = useToast();
@@ -38,7 +39,7 @@ function PendingCard({ member, groups, canAssign, onDone }) {
         </div>
       </div>
       <dl className="profile small">
-        <dt>Birthday</dt><dd>{formatBirthday(member.birthday)}</dd>
+        <dt>Birthday</dt><dd><DateTag value={member.birthday} utc muted={false}  icon="cake" /></dd>
         <dt>Requested group</dt><dd>{member.group?.name ?? 'None'}</dd>
       </dl>
       <div className="pending-actions">

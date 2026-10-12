@@ -62,12 +62,7 @@ function GroupRow({ group, onChanged }) {
           </div>
           <div className="group-actions">
             <button className="btn small-btn" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> Rename</button>
-            <button
-              className="btn small-btn danger-outline"
-              onClick={() => setConfirmDelete(true)}
-              disabled={group.memberCount > 0}
-              title={group.memberCount > 0 ? 'Move its members to another group first' : 'Delete group'}
-            >
+            <button className="btn small-btn danger-outline" onClick={() => setConfirmDelete(true)} title="Delete group">
               <Icon name="trash" size={14} /> Delete
             </button>
           </div>
@@ -76,7 +71,9 @@ function GroupRow({ group, onChanged }) {
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete ${group.name}?`}
-          message="The group disappears from every channel. This cannot be undone."
+          message={group.memberCount > 0
+            ? `The group disappears from every channel and its ${group.memberCount} ${group.memberCount === 1 ? 'member' : 'members'} will belong to no group until you assign them one. This cannot be undone.`
+            : 'The group disappears from every channel. This cannot be undone.'}
           confirmLabel="Delete group"
           danger
           busy={busy}

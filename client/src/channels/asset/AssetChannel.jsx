@@ -3,13 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { formatBirthday } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
 import AssetForm from './AssetForm.jsx';
 import { useLatestRequest } from '../../useLiveData.js';
+import DateTag from '../../components/DateTag.jsx';
 
 // Section 3 for the Assets channel: a table of assets for All, one group or
 // one member — whatever the tree has selected, within this role's scope.
@@ -100,51 +100,49 @@ export default function AssetChannel({ title }) {
       )}
 
       {assets.length > 0 && (
-        <section className="card">
-          <table className="table asset-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th className="num">Age</th>
-                <th>Birthday</th>
-                <th>Nationality</th>
-                <th>Contact info</th>
-                <th>English level</th>
-                <th>Belongs to</th>
-                <th aria-label="Actions" />
+        <table className="table asset-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th className="num">Age</th>
+              <th>Birthday</th>
+              <th>Nationality</th>
+              <th>Contact info</th>
+              <th>English level</th>
+              <th>Belongs to</th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((a) => (
+              <tr key={a.id}>
+                <td data-label="Name" className="strong">{a.name}</td>
+                <td data-label="Age" className="num">{a.age ?? '—'}</td>
+                <td data-label="Birthday"><DateTag value={a.birthday} utc  icon="cake" /></td>
+                <td data-label="Nationality">{a.nationality || '—'}</td>
+                <td data-label="Contact info">{a.contact || '—'}</td>
+                <td data-label="English level"><span className={`level level-${a.englishLevel.toLowerCase()}`}>{a.englishLevel}</span></td>
+                <td data-label="Belongs to">
+                  <div className="cell-user">
+                    <Avatar name={a.owner?.name ?? '?'} role={a.owner?.role ?? 'member'} size={26} />
+                    <span>{a.owner?.name}</span>
+                  </div>
+                </td>
+                <td className="cell-actions">
+                  {a.canEdit && (
+                    <Dropdown
+                      label={`Actions for ${a.name}`}
+                      items={[
+                        { label: 'Edit asset', icon: 'edit', onClick: () => setForm(a) },
+                        { label: 'Delete asset', icon: 'trash', danger: true, onClick: () => setConfirm(a) },
+                      ]}
+                    />
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {assets.map((a) => (
-                <tr key={a.id}>
-                  <td data-label="Name" className="strong">{a.name}</td>
-                  <td data-label="Age" className="num">{a.age ?? '—'}</td>
-                  <td data-label="Birthday">{a.birthday ? formatBirthday(a.birthday) : '—'}</td>
-                  <td data-label="Nationality">{a.nationality || '—'}</td>
-                  <td data-label="Contact info">{a.contact || '—'}</td>
-                  <td data-label="English level"><span className={`level level-${a.englishLevel.toLowerCase()}`}>{a.englishLevel}</span></td>
-                  <td data-label="Belongs to">
-                    <div className="cell-user">
-                      <Avatar name={a.owner?.name ?? '?'} role={a.owner?.role ?? 'member'} size={24} />
-                      <span className="small">{a.owner?.name}</span>
-                    </div>
-                  </td>
-                  <td className="cell-actions">
-                    {a.canEdit && (
-                      <Dropdown
-                        label={`Actions for ${a.name}`}
-                        items={[
-                          { label: 'Edit asset', icon: 'edit', onClick: () => setForm(a) },
-                          { label: 'Delete asset', icon: 'trash', danger: true, onClick: () => setConfirm(a) },
-                        ]}
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+            ))}
+          </tbody>
+        </table>
       )}
 
       {form && (

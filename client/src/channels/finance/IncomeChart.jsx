@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 import { compact, fitLabel, niceMax, topRounded } from './chartMath.js';
+import DateTag from '../../components/DateTag.jsx';
 
 // Planned vs real income per member, as grouped columns:
 //   blue          = planned income (from the member's plan)
@@ -44,7 +45,7 @@ function MemberDetail({ row, periodLabel, onClose }) {
               <tbody>
                 {items.map((i) => (
                   <tr key={i.id}>
-                    <td>{formatDay(i.date)}</td>
+                    <td><DateTag value={i.date} utc /></td>
                     <td>{i.task ? i.task.name : i.from}{i.task && i.from ? <span className="muted small"> · {i.from}</span> : null}{i.note && <div className="muted small">{i.note}</div>}</td>
                     <td className="num strong">{formatAmount(i.amount)}</td>
                   </tr>
@@ -62,7 +63,7 @@ function MemberDetail({ row, periodLabel, onClose }) {
               <tbody>
                 {upcoming.map((u, n) => (
                   <tr key={n}>
-                    <td>{u.date ? formatDay(u.date) : <span className="muted">No date</span>}<div className="muted small">reported {formatDay(u.reportDay)}</div></td>
+                    <td>{u.date ? <DateTag value={u.date} utc /> : <span className="muted">No date</span>}<div className="muted small">reported {formatDay(u.reportDay)}</div></td>
                     <td>{u.task ? u.task.name : <span className="muted">—</span>}{u.note && <div className="muted small">{u.note}</div>}</td>
                     <td className="num strong">{formatAmount(u.amount)}</td>
                   </tr>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { AuthFooter } from '../layout/Footer.jsx';
 import { load, save } from '../storage.js';
 
 // "Remember me" keeps only the username in this browser's localStorage so the
@@ -80,6 +81,7 @@ export default function Login() {
           Need an account? <Link to="/signup">Sign up</Link>
         </p>
       </form>
+      <AuthFooter />
     </div>
   );
 }

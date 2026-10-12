@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
@@ -84,6 +84,58 @@ function PlanRow({ plan, onStatus }) {
   );
 }
 
+const sumPlans = (plans) => plans.reduce((acc, p) => ({
+  jobBid: acc.jobBid + (p.jobBid || 0),
+  aiBid: acc.aiBid + (p.aiBid || 0),
+  income: acc.income + (p.income || 0),
+  done: acc.done + (p.status === 'done' ? 1 : 0),
+  count: acc.count + 1,
+}), { jobBid: 0, aiBid: 0, income: 0, done: 0, count: 0 });
+
+// The members' plans added up: one row per group, and one for everyone when
+// several groups are on screen.
+function TotalRow({ label, plans, grand }) {
+  const t = sumPlans(plans);
+  return (
+    <tr className={`total-row ${grand ? 'grand' : ''}`}>
+      <td data-label="Owner">
+        <div className="total-label">
+          <span className="total-icon"><Icon name="chart" size={16} /></span>
+          <div>
+            <div className="strong">{label}</div>
+            <div className="muted small">{t.count} {t.count === 1 ? 'plan' : 'plans'} added up</div>
+          </div>
+        </div>
+      </td>
+      <td data-label="Job bids" className="num">{formatAmount(t.jobBid)}</td>
+      <td data-label="AI bids" className="num">{formatAmount(t.aiBid)}</td>
+      <td data-label="Income" className="num">{formatAmount(t.income)}</td>
+      <td data-label="Result"><span className="muted small">{t.done} of {t.count} done</span></td>
+      <td className="cell-actions" />
+    </tr>
+  );
+}
+
+// Personal plans by group (in name order, members without a group last), each
+// with the group's own plan, so a boss can compare their target with the sum.
+function groupSections(plans) {
+  const sections = new Map();
+  const section = (g) => {
+    const key = g?.id ?? 'none';
+    if (!sections.has(key)) sections.set(key, { key, name: g?.name ?? 'No group', members: [], groupPlans: [] });
+    return sections.get(key);
+  };
+  plans.forEach((p) => {
+    if (p.scope === 'group') section(p.group).groupPlans.push(p);
+    else section(p.group).members.push(p);
+  });
+  return [...sections.values()].sort((a, b) => {
+    if (a.key === 'none') return 1;
+    if (b.key === 'none') return -1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // Section 3 for the Plan channel. The title is the period type (weekly or
 // monthly); the group and member come from the tree as ?g= and ?m=.
 export default function PlanChannel({ title }) {
@@ -137,6 +189,10 @@ export default function PlanChannel({ title }) {
   if (!data) return <div className="page muted">Loading...</div>;
 
   const { can, period: p } = data;
+  const sections = groupSections(data.plans);
+  const personal = data.plans.filter((pl) => pl.scope === 'personal');
+  // One member on screen: their row is the total, so no total rows.
+  const showTotals = !member && personal.length > 0;
   const selected = member ? data.plans.find((pl) => pl.owner?.id === member)?.owner : null;
   const scopeLabel = selected?.name
     ?? (data.scope === 'self' ? 'Your plans' : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All members') : data.groups.find((g) => g.slug === group)?.name ?? group);
@@ -192,7 +248,16 @@ export default function PlanChannel({ title }) {
               <tr><th>Owner</th><th className="num">Job bids</th><th className="num">AI bids</th><th className="num">Income</th><th>Result</th><th aria-label="Note" /></tr>
             </thead>
             <tbody>
-              {data.plans.map((plan) => <PlanRow key={plan.id} plan={plan} onStatus={setStatus} />)}
+              {sections.map((sec) => (
+                <Fragment key={sec.key}>
+                  {sec.members.map((plan) => <PlanRow key={plan.id} plan={plan} onStatus={setStatus} />)}
+                  {showTotals && sec.members.length > 0 && <TotalRow label={`${sec.name} total`} plans={sec.members} />}
+                  {sec.groupPlans.map((plan) => <PlanRow key={plan.id} plan={plan} onStatus={setStatus} />)}
+                </Fragment>
+              ))}
+              {showTotals && sections.filter((sec) => sec.members.length).length > 1 && (
+                <TotalRow label="All members total" plans={personal} grand />
+              )}
             </tbody>
           </table>
         </section>

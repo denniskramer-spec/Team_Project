@@ -35,7 +35,8 @@ export const assetSentence = (a) => [
   a.contact || null,
 ].filter(Boolean).join(', ');
 
-const serialize = (a, user) => ({
+// Also used by the Member channel, where each asset opens in a details dialog.
+export const serialize = (a, user) => ({
   id: a._id,
   name: a.name,
   birthday: a.birthday,

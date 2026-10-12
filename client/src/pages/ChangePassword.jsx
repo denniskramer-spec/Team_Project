@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { AuthFooter } from '../layout/Footer.jsx';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
 
 export default function ChangePassword() {
@@ -58,6 +59,7 @@ export default function ChangePassword() {
         </p>
         <p className="muted small">Other devices will be logged out.</p>
       </form>
+      <AuthFooter />
     </div>
   );
 }

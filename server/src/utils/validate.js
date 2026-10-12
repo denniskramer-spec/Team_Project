@@ -23,8 +23,8 @@ export function checkPassword(password) {
   if (password.length < 8 || password.length > 128) {
     throw badRequest('Password must be 8-128 characters');
   }
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-    throw badRequest('Password must contain at least one letter and one number');
+  if (!/\d/.test(password)) {
+    throw badRequest('Password must contain at least one number');
   }
   return password;
 }
