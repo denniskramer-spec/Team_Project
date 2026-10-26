@@ -59,9 +59,9 @@ function groupLevel(user, groups, members) {
 
 // Report titles: the groups a role may read, each holding its members.
 // A member has no group level, so they get a single "My report" entry.
-function reportTitles(user, groups, members, ownLabel = 'My report') {
+function reportTitles(user, groups, members, { ownLabel = 'My report', section = 'Report' } = {}) {
   if (!['admin', 'leader', 'boss'].includes(user.role)) {
-    return [{ key: 'me', name: ownLabel, section: ownLabel === 'My report' ? 'Report' : 'Assets' }];
+    return [{ key: 'me', name: ownLabel, section }];
   }
   const scoped = visibleGroups(user, groups);
   const branches = scoped.map((g) => ({
@@ -125,10 +125,11 @@ export function buildNav(user, groups, {
     },
     {
       key: 'report',
-      name: 'Report',
-      icon: 'clipboard',
-      // Daily reports only, so the titles are just who to look at.
-      titles: reportTitles(user, groups, members),
+      name: 'Dashboard',
+      icon: 'dashboard',
+      // The day at a glance, with the daily report written in a modal. The
+      // titles are just whose day to look at.
+      titles: reportTitles(user, groups, members, { ownLabel: 'My day', section: 'Dashboard' }),
     },
     {
       key: 'plan',
@@ -153,19 +154,25 @@ export function buildNav(user, groups, {
     },
     {
       key: 'task',
-      name: 'Task',
-      icon: 'check',
+      name: 'Projects',
+      icon: 'briefcase',
       titles: [
-        { key: 'all', name: 'All tasks', section: 'Tasks' },
-        ...tasks.map((t) => ({ key: String(t._id), name: t.name, section: 'Task names', status: t.status })),
+        { key: 'all', name: 'All projects', section: 'Projects' },
+        ...tasks.map((t) => ({ key: String(t._id), name: t.name, section: 'Project names', status: t.status })),
       ],
     },
     {
-      key: 'asset',
-      name: 'Assets',
-      icon: 'idcard',
+      key: 'resident',
+      name: 'Residents',
+      icon: 'userPlus',
       // Same shape as Report: who to look at, scoped by role.
-      titles: reportTitles(user, groups, members, 'My assets'),
+      titles: reportTitles(user, groups, members, { ownLabel: 'My residents', section: 'Residents' }),
+    },
+    {
+      key: 'chataccount',
+      name: 'Chat accounts',
+      icon: 'message',
+      titles: reportTitles(user, groups, members, { ownLabel: 'My accounts', section: 'Chat accounts' }),
     },
     {
       key: 'member',
@@ -203,14 +210,20 @@ export function buildNav(user, groups, {
     },
   ];
 
+  // Members work from their own day: Checkout (the team's plan vs result)
+  // and the Member directory are for bosses, the leader and admins.
+  const forManagers = ['checkout', 'member'];
+  const visible = user.role === 'member' ? channels.filter((c) => !forManagers.includes(c.key)) : channels;
+
   const adminTitles = [];
   if (['admin', 'leader', 'boss'].includes(user.role)) adminTitles.push({ key: 'approvals', name: 'Approvals', badge: pendingCount });
   if (user.role === 'admin') {
     adminTitles.push({ key: 'users', name: 'Users & roles' }, { key: 'groups', name: 'Groups' });
   }
+  if (['admin', 'leader'].includes(user.role)) adminTitles.push({ key: 'fees', name: 'Payment fees' });
   if (adminTitles.length) {
-    channels.push({ key: 'admin', name: 'Admin', icon: 'shield', titles: adminTitles, badge: pendingCount });
+    visible.push({ key: 'admin', name: 'Admin', icon: 'shield', titles: adminTitles, badge: pendingCount });
   }
 
-  return channels;
+  return visible;
 }

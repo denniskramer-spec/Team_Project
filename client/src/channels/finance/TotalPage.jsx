@@ -50,7 +50,7 @@ function HistoryTable({ rows, by }) {
             <td data-label={by === 'person' ? 'Date' : 'Member'}>
               {by === 'person' ? formatDay(r.date) : (
                 <div className="cell-user">
-                  <Avatar name={r.member?.name ?? '?'} role={r.member?.role ?? 'member'} size={26} />
+                  <Avatar name={r.member?.name ?? '?'} role={r.member?.role ?? 'member'} size={22} />
                   <span>{nameOf(r.member, '')}</span>
                 </div>
               )}
@@ -199,7 +199,7 @@ export default function TotalPage() {
               <div className="history-head">
                 {by === 'person' ? (
                   <>
-                    <Avatar name={g.member?.name ?? '?'} role={g.member?.role ?? 'member'} size={28} />
+                    <Avatar name={g.member?.name ?? '?'} role={g.member?.role ?? 'member'} size={24} />
                     <strong>{nameOf(g.member)}</strong>
                   </>
                 ) : <strong>{formatDay(g.date)}</strong>}

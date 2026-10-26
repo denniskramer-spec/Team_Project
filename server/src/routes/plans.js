@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import Plan, { PLAN_TYPES, PLAN_STATES } from '../models/Plan.js';
+import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
+import Report from '../models/Report.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -26,14 +27,8 @@ function checkType(type) {
 }
 
 function checkFields(body) {
-  const num = checkOptionalAmount;
-  const note = checkText(body.note, 'Note', 2000);
-  const fields = {
-    jobBid: num(body.jobBid, 'Job bids'),
-    aiBid: num(body.aiBid, 'AI training bids'),
-    income: num(body.income, 'Income'),
-    note,
-  };
+  const fields = { note: checkText(body.note, 'Note', 2000) };
+  for (const item of PLAN_ITEMS) fields[item.key] = checkOptionalAmount(body[item.key], item.label);
   if (body.status !== undefined) {
     if (!PLAN_STATES.includes(body.status)) throw badRequest('Unknown status');
     fields.status = body.status;
@@ -42,17 +37,21 @@ function checkFields(body) {
   return fields;
 }
 
-const serialize = (p, user) => ({
+// The targets of a plan; older plans counted bids in one field, shown as applied.
+const targetsOf = (p) => Object.fromEntries(PLAN_ITEMS.map((i) => [i.key, i.key === 'jobBid' ? (p.jobBid || p.bid || 0) : (p[i.key] || 0)]));
+
+const serialize = (p, user, achieved = null) => ({
   id: p._id,
   owner: p.owner?._id ? { id: p.owner._id, name: p.owner.name, role: p.owner.role } : null,
   group: p.group?._id ? { id: p.group._id, name: p.group.name, slug: p.group.slug } : null,
   scope: p.scope,
   type: p.type,
   period: p.period,
-  // Older plans counted bids in one field; show them as job bids.
-  jobBid: p.jobBid || p.bid || 0,
-  aiBid: p.aiBid || 0,
-  income: p.income,
+  ...targetsOf(p),
+  targets: targetsOf(p),
+  // What the daily reports of the period add up to, per item (null when
+  // the reports were not looked up).
+  achieved,
   note: p.note,
   status: p.status,
   statusUpdatedAt: p.statusUpdatedAt,
@@ -109,15 +108,28 @@ router.get('/', async (req, res) => {
   const personal = found.filter((p) => p.scope === 'personal');
   const plans = [...personal, ...latestPerGroup(found.filter((p) => p.scope === 'group'))];
   const byOwner = new Map(personal.map((p) => [String(p.owner._id), p]));
+
+  // Achieved so far: the daily reports of the period, added up per author
+  // (for a personal plan) and per group (for a group plan).
+  const reports = await Report.find({
+    scope: 'personal', type: 'daily', periodStart: { $gte: period.start, $lt: period.end },
+    ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
+  }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean();
+  const sumInto = (acc, r) => { for (const i of PLAN_ITEMS) acc[i.key] += i.key === 'jobBid' ? (r.jobBid || r.bid || 0) : (r[i.key] || 0); return acc; };
+  const zero = () => Object.fromEntries(PLAN_ITEMS.map((i) => [i.key, 0]));
+  const byAuthor = new Map();
+  const byGroup = new Map();
+  for (const r of reports) {
+    byAuthor.set(String(r.author), sumInto(byAuthor.get(String(r.author)) ?? zero(), r));
+    if (r.group) byGroup.set(String(r.group), sumInto(byGroup.get(String(r.group)) ?? zero(), r));
+  }
+  const achievedOf = (p) => (p.scope === 'group' ? byGroup.get(String(p.group?._id ?? p.group)) : byAuthor.get(String(p.owner?._id ?? p.owner))) ?? zero();
   // Counts and totals cover the same plans: the personal ones.
   const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: personal.filter((p) => p.status === s).length }), {});
   // Totals add up personal plans only: a boss's group plan repeats their
   // members' targets (Checkout leaves it out for the same reason).
-  const totals = personal.reduce((acc, p) => ({
-    jobBid: acc.jobBid + (p.jobBid || p.bid || 0),
-    aiBid: acc.aiBid + (p.aiBid || 0),
-    income: acc.income + p.income,
-  }), { jobBid: 0, aiBid: 0, income: 0 });
+  const totals = personal.reduce((acc, p) => { const t = targetsOf(p); for (const i of PLAN_ITEMS) acc[i.key] += t[i.key]; return acc; }, zero());
+  const achievedTotals = personal.reduce((acc, p) => { const a = achievedOf(p); for (const i of PLAN_ITEMS) acc[i.key] += a[i.key]; return acc; }, zero());
 
   const nextKey = shiftPeriod(type, period.key, 1);
   res.json({
@@ -130,14 +142,16 @@ router.get('/', async (req, res) => {
       isCurrent: period.key === periodKey(type),
     },
     can: { plan: canPlan(req.user), planGroup: canPlanGroup(req.user) },
-    mine: mine ? serialize(mine, req.user) : null,
-    myGroupPlan: myGroupPlan ? serialize(myGroupPlan, req.user) : null,
-    plans: plans.map((p) => serialize(p, req.user)),
+    items: PLAN_ITEMS,
+    mine: mine ? serialize(mine, req.user, achievedOf(mine)) : null,
+    myGroupPlan: myGroupPlan ? serialize(myGroupPlan, req.user, achievedOf(myGroupPlan)) : null,
+    plans: plans.map((p) => serialize(p, req.user, achievedOf(p))),
     missing: members
       .filter((m) => !byOwner.has(String(m._id)))
       .map((m) => ({ id: m._id, name: m.name, role: m.role, group: m.group ? { name: m.group.name, slug: m.group.slug } : null })),
     counts,
     totals,
+    achievedTotals,
     groups: (canReadTeam(req.user) ? visibleGroups(req.user, groups) : []).map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
     scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
   });

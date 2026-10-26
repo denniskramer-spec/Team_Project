@@ -3,6 +3,17 @@ import mongoose from 'mongoose';
 export const PLAN_TYPES = ['weekly', 'monthly'];
 export const PLAN_STATES = ['not_done', 'progress', 'done'];
 
+// The targets a plan sets, one per measurable item of the daily report, so
+// the plan page can show achieved vs target from the reports of the period.
+export const PLAN_ITEMS = [
+  { key: 'jobBid', label: 'Applied', group: 'Bids' },
+  { key: 'aiBid', label: 'AI training bids', group: 'Bids' },
+  { key: 'resumes', label: 'Résumés tailored', group: 'Bids' },
+  { key: 'forms', label: 'Forms filled', group: 'Bids' },
+  { key: 'biddingHours', label: 'Time bidding (h)', group: 'Bids' },
+  { key: 'income', label: 'Income', group: 'Income' },
+];
+
 // A plan for one period. scope 'personal' = a member's own plan,
 // 'group' = a boss's plan for their group.
 const planSchema = new mongoose.Schema(
@@ -18,6 +29,12 @@ const planSchema = new mongoose.Schema(
     // Targets, using the same fields as reports so Checkout can compare them.
     jobBid: { type: Number, default: 0, min: 0 },
     aiBid: { type: Number, default: 0, min: 0 },
+    resumes: { type: Number, default: 0, min: 0 },
+    forms: { type: Number, default: 0, min: 0 },
+    biddingHours: { type: Number, default: 0, min: 0 },
+    contacted: { type: Number, default: 0, min: 0 },
+    replies: { type: Number, default: 0, min: 0 },
+    agreed: { type: Number, default: 0, min: 0 },
     income: { type: Number, default: 0, min: 0 },
     note: { type: String, default: '', trim: true, maxlength: 2000 },
     // Written before the form changed: one "bid" count and a task target.

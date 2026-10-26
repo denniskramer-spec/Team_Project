@@ -96,7 +96,7 @@ export default function CheckoutChannel({ title }) {
         <button className="icon-btn" onClick={() => setPeriod(p.next)} aria-label="Next period" disabled={!p.hasNext}><Icon name="chevronRight" /></button>
         {!p.isCurrent && <button className="btn small-btn" onClick={() => setPeriod('')}>Current</button>}
         <span className="muted small scope-label">
-          {data.counts.plans} plans · {data.counts.reports} reports · {data.counts.tasks} tasks · {data.counts.incomes} income records
+          {data.counts.plans} plans · {data.counts.reports} reports · {data.counts.tasks} projects · {data.counts.incomes} income records
         </span>
       </div>
 
@@ -138,8 +138,8 @@ export default function CheckoutChannel({ title }) {
       <div className="chart-pair">
         <PlanResults states={data.planStates} total={planTotal} />
         <figure className="chart">
-          <figcaption><h3>Tasks</h3><span className="chart-share">{data.task.done} of {data.task.total} done</span></figcaption>
-          <div className="meter" role="img" aria-label={`${data.task.done} of ${data.task.total} tasks done`}>
+          <figcaption><h3>Projects</h3><span className="chart-share">{data.task.done} of {data.task.total} done</span></figcaption>
+          <div className="meter" role="img" aria-label={`${data.task.done} of ${data.task.total} projects done`}>
             {data.task.done > 0 && <span className="meter-part done" style={{ flexGrow: data.task.done }} />}
             {data.task.total - data.task.done > 0 && (
               <span className="meter-part not_done" style={{ flexGrow: data.task.total - data.task.done }} />
@@ -148,9 +148,9 @@ export default function CheckoutChannel({ title }) {
           <ul className="result-legend">
             <li><Icon name="check" size={14} className="legend-icon done" /><span className="strong">{data.task.done}</span><span className="muted small">Done</span></li>
             <li><Icon name="dot" size={14} className="legend-icon not_done" /><span className="strong">{data.task.total - data.task.done}</span><span className="muted small">Open</span></li>
-            <li><Icon name="coins" size={14} className="legend-icon" /><span className="strong">{formatAmount(data.task.salary)}</span><span className="muted small">Salary</span></li>
+            <li><Icon name="coins" size={14} className="legend-icon" /><span className="strong">{formatAmount(data.task.price)}</span><span className="muted small">Price</span></li>
           </ul>
-          <p className="muted small chart-note">From the Task channel, for tasks running in this period</p>
+          <p className="muted small chart-note">From the Projects channel, for projects running in this period</p>
         </figure>
       </div>
 
@@ -158,7 +158,7 @@ export default function CheckoutChannel({ title }) {
         <section className="card">
           <div className="report-section-head">
             <h3>Per member</h3>
-            <span className="muted small">Task salary in period: {formatAmount(data.task.salary)}</span>
+            <span className="muted small">Project prices in period: {formatAmount(data.task.price)}</span>
           </div>
           <table className="table checkout-table">
             <thead>
@@ -169,7 +169,7 @@ export default function CheckoutChannel({ title }) {
                 <th className="num">Received</th>
                 <th className="num">Job bids p/r</th>
                 <th className="num">AI bids p/r</th>
-                <th className="num">Tasks done</th>
+                <th className="num">Projects done</th>
                 <th>Plans</th>
               </tr>
             </thead>
@@ -178,7 +178,7 @@ export default function CheckoutChannel({ title }) {
                 <tr key={row.member.id}>
                   <td data-label="Member">
                     <div className="cell-user">
-                      <Avatar name={row.member.name} role={row.member.role} size={28} />
+                      <Avatar name={row.member.name} role={row.member.role} size={24} />
                       <div>
                         <div className="strong">{nameOf(row.member)}</div>
                         <div className="muted small">{row.member.group?.name ?? '—'}</div>
@@ -192,7 +192,7 @@ export default function CheckoutChannel({ title }) {
                   </td>
                   <td data-label="Job bids p/r" className="num">{formatAmount(row.planned.jobBid)} / {formatAmount(row.reported.jobBid)}</td>
                   <td data-label="AI bids p/r" className="num">{formatAmount(row.planned.aiBid)} / {formatAmount(row.reported.aiBid)}</td>
-                  <td data-label="Tasks done" className="num">{row.tasks.done} / {row.tasks.total}</td>
+                  <td data-label="Projects done" className="num">{row.tasks.done} / {row.tasks.total}</td>
                   <td data-label="Plans">
                     <span className="plan-dots" title={STATUSES.map((s) => `${s.label}: ${row.planStates[s.key] || 0}`).join(', ')}>
                       {STATUSES.map((s) => (row.planStates[s.key] ? (

@@ -17,7 +17,7 @@ export default function ChannelRail({ channels, current }) {
             <Icon name={c.icon} size={22} />
             {c.badge > 0 && <span className="badge rail-badge">{c.badge}</span>}
           </span>
-          <span className="rail-label">{c.name}</span>
+          <span className={`rail-label${c.name.length > 10 ? ' long' : ''}`}>{c.name}</span>
         </Link>
       ))}
     </div>

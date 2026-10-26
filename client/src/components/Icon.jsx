@@ -31,6 +31,15 @@ const PATHS = {
   send: 'M4 12l16-8-7 16-2-6-7-2z',
   idcard: 'M3 6h18v12H3zM9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM6 15c.6-1.3 1.7-2 3-2s2.4.7 3 2M14 9h4M14 13h4',
   dot: 'M12 12h.01',
+  userPlus: 'M15 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M8.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M16 11h6',
+  message: 'M4 5h16v11H9l-5 4zM8 9h8M8 12.5h5',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01',
+  tick: 'M5 12l5 5L20 7',
+  briefcase: 'M4 7h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 12h18M12 11v3',
+  dashboard: 'M4 4h7v7H4zM13 4h7v4h-7zM13 11h7v9h-7zM4 14h7v6H4z',
+  phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2',
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  file: 'M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6',
 };
 
 export default function Icon({ name, size = 20, className = '', title }) {

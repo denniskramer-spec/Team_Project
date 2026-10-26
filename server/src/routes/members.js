@@ -10,10 +10,10 @@ import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js';
-import Asset from '../models/Asset.js';
+import Resident from '../models/Resident.js';
 import { scopeFilter } from '../utils/visibility.js';
 import { moveRecordsToGroup } from '../utils/moveRecords.js';
-import { assetSentence } from './assets.js';
+import { residentSentence } from './residents.js';
 import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
@@ -97,23 +97,24 @@ router.get('/', async (req, res) => {
 
   const users = await User.find(filter).populate('group', 'name slug').sort('name');
 
-  // Each member's assets as one sentence, limited to the assets this role may
-  // read: a member only their own, a boss their group's, the leader and admins all.
+  // Each member's residents as one sentence, limited to the residents this
+  // role may read: a member only their own, a boss their group's, the leader
+  // and admins all.
   const scope = scopeFilter(req.user, 'owner');
-  const assetFilter = { owner: { $in: users.map((u) => u._id) } };
-  if (scope.owner) assetFilter.owner = scope.owner;   // a member: only themselves
-  if (scope.group) assetFilter.group = scope.group;   // a boss: their group
-  const assets = await Asset.find(assetFilter).sort('name').lean();
+  const residentFilter = { owner: { $in: users.map((u) => u._id) } };
+  if (scope.owner) residentFilter.owner = scope.owner;   // a member: only themselves
+  if (scope.group) residentFilter.group = scope.group;   // a boss: their group
+  const residents = await Resident.find(residentFilter).sort('name').lean();
   const byOwner = new Map();
-  assets.forEach((a) => {
-    const key = String(a.owner);
-    byOwner.set(key, [...(byOwner.get(key) ?? []), assetSentence(a)]);
+  residents.forEach((r) => {
+    const key = String(r.owner);
+    byOwner.set(key, [...(byOwner.get(key) ?? []), residentSentence(r)]);
   });
 
   res.json({
     members: users.map((u) => ({
       ...serialize(u, req.user),
-      assets: byOwner.get(String(u._id)) ?? [],
+      residents: byOwner.get(String(u._id)) ?? [],
     })),
   });
 });

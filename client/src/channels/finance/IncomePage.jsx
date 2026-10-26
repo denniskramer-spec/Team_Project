@@ -7,6 +7,7 @@ import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
 import IncomeForm from './IncomeForm.jsx';
+import Modal from '../../components/Modal.jsx';
 
 // Income for one period, for All or one group: totals, the planned vs real
 // chart, income per member and the records. Members record their own income,
@@ -15,6 +16,7 @@ import IncomeForm from './IncomeForm.jsx';
 export default function IncomePage() {
   const period = useFinancePeriod();
   const { data, error, reload } = useLiveData(`/incomes?${period.query}`, ['income:changed']);
+  const [lightbox, setLightbox] = useState(null);
   const [recording, setRecording] = useState(false);
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
@@ -49,8 +51,8 @@ export default function IncomePage() {
           </div>
         ))}
         <div className="stat role-border-member">
-          <span className="stat-value">{formatAmount(data.count)}</span>
-          <span className="muted small">{data.count === 1 ? 'Record' : 'Records'}</span>
+          <span className="stat-value">{formatAmount(data.net)}</span>
+          <span className="muted small">Net · after {formatAmount(data.fees)} fees and {formatAmount(data.residents)} to residents</span>
         </div>
       </div>
 
@@ -83,7 +85,7 @@ export default function IncomePage() {
           {shownOf(data.incomes.length, data.count) && <p className="muted small list-note">{shownOf(data.incomes.length, data.count)}</p>}
           <table className="table finance-table">
             <thead>
-              <tr><th>Date</th><th>Member</th><th>From</th><th className="num">Amount</th></tr>
+              <tr><th>Date</th><th>Member</th><th>Project · resident</th><th className="num">Amount</th></tr>
             </thead>
             <tbody>
               {data.incomes.map((i) => (
@@ -91,16 +93,34 @@ export default function IncomePage() {
                   <td data-label="Date">{formatDay(i.date)}</td>
                   <td data-label="Member">
                     <div className="cell-user">
-                      <Avatar name={i.member?.name ?? '?'} role={i.member?.role ?? 'member'} size={26} />
+                      <Avatar name={i.member?.name ?? '?'} role={i.member?.role ?? 'member'} size={22} />
                       <span>{nameOf(i.member, '')}</span>
                     </div>
                   </td>
-                  <td data-label="From">
-                    {i.from}
-                    {i.task && <span className="tag task-tag">{i.task.name}</span>}
+                  <td data-label="Project · resident">
+                    <div className="strong">{i.task?.name ?? i.from ?? '—'}</div>
+                    {i.resident && <div className="muted small">for {i.resident.name}</div>}
                     {i.note && <div className="muted small">{i.note}</div>}
+                    {i.images?.length > 0 && (
+                      <ul className="image-thumbs small-thumbs" aria-label="Screenshots">
+                        {i.images.map((img, n) => (
+                          <li key={img.file}>
+                            <button type="button" className="thumb-open" onClick={() => setLightbox({ images: i.images, index: n, title: i.from })}>
+                              <img src={img.url} alt={img.name} title={img.name} loading="lazy" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </td>
-                  <td data-label="Amount" className="num strong">{formatAmount(i.amount)}</td>
+                  <td data-label="Amount" className="num">
+                    <div className="strong">{formatAmount(i.amount)}</div>
+                    <div className="muted small split-line">
+                      {i.methodLabel}{i.feeAmount ? ` · fee ${formatAmount(i.feeAmount)}` : ''}
+                      {i.resident ? ` · ${i.resident.name} ${formatAmount(i.residentAmount)}` : ''}
+                      {(i.feeAmount || i.residentAmount) ? ` · net ${formatAmount(i.net)}` : ''}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -118,6 +138,20 @@ export default function IncomePage() {
           onClose={() => setRecording(false)}
           onSaved={() => { setRecording(false); reload(); }}
         />
+      )}
+      {lightbox && (
+        <Modal title={`${lightbox.title} · ${lightbox.index + 1} / ${lightbox.images.length}`} onClose={() => setLightbox(null)} width={900}>
+          <div className="lightbox">
+            <img src={lightbox.images[lightbox.index].url} alt={lightbox.images[lightbox.index].name} />
+            {lightbox.images.length > 1 && (
+              <div className="lightbox-nav">
+                <button className="btn" onClick={() => setLightbox({ ...lightbox, index: (lightbox.index + lightbox.images.length - 1) % lightbox.images.length })}>Previous</button>
+                <span className="muted small">{lightbox.images[lightbox.index].name}</span>
+                <button className="btn" onClick={() => setLightbox({ ...lightbox, index: (lightbox.index + 1) % lightbox.images.length })}>Next</button>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

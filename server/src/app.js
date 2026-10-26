@@ -20,7 +20,9 @@ import incomeRoutes from './routes/incomes.js';
 import outcomeRoutes from './routes/outcomes.js';
 import financeRoutes from './routes/finance.js';
 import checkoutRoutes from './routes/checkout.js';
-import assetRoutes from './routes/assets.js';
+import residentRoutes from './routes/residents.js';
+import chatAccountRoutes from './routes/chatAccounts.js';
+import paymentRoutes from './routes/payments.js';
 import { requireAuth } from './middleware/auth.js';
 import { uploadsDir } from './utils/uploads.js';
 
@@ -79,8 +81,10 @@ app.use('/api/incomes', incomeRoutes);
 app.use('/api/outcomes', outcomeRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/checkout', checkoutRoutes);
-app.use('/api/assets', assetRoutes);
-// Uploaded images (outcome attachments), behind login.
+app.use('/api/residents', residentRoutes);
+app.use('/api/chat-accounts', chatAccountRoutes);
+app.use('/api/payments', paymentRoutes);
+// Uploaded images (outcome attachments, resident photos, screenshots), behind login.
 app.use('/api/files', requireAuth, express.static(uploadsDir, {
   fallthrough: false,
   index: false,

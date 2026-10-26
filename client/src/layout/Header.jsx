@@ -30,14 +30,14 @@ function UserMenu() {
   return (
     <div className="user-menu" ref={ref}>
       <button className="user-chip" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Avatar name={user.name} role={user.role} size={28} />
+        <Avatar name={user.name} role={user.role} size={24} />
         <span className="user-chip-name">{user.name}</span>
         <Icon name="chevronDown" size={16} />
       </button>
       {open && (
         <div className="menu" role="menu">
           <div className="menu-profile">
-            <Avatar name={user.name} role={user.role} size={44} />
+            <Avatar name={user.name} role={user.role} size={36} />
             <div>
               <strong>{user.name}</strong>
               <div className="muted small">@{user.username}</div>

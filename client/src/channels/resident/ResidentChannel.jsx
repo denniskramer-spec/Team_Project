@@ -3,17 +3,19 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
-import { formatBirthday } from '../../format.js';
+import { formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
-import AssetForm from './AssetForm.jsx';
+import ResidentForm from './ResidentForm.jsx';
 import { useLatestRequest } from '../../useLiveData.js';
 
-// Section 3 for the Assets channel: a table of assets for All, one group or
-// one member — whatever the tree has selected, within this role's scope.
-export default function AssetChannel({ title }) {
+const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
+
+// Section 3 for the Residents channel: a table of residents for All, one
+// group or one member — whatever the tree has selected, within this role's scope.
+export default function ResidentChannel({ title }) {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const group = title.key === 'me' ? 'all' : title.key;
@@ -32,7 +34,7 @@ export default function AssetChannel({ title }) {
       const params = new URLSearchParams({ group });
       if (member) params.set('member', member);
       if (query.trim()) params.set('q', query.trim());
-      const result = await api(`/assets?${params}`);
+      const result = await api(`/residents?${params}`);
       if (!isLatest()) return;
       setData(result);
       setError('');
@@ -46,13 +48,13 @@ export default function AssetChannel({ title }) {
     return () => clearTimeout(id);
   }, [load, query]);
   useReconnect(load);
-  useSocketEvent('asset:changed', load);
+  useSocketEvent('resident:changed', load);
 
   const remove = async () => {
     setBusy(true);
     try {
-      await api(`/assets/${confirm.id}`, { method: 'DELETE' });
-      toast('Asset deleted');
+      await api(`/residents/${confirm.id}`, { method: 'DELETE' });
+      toast('Resident deleted');
       setConfirm(null);
       load();
     } catch (err) {
@@ -64,78 +66,91 @@ export default function AssetChannel({ title }) {
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
 
-  const assets = data.assets;
+  const { residents } = data;
   const scopeLabel = member
-    ? assets[0]?.owner?.name ?? 'Member'
-    : data.scope === 'self' ? 'Your assets'
-      : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All assets')
+    ? residents[0]?.owner?.name ?? 'Member'
+    : data.scope === 'self' ? 'Your residents'
+      : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All residents')
         : data.groups.find((g) => g.slug === group)?.name ?? group;
 
   return (
-    <div className="page asset-page">
+    <div className="page resident-page">
       <div className="toolbar">
         <div className="search">
           <Icon name="search" size={16} />
           <input
             type="search"
-            placeholder="Search name, nationality or contact"
+            placeholder="Search name, country, source"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search assets"
+            aria-label="Search residents"
           />
         </div>
         <span className="muted small toolbar-count">
-          {scopeLabel} · {assets.length} {assets.length === 1 ? 'asset' : 'assets'}
+          {scopeLabel} · {residents.length} registered
         </span>
         <button className="btn primary" onClick={() => setForm({})}>
-          <Icon name="plus" size={16} /> New asset
+          <Icon name="plus" size={16} /> New resident
         </button>
       </div>
 
-      {!assets.length && (
+      {!residents.length && (
         <div className="empty-inline muted">
-          <Icon name="idcard" size={20} />
-          {query ? `No assets match "${query}".` : 'No assets here yet. Create one to get started.'}
+          <Icon name="userPlus" size={20} />
+          {query ? `No residents match "${query}".` : 'No residents here yet. Register one to get started.'}
         </div>
       )}
 
-      {assets.length > 0 && (
+      {residents.length > 0 && (
         <section className="card">
-          <table className="table asset-table">
+          <table className="table resident-table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Resident</th>
                 <th className="num">Age</th>
-                <th>Birthday</th>
-                <th>Nationality</th>
-                <th>Contact info</th>
-                <th>English level</th>
+                <th>Country</th>
+                <th>Laptop</th>
+                <th>Access</th>
+                <th className="num">Divide</th>
+                <th>First contact</th>
                 <th>Belongs to</th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {assets.map((a) => (
-                <tr key={a.id}>
-                  <td data-label="Name" className="strong">{a.name}</td>
-                  <td data-label="Age" className="num">{a.age ?? '—'}</td>
-                  <td data-label="Birthday">{a.birthday ? formatBirthday(a.birthday) : '—'}</td>
-                  <td data-label="Nationality">{a.nationality || '—'}</td>
-                  <td data-label="Contact info">{a.contact || '—'}</td>
-                  <td data-label="English level"><span className={`level level-${a.englishLevel.toLowerCase()}`}>{a.englishLevel}</span></td>
+              {residents.map((r) => (
+                <tr key={r.id}>
+                  <td data-label="Resident">
+                    <div className="cell-user">
+                      <Avatar name={r.name} role="member" size={24} src={r.photo?.url} />
+                      <div>
+                        <div className="strong">{r.name}</div>
+                        {r.citizenship && r.citizenship !== r.country && <div className="muted small">Citizen of {r.citizenship}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  <td data-label="Age" className="num">{r.age ?? '—'}</td>
+                  <td data-label="Country">{r.country || '—'}</td>
+                  <td data-label="Laptop">{r.hasLaptop ? <Yes label="Own" /> : <span className="muted">—</span>}</td>
+                  <td data-label="Access">{r.accessSetUp ? <Yes label="Laptop" /> : <span className="muted">—</span>}</td>
+                  <td data-label="Divide" className="num">{r.sharePercent ? `${r.sharePercent}%` : <span className="muted">—</span>}</td>
+                  <td data-label="First contact">
+                    {r.firstContact ? formatDay(r.firstContact) : '—'}
+                    {r.firstContactVia && <div className="muted small">via {r.firstContactVia}</div>}
+                  </td>
                   <td data-label="Belongs to">
                     <div className="cell-user">
-                      <Avatar name={a.owner?.name ?? '?'} role={a.owner?.role ?? 'member'} size={24} />
-                      <span className="small">{a.owner?.name}</span>
+                      <Avatar name={r.owner?.name ?? '?'} role={r.owner?.role ?? 'member'} size={20} />
+                      <span className="small">{r.owner?.name}</span>
                     </div>
                   </td>
                   <td className="cell-actions">
-                    {a.canEdit && (
+                    {r.canEdit && (
                       <Dropdown
-                        label={`Actions for ${a.name}`}
+                        label={`Actions for ${r.name}`}
                         items={[
-                          { label: 'Edit asset', icon: 'edit', onClick: () => setForm(a) },
-                          { label: 'Delete asset', icon: 'trash', danger: true, onClick: () => setConfirm(a) },
+                          { label: 'Edit resident', icon: 'edit', onClick: () => setForm(r) },
+                          { label: 'Delete resident', icon: 'trash', danger: true, onClick: () => setConfirm(r) },
                         ]}
                       />
                     )}
@@ -148,8 +163,8 @@ export default function AssetChannel({ title }) {
       )}
 
       {form && (
-        <AssetForm
-          asset={form.id ? form : null}
+        <ResidentForm
+          resident={form.id ? form : null}
           defaultOwner={member || undefined}
           onClose={() => setForm(null)}
           onSaved={() => { setForm(null); load(); }}
@@ -158,8 +173,8 @@ export default function AssetChannel({ title }) {
       {confirm && (
         <ConfirmDialog
           title={`Delete ${confirm.name}?`}
-          message="The asset and its details are removed for everyone."
-          confirmLabel="Delete asset"
+          message="The resident and their details are removed for everyone, and chat accounts no longer list them."
+          confirmLabel="Delete resident"
           danger
           busy={busy}
           onConfirm={remove}

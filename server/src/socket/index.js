@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import { env } from '../config/env.js';
 import { loadSession, TOKEN_COOKIE } from '../middleware/auth.js';
 import { resolveChannel, roomsFor } from '../utils/chatPolicy.js';
+import User from '../models/User.js';
 
 // Number of open sockets per user id. A user is online while this is > 0
 // (they may have several tabs open).
@@ -69,6 +70,8 @@ export function initSocket(httpServer) {
 
     const wasOnline = connections.has(id);
     connections.set(id, (connections.get(id) || 0) + 1);
+    const touch = () => User.updateOne({ _id: id }, { lastSeenAt: new Date() }).catch(() => {});
+    touch();
     socket.emit('presence:list', onlineUserIds());
     if (!wasOnline) socket.broadcast.emit('presence:online', id);
 
@@ -105,6 +108,7 @@ export function initSocket(httpServer) {
         connections.set(id, left);
       } else {
         connections.delete(id);
+        touch();
         io.emit('presence:offline', id);
       }
     });

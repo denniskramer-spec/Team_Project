@@ -67,7 +67,7 @@ router.get('/', async (req, res) => {
     Plan.find(withGroup({ ...owners, ...planned, scope: 'personal' }, 'owner')).lean(),
     Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).lean(),
     // Tasks that overlap the period at all.
-    Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, endDate: { $gte: period.start } }, 'owner')).lean(),
+    Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, $or: [{ endDate: null }, { endDate: { $gte: period.start } }] }, 'owner')).lean(),
     Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member')).lean(),
     // The people listed follow the same role rules: a boss sees their group,
     // a member only themselves.
@@ -108,7 +108,7 @@ router.get('/', async (req, res) => {
   const task = {
     done: tasks.filter((t) => t.status === 'done').length,
     total: tasks.length,
-    salary: sum(tasks, 'salary'),
+    price: sum(tasks, 'price'),
   };
 
   const planStates = PLAN_STATES.reduce((acc, state) => ({ ...acc, [state]: allPlans.filter((p) => p.status === state).length }), {});
@@ -132,7 +132,7 @@ router.get('/', async (req, res) => {
       reported: { jobBid: sumJobBids(mine.reports), aiBid: sum(mine.reports, 'aiBid'), income: sum(mine.reports, 'income') },
       upcoming: sum(mine.reports, 'upcomingAmount'),
       actualIncome: sum(mine.incomes, 'amount'),
-      tasks: { total: mine.tasks.length, done: mine.tasks.filter((t) => t.status === 'done').length, salary: sum(mine.tasks, 'salary') },
+      tasks: { total: mine.tasks.length, done: mine.tasks.filter((t) => t.status === 'done').length, price: sum(mine.tasks, 'price') },
       planStates: PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: mine.allPlans.filter((p) => p.status === s).length }), {}),
     };
   });
@@ -153,7 +153,6 @@ router.get('/', async (req, res) => {
     task,
     planStates,
     rows,
-    taskSalary: sum(tasks, 'salary'),
     counts: { plans: allPlans.length, reports: reports.length, tasks: tasks.length, incomes: incomes.length, members: people.length },
     groups: allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
     scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',

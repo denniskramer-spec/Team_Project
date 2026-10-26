@@ -5,7 +5,8 @@ import { compact, fitLabel, niceMax, topRounded } from './chartMath.js';
 
 // Planned vs real income per member, as grouped columns:
 //   blue          = planned income (from the member's plan)
-//   green + red   = income (records) with upcoming income stacked on top
+//   green + red   = income (records) with the upcoming income due in this
+//                   period (by its upcoming date) stacked on top
 // Values are money, so the two columns share one axis.
 const SERIES = [
   { key: 'planned', label: 'Planned', color: 'var(--series-1)' },
@@ -40,12 +41,12 @@ function MemberDetail({ row, periodLabel, onClose }) {
           {shownOf(items.length, row.incomeCount) && <p className="muted small list-note">{shownOf(items.length, row.incomeCount)}</p>}
           {items.length ? (
             <table className="table">
-              <thead><tr><th>Date</th><th>Task / from</th><th className="num">Amount</th></tr></thead>
+              <thead><tr><th>Date</th><th>Project</th><th className="num">Amount</th></tr></thead>
               <tbody>
                 {items.map((i) => (
                   <tr key={i.id}>
                     <td>{formatDay(i.date)}</td>
-                    <td>{i.task ? i.task.name : i.from}{i.task && i.from ? <span className="muted small"> · {i.from}</span> : null}{i.note && <div className="muted small">{i.note}</div>}</td>
+                    <td>{i.task ? i.task.name : i.from || '—'}{i.note && <div className="muted small">{i.note}</div>}</td>
                     <td className="num strong">{formatAmount(i.amount)}</td>
                   </tr>
                 ))}

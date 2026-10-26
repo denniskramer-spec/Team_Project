@@ -1,7 +1,8 @@
 import Task from '../models/Task.js';
 import Income from '../models/Income.js';
 import Outcome from '../models/Outcome.js';
-import Asset from '../models/Asset.js';
+import Resident from '../models/Resident.js';
+import ChatAccount from '../models/ChatAccount.js';
 import Plan from '../models/Plan.js';
 import Report from '../models/Report.js';
 
@@ -16,7 +17,8 @@ export async function moveRecordsToGroup(userId, groupId) {
   const group = groupId ?? null;
   await Promise.all([
     Task.updateMany({ owner: userId }, { group }),
-    Asset.updateMany({ owner: userId }, { group }),
+    Resident.updateMany({ owner: userId }, { group }),
+    ChatAccount.updateMany({ owner: userId }, { group }),
     Income.updateMany({ member: userId }, { group }),
     Outcome.updateMany({ member: userId }, { group }),
     Plan.updateMany({ owner: userId, scope: 'personal' }, { group }),
@@ -27,5 +29,5 @@ export async function moveRecordsToGroup(userId, groupId) {
 // A deleted group leaves its (disabled or pending) members' records without
 // one; they show up under "No group".
 export async function clearGroupFromRecords(groupId) {
-  await Promise.all([Task, Asset, Income, Outcome, Plan, Report].map((M) => M.updateMany({ group: groupId }, { group: null })));
+  await Promise.all([Task, Resident, ChatAccount, Income, Outcome, Plan, Report].map((M) => M.updateMany({ group: groupId }, { group: null })));
 }

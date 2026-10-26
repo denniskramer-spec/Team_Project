@@ -85,7 +85,7 @@ export default function MemberChannel({ title }) {
               <th>Birthday</th>
               <th>Group</th>
               <th>Role</th>
-              <th>Assets</th>
+              <th>Residents</th>
               <th aria-label="Actions" />
             </tr>
           </thead>
@@ -110,11 +110,11 @@ export default function MemberChannel({ title }) {
                 </td>
                 <td data-label="Group">{m.group?.name ?? <span className="muted">—</span>}</td>
                 <td data-label="Role"><RoleBadge role={m.role} /></td>
-                <td data-label="Assets" className="assets-cell">
-                  {m.assets?.length
-                    ? m.assets.map((sentence, i) => (
+                <td data-label="Residents" className="residents-cell">
+                  {m.residents?.length
+                    ? m.residents.map((sentence, i) => (
                       // eslint-disable-next-line react/no-array-index-key
-                      <div key={i} className="asset-line" title={sentence}>{sentence}</div>
+                      <div key={i} className="resident-line" title={sentence}>{sentence}</div>
                     ))
                     : <span className="muted">—</span>}
                 </td>

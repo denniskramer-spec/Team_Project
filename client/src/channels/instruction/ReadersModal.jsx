@@ -22,7 +22,7 @@ export default function ReadersModal({ instruction, onClose }) {
     <ul className="reader-list">
       {items.map((r) => (
         <li key={r.id}>
-          <Avatar name={r.name} role={r.role} size={28} />
+          <Avatar name={r.name} role={r.role} size={24} />
           <span className="strong">{r.name}</span>
           <span className="muted small">{r.note ?? r.group ?? ''}</span>
           {r.readAt && <span className="muted small reader-time">{timeAgo(r.readAt)}</span>}

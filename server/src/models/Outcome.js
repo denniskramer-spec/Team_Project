@@ -1,11 +1,5 @@
 import mongoose from 'mongoose';
-
-// An attached image, as stored by utils/uploads.js. The field is called
-// `type`, so it needs the long form or Mongoose reads it as the path's type.
-const imageSchema = new mongoose.Schema(
-  { file: String, name: String, type: { type: String }, size: Number },
-  { _id: false },
-);
+import { imageSchema } from './image.js';
 
 // Ties the shares of one team/group outcome together.
 const splitSchema = new mongoose.Schema(
