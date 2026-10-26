@@ -116,8 +116,8 @@ Channel titles come from `GET /api/nav`, built per user in
   **issues / blockers** and the **plan for tomorrow**. The hours written on an hourly
   project (or the tasks done on a per-task one) are what the day is worth: price × hours
   or price × tasks, less the project's resident share,
-  becomes the report's **upcoming** amount, due on that day (so it shows in the Finance
-  chart for that week and month). The modal saves a **draft** as you
+  becomes the report's **income** (what the day earned) and its **upcoming** amount, due on
+  that day (so it shows in the Finance chart for that week and month). Nothing is typed in. The modal saves a **draft** as you
   type and **Send report** sends it; a **Report due** button sits in the corner of every
   screen until today's is sent. A group's report is not written by anyone: it is
   its members' reports of the day added up (sent count, bids, projects

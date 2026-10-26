@@ -346,13 +346,14 @@ router.put('/', async (req, res) => {
   if (period.start > new Date()) throw badRequest('That period has not started yet');
 
   const work = await resolveWork(req, scope);
-  // The hours (or tasks done) reported are what the member expects to be
-  // paid for this day: they become the upcoming amount, due on the report day.
+  // The hours (or tasks done) reported are what the member earned this day:
+  // they are the report's income and its upcoming amount, due on the report
+  // day (nothing is typed in by hand).
   const earned = work ? work.reduce((sum, w) => sum + (w.amount || 0), 0) : undefined;
   const fields = {
     ...checkFields(req.body),
     ...(req.body.task !== undefined ? { task: await resolveTask(req, scope) } : {}),
-    ...(work !== undefined ? { work, upcomingAmount: Math.round(earned * 100) / 100, upcomingDate: earned > 0 ? period.start : null } : {}),
+    ...(work !== undefined ? { work, income: Math.round(earned * 100) / 100, upcomingAmount: Math.round(earned * 100) / 100, upcomingDate: earned > 0 ? period.start : null } : {}),
     // Saving without `send` keeps (or starts) a draft; `send` marks it sent.
     ...(req.body.send === true ? { sentAt: new Date() } : {}),
     periodStart: period.start,
