@@ -5,12 +5,13 @@ import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage, dmPeerOf, isDmKey } from '../utils/chatPolicy.js';
+import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { chatLimit } from '../middleware/limits.js';
-import { chatEvent, navChangedFor } from '../socket/events.js';
+import { chatEvent, navChangedFor, dmEvent } from '../socket/events.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -86,6 +87,7 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
     channelKey: channel.key,
     group: channel.group?._id ?? null,
     author: req.user._id,
+    ...(channel.kind === 'dm' ? { peers: channel.peers } : {}),
     content,
   }).save();
   await message.populate('author', AUTHOR_FIELDS);
@@ -97,22 +99,34 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
     { upsert: true },
   );
 
-  chatEvent('chat:new', channel, {
-    titleKey: titleKeyFor(channel.key, channel.group?.slug),
-    channelName: channel.name,
-    message: serialize(message),
-  });
+  sendChatEvent('chat:new', channel, req.user, (titleKey, peer) => ({
+    titleKey, channelName: peer ? peer.name : channel.name, message: serialize(message), dm: channel.kind === 'dm',
+  }));
   res.status(201).json({ message: serialize(message) });
 });
+
+// Sends a chat event to everyone in the channel. In a DM each side gets the
+// title key that names the other person.
+function sendChatEvent(event, channel, user, payloadFor) {
+  if (channel.kind !== 'dm') {
+    chatEvent(event, channel, payloadFor(titleKeyFor(channel.key, channel.group?.slug)));
+    return;
+  }
+  const me = { _id: user._id, name: user.name };
+  const them = channel.other;
+  dmEvent(event, String(user._id), payloadFor(`dm-${them._id}`, them));
+  dmEvent(event, String(them._id), payloadFor(`dm-${me._id}`, me));
+}
 
 async function findMessage(req) {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Message not found');
   const message = await Message.findById(req.params.id).populate('author', AUTHOR_FIELDS);
   if (!message) throw notFound('Message not found');
   // Re-check that the user may open this chat at all.
+  if (isDmKey(message.channelKey) && !message.peers?.some((p) => String(p) === String(req.user._id))) throw notFound('Message not found');
   const titleKey = message.channelKey.startsWith('group:')
     ? `group-${(await Group.findById(message.group).lean())?.slug}`
-    : message.channelKey;
+    : isDmKey(message.channelKey) ? `dm-${dmPeerOf(message.channelKey, req.user._id)}` : message.channelKey;
   const channel = await resolveChannel(req.user, titleKey);
   return { message, channel, titleKey };
 }
@@ -124,7 +138,7 @@ router.patch('/messages/:id', async (req, res) => {
   message.editedAt = new Date();
   await message.save();
 
-  chatEvent('chat:changed', channel, { titleKey, message: serialize(message) });
+  sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(message) }));
   res.json({ message: serialize(message) });
 });
 
@@ -133,7 +147,7 @@ router.delete('/messages/:id', async (req, res) => {
   if (!canDeleteMessage(req.user, message)) throw forbidden('You cannot delete this message');
   await message.deleteOne();
 
-  chatEvent('chat:deleted', channel, { titleKey, id: message._id });
+  sendChatEvent('chat:deleted', channel, req.user, (key) => ({ titleKey: key, id: message._id }));
   res.json({ ok: true });
 });
 
@@ -151,6 +165,36 @@ router.post('/:titleKey/read', async (req, res) => {
 
 router.get('/unread', async (req, res) => {
   res.json({ counts: await chatUnreadCounts(req.user) });
+});
+
+// GET /api/chat/dms — this user's direct message conversations, newest
+// first, with the other person, the last message and how many are unread.
+router.get('/dms', async (req, res) => {
+  const me = String(req.user._id);
+  const latest = await Message.aggregate([
+    { $match: { peers: req.user._id } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: '$channelKey', last: { $first: '$$ROOT' } } },
+    { $sort: { 'last.createdAt': -1 } },
+    { $limit: 50 },
+  ]);
+  const keys = latest.map((l) => l._id);
+  const reads = await ChatRead.find({ user: req.user._id, channelKey: { $in: keys } }).lean();
+  const readAt = new Map(reads.map((r) => [r.channelKey, r.lastReadAt]));
+  const peerIds = latest.map((l) => dmPeerOf(l._id, me));
+  const peers = await User.find({ _id: { $in: peerIds } }, 'name role group status').populate('group', 'name').lean();
+  const peerOf = new Map(peers.map((p) => [String(p._id), p]));
+  const dms = await Promise.all(latest.map(async (l) => {
+    const peer = peerOf.get(dmPeerOf(l._id, me));
+    const unread = await Message.countDocuments({ channelKey: l._id, author: { $ne: req.user._id }, createdAt: { $gt: readAt.get(l._id) ?? req.user.createdAt } });
+    return {
+      titleKey: `dm-${dmPeerOf(l._id, me)}`,
+      peer: peer ? { id: peer._id, name: peer.name, role: peer.role, group: peer.group?.name ?? null, active: peer.status === 'active' } : null,
+      last: { content: l.last.content.slice(0, 120), at: l.last.createdAt, mine: String(l.last.author) === me },
+      unread,
+    };
+  }));
+  res.json({ dms, unread: dms.reduce((n, d) => n + d.unread, 0) });
 });
 
 export default router;

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
 import { badRequest } from './httpError.js';
 
@@ -69,6 +70,16 @@ export function imageUpload(req, res, next) {
   });
 }
 
+// 30 upload requests per 15 minutes per user, for each upload route.
+export const uploadLimiter = () => rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many uploads, please try again in a few minutes' },
+});
+
 export const describeUpload = (f) => ({ file: f.filename, name: f.originalname.slice(0, 120), type: f.mimetype, size: f.size });
 
 const SAFE_NAME = /^[0-9]+-[0-9a-f]{12}\.(png|jpg|gif|webp)$/;
@@ -87,6 +98,14 @@ export async function checkImages(list) {
     images.push({ file, name: String(img.name ?? file).slice(0, 120), type: String(img.type ?? ''), size: Number(img.size) || 0 });
   }
   return images;
+}
+
+// A single optional image (a photo, a screenshot): null clears it.
+export async function checkImage(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const [image] = await checkImages([value]);
+  return image;
 }
 
 // Deletes files no record references any more (`stillUsed(file)` says).

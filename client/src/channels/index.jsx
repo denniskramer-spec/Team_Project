@@ -8,7 +8,8 @@ import PlanChannel from './plan/PlanChannel.jsx';
 import TaskChannel from './task/TaskChannel.jsx';
 import FinanceChannel from './finance/FinanceChannel.jsx';
 import CheckoutChannel from './checkout/CheckoutChannel.jsx';
-import AssetChannel from './asset/AssetChannel.jsx';
+import ResidentChannel from './resident/ResidentChannel.jsx';
+import ChatAccountChannel from './chataccount/ChatAccountChannel.jsx';
 
 // Maps a channel key to the component that renders section 3.
 // Each later step registers its channel here.
@@ -20,7 +21,8 @@ const REGISTRY = {
   task: TaskChannel,
   finance: FinanceChannel,
   checkout: CheckoutChannel,
-  asset: AssetChannel,
+  resident: ResidentChannel,
+  chataccount: ChatAccountChannel,
   chat: ChatChannel,
   admin: AdminChannel,
 };

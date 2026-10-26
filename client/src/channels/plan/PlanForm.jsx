@@ -5,18 +5,17 @@ import { timeAgo } from '../../format.js';
 import Icon from '../../components/Icon.jsx';
 import StatusPicker from './StatusPicker.jsx';
 
-const toForm = (p) => ({
-  jobBid: p?.jobBid ?? '',
-  aiBid: p?.aiBid ?? '',
-  income: p?.income ?? '',
+const toForm = (p, items) => ({
+  ...Object.fromEntries(items.map((i) => [i.key, p?.[i.key] || ''])),
   note: p?.note ?? '',
   status: p?.status ?? 'not_done',
 });
 
-// Plan targets (bid, task, income, note) plus the result state.
-export default function PlanForm({ title, type, period, scope = 'personal', plan, onSaved }) {
+// Plan targets: one per measurable item of the daily report, grouped the
+// same way (bids, candidates, income), plus a note and the result state.
+export default function PlanForm({ title, type, period, scope = 'personal', plan, items, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState(toForm(plan));
+  const [form, setForm] = useState(toForm(plan, items));
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -34,7 +33,7 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
       setForm((f) => ({ ...f, status: plan?.status ?? f.status }));
       return;
     }
-    setForm(toForm(plan));
+    setForm(toForm(plan, items));
     setDirty(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan?.id, plan?.updatedAt, period]);
@@ -68,9 +67,11 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
     }
   };
 
+  const groups = [...new Set(items.map((i) => i.group))];
+
   return (
     <form className="card plan-form" onSubmit={save}>
-      <div className="report-form-head">
+      <div className="form-card-head">
         <Icon name={scope === 'group' ? 'users' : 'target'} size={16} />
         <strong>{title}</strong>
         {plan
@@ -78,19 +79,20 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
           : <span className="tag missing-tag">No plan yet</span>}
       </div>
 
-      <div className="number-grid">
-        <label>
-          Job bids planned
-          <input type="number" min="0" step="1" value={form.jobBid} onChange={set('jobBid')} placeholder="0" />
-        </label>
-        <label>
-          AI training bids planned
-          <input type="number" min="0" step="1" value={form.aiBid} onChange={set('aiBid')} placeholder="0" />
-        </label>
-        <label>
-          Income target
-          <input type="number" min="0" step="0.01" value={form.income} onChange={set('income')} placeholder="0" />
-        </label>
+      <div className="plan-groups">
+        {groups.map((g) => (
+          <div key={g} className="plan-group">
+            <span className="rm-section-title">{g}</span>
+            <div className="plan-targets">
+              {items.filter((i) => i.group === g).map((i) => (
+                <label key={i.key}>
+                  {i.label}
+                  <input type="number" min="0" step={i.key === 'income' ? '0.01' : i.key === 'biddingHours' ? '0.5' : '1'} value={form[i.key]} onChange={set(i.key)} placeholder="0" />
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
       <label>
         Note
@@ -100,9 +102,6 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
       <div className="plan-status-row">
         <span className="muted small">Result</span>
         <StatusPicker value={form.status} onChange={setStatus} />
-      </div>
-
-      <div className="composer-foot">
         {dirty && <span className="muted small">Unsaved changes</span>}
         <button className="btn primary" disabled={busy}>{busy ? 'Saving...' : plan ? 'Update plan' : 'Save plan'}</button>
       </div>

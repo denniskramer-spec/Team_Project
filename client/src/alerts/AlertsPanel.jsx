@@ -37,7 +37,7 @@ export default function AlertsPanel() {
         {unread.map((a) => (
           <li key={a.id} className={a.priority === 'urgent' ? 'urgent' : ''}>
             <button className="alert-item" onClick={() => open(a)}>
-              <Avatar name={a.author.name} role={a.author.role} size={28} />
+              <Avatar name={a.author.name} role={a.author.role} size={24} />
               <div className="alert-item-text">
                 <div className="strong small">
                   {a.author.name}

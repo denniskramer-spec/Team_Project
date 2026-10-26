@@ -23,8 +23,12 @@ import Plan from '../models/Plan.js';
 import Task from '../models/Task.js';
 import Income from '../models/Income.js';
 import Outcome from '../models/Outcome.js';
+import Resident from '../models/Resident.js';
+import ChatAccount from '../models/ChatAccount.js';
 import { periodKey, parsePeriod, shiftPeriod } from '../utils/period.js';
 import { seedGroups } from '../utils/seed.js';
+import { computeSplit, methodOf, workEarnings } from '../utils/payments.js';
+import { dmKey } from '../utils/chatPolicy.js';
 
 const PASSWORD = 'demo1234';
 const force = process.argv.includes('--force');
@@ -53,14 +57,22 @@ const PEOPLE = [
 
 const CLIENTS = ['Acme Ltd', 'Globex', 'Initech', 'Umbrella Co', 'Stark Industries', 'Wayne Group'];
 const TASK_NAMES = [
-  'Website redesign', 'Tender pack — city council', 'Quarterly audit', 'Trade show booth',
+  'LinkedIn AOR/FMS', 'Proton Robotics Project', 'React dashboard for a logistics startup', 'Data labelling — medical images',
   'CRM migration', 'Brand refresh', 'Supplier review', 'Security assessment',
+];
+const SOURCES = ['Anyone AI', 'Micro1', 'Upwork', 'LinkedIn', 'Referral', 'Toptal'];
+// Day-by-day work written in the daily reports, newest day first.
+const WORK = [
+  'Pending', 'Still Pending, not start work', 'Complete Background Check and Pending',
+  'Make Criminal Check Certificate\nRedo Checkr', 'Onboarding call with the client\nSigned the NDA',
+  'Set up the dev environment\nFirst pull request opened', 'Fixed the login bug\nWrote tests for the API',
 ];
 
 async function wipe() {
   await Promise.all([
     Instruction.deleteMany({}), Message.deleteMany({}), ChatRead.deleteMany({}),
     Report.deleteMany({}), Plan.deleteMany({}), Task.deleteMany({}), Income.deleteMany({}), Outcome.deleteMany({}),
+    Resident.deleteMany({}), ChatAccount.deleteMany({}),
     User.deleteMany({ role: { $ne: 'admin' } }),
   ]);
   console.log('Cleared demo data (the admin account was kept).');
@@ -74,7 +86,8 @@ async function createPeople(groups) {
       name: person.name,
       role: person.status === 'pending' ? 'member' : person.role,
       group: person.group ? groups[person.group]._id : null,
-      birthday: new Date(`${person.birthday}T00:00:00.000Z`),
+      // Tess's birthday is always three days away, so "Coming up" has something to show.
+      birthday: person.username === 'tess' ? new Date(Date.UTC(1998, day(3).getUTCMonth(), day(3).getUTCDate())) : new Date(`${person.birthday}T00:00:00.000Z`),
       status: person.status ?? 'active',
       mustChangePassword: false,
       // The team existed before the seeded instructions and messages, so read
@@ -145,6 +158,22 @@ async function createChat(people, groups) {
     }).save();
   }
   console.log(`Seeded ${lines.length} chat messages`);
+
+  // A few direct messages, and when people were last around.
+  const dms = [
+    ['lena', 'mina', 'Hi Mina, how is the LinkedIn onboarding going?', -3],
+    ['mina', 'lena', 'Still pending on their side. I chased them today.', -2],
+    ['lena', 'mina', 'Thanks. Put it in the report so the group sees it.', -1],
+    ['bruno', 'omar', 'Omar, can you cover the Proton call tomorrow?', -5],
+    ['omar', 'bruno', 'Sure, 19:00 works for me.', -4],
+  ];
+  for (const [from, to, content, hoursAgo] of dms) {
+    const a = people[from]; const b = people[to];
+    await new Message({ channelKey: dmKey(a._id, b._id), author: a._id, peers: [a._id, b._id], content, createdAt: new Date(Date.now() + hoursAgo * 3600000) }).save();
+  }
+  for (const [i, u] of Object.values(people).entries()) {
+    await User.updateOne({ _id: u._id }, { lastSeenAt: new Date(Date.now() - (i + 1) * 47 * 60000) });
+  }
 }
 
 async function createReportsAndPlans(people) {
@@ -171,6 +200,7 @@ async function createReportsAndPlans(people) {
           periodEnd: period.end,
           jobBid: jobBid + 2,
           aiBid: aiBid + 1,
+          resumes: rnd(10, 30), forms: rnd(5, 15), biddingHours: rnd(15, 30),
           income: income + 500,
           note: pick(upcoming, index + back),
           status: back === 0 ? pick(['not_done', 'progress'], index) : 'done',
@@ -198,8 +228,15 @@ async function createReportsAndPlans(people) {
           aiBid: rnd(0, 4),
           income: rnd(200, 1600),
           upcomingAmount: rnd(0, 2500),
+          // Due soon for recent reports (this week), later in the month for older ones.
+          upcomingDate: back < 2 ? day(rnd(1, 5)) : day(rnd(8, 25)),
           upcomingNote: pick(upcoming, index + back),
           note: pick(notes, index + back),
+          resumes: rnd(0, 6), forms: rnd(0, 4), biddingHours: rnd(1, 5),
+          todayPlan: back === 1 ? [{ text: 'Bid 150', done: true }, { text: 'Find citizen with BlueOrbit & Discord', done: false }] : [],
+          planTomorrow: back === 1 ? 'Making Accounts with AI Training Platforms & Bot Call\nFind citizen with BlueOrbit & Discord\nBid 150' : '',
+          calls: back === 1 ? [{ time: '19:00', title: '1st Intro call · Raydar (Site Reliability Engineer)', profile: 'Dennis Kramer', caller: 'Warren', result: 'well', note: 'AI bot call, duplicate questions.' }] : [],
+          sentAt: day(-back),
         },
         { upsert: true, setDefaultsOnInsert: true },
       );
@@ -207,55 +244,46 @@ async function createReportsAndPlans(people) {
     }
   }
 
-  // Group reports and group plans from the two bosses.
+  // Group plans from the two bosses (group reports add themselves up).
   for (const boss of [people.bruno, people.bianca]) {
     const week = periodKey('weekly');
     const period = parsePeriod('weekly', week);
-    const today = periodKey('daily');
-    const dayPeriod = parsePeriod('daily', today);
-    await Report.findOneAndUpdate(
-      { author: boss._id, type: 'daily', period: today, scope: 'group' },
-      {
-        group: boss.group,
-        periodStart: dayPeriod.start,
-        periodEnd: dayPeriod.end,
-        jobBid: rnd(6, 14),
-        aiBid: rnd(2, 9),
-        income: rnd(2000, 5000),
-        upcomingAmount: rnd(1000, 4000),
-        upcomingNote: 'Two tenders land this week.',
-        note: 'Group summary for the day.',
-      },
-      { upsert: true, setDefaultsOnInsert: true },
-    );
     await Plan.findOneAndUpdate(
       { owner: boss._id, type: 'weekly', period: week, scope: 'group' },
-      { group: boss.group, periodStart: period.start, periodEnd: period.end, jobBid: 30, aiBid: 12, income: 16000, note: 'Group target for the week.', status: 'progress' },
+      { group: boss.group, periodStart: period.start, periodEnd: period.end, jobBid: 30, aiBid: 12, resumes: 60, forms: 30, biddingHours: 80, income: 16000, note: 'Group target for the week.', status: 'progress' },
       { upsert: true, setDefaultsOnInsert: true },
     );
   }
-  console.log(`Seeded ${reports} reports and ${plans} plans (plus group reports and plans)`);
+  console.log(`Seeded ${reports} reports and ${plans} plans (plus group plans)`);
 }
 
-async function createTasksAndIncome(people) {
+async function createTasksAndIncome(people, residents) {
   const members = Object.values(people).filter((u) => u.role === 'member' && u.status === 'active');
-  const statuses = ['done', 'progress', 'not_done'];
+  const statuses = ['active', 'active', 'paused', 'done'];
   let incomes = 0;
 
   for (const [index, name] of TASK_NAMES.entries()) {
     const owner = pick(members, index);
     const start = day(-rnd(3, 20));
-    const end = day(rnd(1, 20));
+    // Every third project is open-ended; the others expire months ahead.
+    // One expires within two weeks, so "Coming up" has something to show.
+    const end = index % 3 === 2 ? null : index === 1 ? day(9) : day(rnd(30, 400));
+    const own = residents.filter((r) => String(r.owner) === String(owner._id));
     const task = await new Task({
       name,
       owner: owner._id,
       group: owner.group ?? null,
       createdBy: people.lena._id,
+      source: pick(SOURCES, index),
+      resident: own.length ? pick(own, index)._id : null,
       startDate: start,
       endDate: end,
-      salary: rnd(400, 2600),
+      price: pick([65, 90, 40, 1200, 55, 3000, 75, 30], index),
+      currency: 'USD',
+      priceUnit: pick(['hour', 'hour', 'hour', 'month', 'hour', 'fixed', 'hour', 'task'], index),
+      method: pick(['paypal', 'wise', 'payoneer', 'usdt', 'upwork', 'paypal', 'wise', 'bank'], index),
       status: pick(statuses, index),
-      note: index % 3 === 0 ? 'Agreed with the client at the kickoff call.' : '',
+      note: index % 3 === 0 ? 'Now process of Onboarding' : '',
     }).save();
 
     // Income for the finished ones.
@@ -265,8 +293,8 @@ async function createTasksAndIncome(people) {
         group: owner.group ?? null,
         createdBy: people.lena._id,
         date: day(-rnd(0, 5)),
-        amount: task.salary,
-        from: pick(CLIENTS, index),
+        ...paid(rnd(400, 2600), pick(['paypal', 'wise', 'payoneer', 'usdt'], index), 0),
+        from: task.name,
         task: task._id,
         note: 'Paid on completion.',
       }).save();
@@ -274,15 +302,23 @@ async function createTasksAndIncome(people) {
     }
   }
 
-  // Each member's daily reports point at their newest task, with the upcoming
-  // income due when that task ends.
-  for (const member of members) {
-    const task = await Task.findOne({ owner: member._id }).sort({ startDate: -1 });
-    if (!task) continue;
-    await Report.updateMany(
-      { author: member._id, scope: 'personal' },
-      { task: task._id, upcomingDate: task.endDate },
-    );
+  // Each member's daily reports carry the day's work on their running
+  // projects (one entry per project), with the upcoming income due when the
+  // newest one ends. One project is left without today's entry.
+  for (const [i, member] of members.entries()) {
+    const running = await Task.find({ owner: member._id, status: { $ne: 'done' } }).sort({ startDate: -1 });
+    if (!running.length) continue;
+    const reports = await Report.find({ author: member._id, scope: 'personal', type: 'daily' }).sort({ periodStart: -1 });
+    for (const [back, report] of reports.entries()) {
+      report.work = running
+        .filter((t, n) => !(back === 0 && n === 1 && i % 2 === 0))
+        .map((t, n) => { const hours = rnd(1, 6); return { task: t._id, text: pick(WORK, back + n * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit }, { hours }) }; });
+      report.task = running[0]._id;
+      // The hours reported are what the day is worth: the upcoming amount.
+      const earned = report.work.reduce((sum, w) => sum + (w.amount || 0), 0);
+      if (earned > 0) { report.upcomingAmount = earned; report.upcomingDate = report.periodStart; }
+      await report.save();
+    }
   }
 
   // A few more income records spread over this month.
@@ -294,12 +330,19 @@ async function createTasksAndIncome(people) {
       createdBy: people.lena._id,
       // Spread over the month, but weighted to this week so weekly views fill up.
       date: day(-(i % 3 === 0 ? rnd(8, 25) : rnd(0, 5))),
-      amount: rnd(300, 3500),
-      from: pick(CLIENTS, i + 2),
+      ...paid(rnd(300, 3500), pick(['paypal', 'wise', 'payoneer', 'usdt', 'upwork'], i), i % 2 ? 20 : 0),
+      from: pick(CLIENTS, i + 2),  // a client paid directly, no project
     }).save();
     incomes += 1;
   }
-  console.log(`Seeded ${TASK_NAMES.length} tasks and ${incomes} income records`);
+  console.log(`Seeded ${TASK_NAMES.length} projects and ${incomes} income records`);
+}
+
+// An income amount with its payment method, fee and resident share filled in.
+function paid(amount, method, residentPercent) {
+  const m = methodOf(method);
+  const payment = { method, feePercent: m.feePercent, feeFixed: m.feeFixed, residentPercent };
+  return { amount, ...payment, ...computeSplit({ amount, ...payment }) };
 }
 
 const REASONS = ['Software licence', 'Travel to client', 'Equipment', 'Training course', 'Subcontractor', 'Office supplies'];
@@ -322,7 +365,47 @@ async function createOutcomes(people) {
     }).save();
   }
   console.log('Seeded 8 outcome records');
+}
 
+const RESIDENTS = [
+  { owner: 'mina', name: 'Dyonatas Menegatti', country: 'Brazil', citizenship: 'Brazil', age: 31, source: 'Telegram group', via: 'Telegram', laptop: true, access: true, first: -3 },
+  { owner: 'mina', name: 'Anderson Santos do Nascimento', country: 'Brazil', citizenship: 'Brazil', age: 27, source: 'Referral from Dyonatas', via: 'WhatsApp', laptop: true, access: true, first: -61 },
+  { owner: 'omar', name: 'Lucía Fernández', country: 'Argentina', citizenship: 'Argentina', age: 24, source: 'Instagram outreach', via: 'Instagram', laptop: false, access: false, first: -12 },
+  { owner: 'kai', name: 'Mateus Oliveira', country: 'Portugal', citizenship: 'Brazil', age: 35, source: 'Discord server', via: 'Discord', laptop: true, access: false, first: -20 },
+  { owner: 'rita', name: 'Priya Nair', country: 'India', citizenship: 'India', age: 29, source: 'Job board reply', via: 'Email', laptop: true, access: true, first: -8 },
+];
+
+const ACCOUNTS = [
+  { owner: 'mina', platform: 'discord', name: '_demeteralin0725', joined: -57, contacts: [] },
+  { owner: 'mina', platform: 'whatsapp', name: '+1 (809) 292-4098', joined: -40, contacts: ['Anderson Santos do Nascimento', 'Dyonatas Menegatti'] },
+  { owner: 'omar', platform: 'telegram', name: '@daniel_ryan314', phone: '+14307321270', joined: -33, contacts: ['Lucía Fernández'] },
+  { owner: 'kai', platform: 'discord', name: '_dennis10004', joined: -57, contacts: ['Mateus Oliveira'] },
+  { owner: 'rita', platform: 'discord', name: '_denniskramer_75788', joined: -81, contacts: [], status: 'suspended' },
+];
+
+// Residents: who each member is in touch with, and the chat accounts they
+// use to talk to them.
+async function createResidentsAndAccounts(people) {
+  const byName = {};
+  for (const r of RESIDENTS) {
+    const owner = people[r.owner];
+    byName[r.name] = await new Resident({
+      name: r.name, country: r.country, citizenship: r.citizenship, age: r.age, source: r.source,
+      firstContact: day(r.first), firstContactVia: r.via, hasLaptop: r.laptop, accessSetUp: r.access, sharePercent: r.access ? 30 : 0,
+      notes: r.access ? 'Remote access tested, works.' : '',
+      owner: owner._id, group: owner.group ?? null, createdBy: owner._id,
+    }).save();
+  }
+  for (const a of ACCOUNTS) {
+    const owner = people[a.owner];
+    await new ChatAccount({
+      platform: a.platform, name: a.name, phone: a.phone ?? '', joinedAt: day(a.joined),
+      contacts: a.contacts.map((n) => byName[n]._id), status: a.status ?? 'active',
+      owner: owner._id, group: owner.group ?? null, createdBy: owner._id,
+    }).save();
+  }
+  console.log(`Seeded ${RESIDENTS.length} residents and ${ACCOUNTS.length} chat accounts`);
+  return Object.values(byName);
 }
 
 async function main() {
@@ -341,7 +424,7 @@ async function main() {
   }
   if (existing && env.isProd) await stop('Refusing to wipe a production database (NODE_ENV=production).');
   if (existing && confirmed !== database) {
-    await stop(`--force would delete ${existing} accounts and all reports, plans, tasks, income, outcome, chat and instructions in "${database}".\n`
+    await stop(`--force would delete ${existing} accounts and all reports, plans, tasks, income, outcome, residents, chat accounts, chat and instructions in "${database}".\n`
       + `Nothing was changed. If that is what you want, add: --confirm=${database}`);
   }
   if (existing) await wipe();
@@ -354,7 +437,8 @@ async function main() {
   await createInstructions(people, groups);
   await createChat(people, groups);
   await createReportsAndPlans(people);
-  await createTasksAndIncome(people);
+  const residents = await createResidentsAndAccounts(people);
+  await createTasksAndIncome(people, residents);
   await createOutcomes(people);
 
   console.log('\nDemo accounts (password: demo1234)');

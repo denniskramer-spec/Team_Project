@@ -21,6 +21,9 @@ export function sessionChanged(userId, { disconnect = false } = {}) {
   if (disconnect) io.in(`user:${userId}`).disconnectSockets(true);
 }
 
+// A direct-message event for one side of the conversation.
+export const dmEvent = (event, userId, payload) => getIO()?.to(`user:${userId}`).emit(event, payload);
+
 // Sends a chat event to everyone who can open that chat.
 export function chatEvent(event, channel, payload) {
   getIO()?.to(roomsFor(channel)).emit(event, payload);
@@ -64,12 +67,25 @@ export function taskChanged(task) {
   io.to(ownerRooms(task, 'owner')).emit('nav:changed');
 }
 
-export function assetChanged(asset) {
+// A member's daily work changed (a report was saved, a resident removed):
+// their projects reload, but the channel tree is unchanged.
+export function taskWorkChanged(owner, group) {
+  getIO()?.to(ownerRooms({ owner, group }, 'owner')).emit('task:changed', { owner });
+}
+
+export function residentChanged(resident) {
   const io = getIO();
   if (!io) return;
-  io.to(ownerRooms(asset, 'owner')).emit('asset:changed', { id: asset._id });
-  // The member directory shows each member's assets in one line.
-  io.to(ownerRooms(asset, 'owner')).emit('directory:changed');
+  const rooms = ownerRooms(resident, 'owner');
+  io.to(rooms).emit('resident:changed', { id: resident._id });
+  // The member directory shows each member's residents in one line, and
+  // chat accounts list the residents they talk to by name.
+  io.to(rooms).emit('directory:changed');
+  io.to(rooms).emit('chatAccount:changed', { resident: resident._id });
+}
+
+export function chatAccountChanged(account) {
+  getIO()?.to(ownerRooms(account, 'owner')).emit('chatAccount:changed', { id: account._id });
 }
 
 export function incomeChanged(income) {

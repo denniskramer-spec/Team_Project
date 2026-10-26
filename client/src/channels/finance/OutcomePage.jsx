@@ -183,7 +183,7 @@ export default function OutcomePage() {
                   <td data-label="Date"><DateTag value={o.date} utc /></td>
                   <td data-label="For">
                     <div className="cell-user">
-                      <Avatar name={o.who.name} role={o.who.role} size={26} />
+                      <Avatar name={o.who.name} role={o.who.role} size={22} />
                       <span>{nameOf(o.who)}</span>
                     </div>
                   </td>

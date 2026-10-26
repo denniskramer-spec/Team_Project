@@ -13,11 +13,15 @@ export default defineConfig(({ mode }) => ({
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   // Source maps for the watch build used by `npm run dev`.
   build: { sourcemap: mode === 'development' },
+  // Listen on every interface, so the app can be opened from another machine
+  // (a VM host, a phone on the same network) at http://<this machine's IP>:3000.
   server: {
+    host: true,
     port: 3000,
     proxy: {
       '/api': apiUrl,
       '/socket.io': { target: apiUrl, ws: true },
     },
   },
+  preview: { host: true, port: 3000 },
 }));

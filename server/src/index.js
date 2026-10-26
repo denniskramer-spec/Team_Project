@@ -4,8 +4,10 @@ import { connectDB } from './config/db.js';
 import { seedAll } from './utils/seed.js';
 import { initSocket } from './socket/index.js';
 import app from './app.js';
-import Outcome from './models/Outcome.js';
 import { sweepOrphans } from './utils/uploads.js';
+import { fileInUse } from './utils/fileRefs.js';
+import { loadFees } from './utils/payments.js';
+import { scheduleFeeRefresh } from './utils/feeRefresh.js';
 
 // A bug in one handler should be logged, not end the process for everyone.
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
@@ -17,13 +19,15 @@ server.listen(env.port, () => {
   console.log(`API listening on http://localhost:${env.port}`);
 });
 
-// Clears out uploaded images no outcome ended up using, now and every 6 hours.
-const sweep = () => sweepOrphans((file) => Outcome.exists({ 'images.file': file }))
+// Clears out uploaded images no record ended up using, now and every 6 hours.
+const sweep = () => sweepOrphans(fileInUse)
   .catch((err) => console.error('Upload clean-up failed:', err));
 
 connectDB(env.mongoUri)
   .then(seedAll)
+  .then(loadFees)
   .then(() => {
+    scheduleFeeRefresh();
     sweep();
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
   })

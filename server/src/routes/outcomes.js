@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import rateLimit from 'express-rate-limit';
 import Outcome from '../models/Outcome.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -10,7 +9,8 @@ import {
   ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
 import { resolveTarget, shares, checkMoneyFields, inScope } from '../utils/outcomeTarget.js';
-import { imageUpload, describeUpload, checkImages, removeUnusedFiles } from '../utils/uploads.js';
+import { imageUpload, describeUpload, checkImages, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
+import { fileInUse } from '../utils/fileRefs.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkDay } from '../utils/validate.js';
 import { outcomeChanged } from '../socket/events.js';
@@ -65,7 +65,7 @@ async function checkFields(body, partial = false) {
 
 const item = (o) => ({ id: o._id, date: o.date, amount: o.amount, reason: o.reason, comment: o.comment || '', split: o.split?.id ? o.split.label : null });
 const populate = (q) => q.populate('member', PERSON_FIELDS).populate('group', 'name slug');
-const stillUsed = (file) => Outcome.exists({ 'images.file': file });
+const stillUsed = fileInUse;
 
 // GET /api/outcomes — same query as /api/incomes (type, period/date or from/to, group, member).
 router.get('/', async (req, res) => {
@@ -122,17 +122,7 @@ router.get('/members', async (req, res) => {
 
 // POST /api/outcomes/upload — multipart `images` files; returns the
 // references to send back in the record's `images`.
-// 30 upload requests (up to 150 images) per 15 minutes per user.
-const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 30,
-  keyGenerator: (req) => String(req.user._id),
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { message: 'Too many uploads, please try again in a few minutes' },
-});
-
-router.post('/upload', uploadLimiter, (req, res, next) => {
+router.post('/upload', uploadLimiter(), (req, res, next) => {
   if (!canRecordOutcome(req.user)) return next(forbidden('Only the team leader and bosses record outcome'));
   next();
 }, imageUpload, (req, res) => {

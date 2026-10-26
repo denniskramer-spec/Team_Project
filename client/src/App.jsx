@@ -10,6 +10,7 @@ import ChangePassword from './pages/ChangePassword.jsx';
 import Workspace from './layout/Workspace.jsx';
 import './layout/layout.css';
 import './channels/channels.css';
+import './features.css';
 
 export default function App() {
   return (

@@ -3,7 +3,7 @@ import User from '../models/User.js';
 import { canManageFor } from './visibility.js';
 import { badRequest, forbidden } from './httpError.js';
 
-// Tasks, income, outcome and assets belong to the people who do the work:
+// Tasks, income, outcome, residents and chat accounts belong to the people who do the work:
 // members and bosses. The leader and admins record them for others, never
 // for themselves — they have no column in the charts or the group totals.
 export const ownsRecords = (user) => ['member', 'boss'].includes(user.role);

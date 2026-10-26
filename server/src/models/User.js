@@ -26,6 +26,8 @@ const userSchema = new mongoose.Schema(
     passwordChangedAt: { type: Date, default: null },
     mustChangePassword: { type: Boolean, default: false },
     lastLoginAt: { type: Date, default: null },
+    // Last time a socket of theirs disconnected (or connected): "last seen".
+    lastSeenAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -10,10 +10,10 @@ import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js';
-import Asset from '../models/Asset.js';
+import Resident from '../models/Resident.js';
 import { scopeFilter } from '../utils/visibility.js';
 import { moveRecordsToGroup } from '../utils/moveRecords.js';
-import { serialize as serializeAsset } from './assets.js';
+import { serialize as serializeResident } from './residents.js';
 import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
@@ -97,27 +97,25 @@ router.get('/', async (req, res) => {
 
   const users = await User.find(filter).populate('group', 'name slug').sort('name');
 
-  // Each member's assets (a name chip each, with the full record behind a
-  // click), limited to the assets this role may read: a member only their
-  // own, a boss their group's, the leader and admins all.
+  // Each member's residents as one sentence, limited to the residents this
+  // role may read: a member only their own, a boss their group's, the leader
+  // and admins all.
   const scope = scopeFilter(req.user, 'owner');
-  const assetFilter = { owner: { $in: users.map((u) => u._id) } };
-  if (scope.owner) assetFilter.owner = scope.owner;   // a member: only themselves
-  if (scope.group) assetFilter.group = scope.group;   // a boss: their group
-  const assets = await Asset.find(assetFilter)
-    .populate('owner', 'name role')
-    .populate('group', 'name slug')
-    .sort('name');
+  const residentFilter = { owner: { $in: users.map((u) => u._id) } };
+  if (scope.owner) residentFilter.owner = scope.owner;   // a member: only themselves
+  if (scope.group) residentFilter.group = scope.group;   // a boss: their group
+  // Each one is sent in full (a name chip each, the record behind a click).
+  const residents = await Resident.find(residentFilter).populate('owner', 'name role').populate('group', 'name slug').sort('name');
   const byOwner = new Map();
-  assets.forEach((a) => {
-    const key = String(a.owner?._id ?? a.owner);
-    byOwner.set(key, [...(byOwner.get(key) ?? []), serializeAsset(a, req.user)]);
+  residents.forEach((r) => {
+    const key = String(r.owner?._id ?? r.owner);
+    byOwner.set(key, [...(byOwner.get(key) ?? []), serializeResident(r, req.user)]);
   });
 
   res.json({
     members: users.map((u) => ({
       ...serialize(u, req.user),
-      assets: byOwner.get(String(u._id)) ?? [],
+      residents: byOwner.get(String(u._id)) ?? [],
     })),
   });
 });

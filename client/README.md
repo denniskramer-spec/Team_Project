@@ -179,7 +179,7 @@ client/
   `npm --prefix client run dev:hmr` instead.
 - **MongoDB 8 will not start on Linux kernel 6.19 or newer** (SERVER-121912), which is
   why the container runs `mongo:7` (`business-manager-mongo`, host port 27018, volume
-  `business_manager_mongo_data`).
+  `business-manager-mongo-data`).
 - If MongoDB is down the API stays up, retries every 5 seconds and answers 503 on
   `/api/*`, so the screen shows a clear message. `GET /api/health` reports both states.
 - Changing a password logs out that user's other sessions; disabling an account logs

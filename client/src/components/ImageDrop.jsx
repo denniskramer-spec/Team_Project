@@ -70,9 +70,9 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
         aria-label="Add images"
       >
         <Icon name="plus" size={18} />
-        <span>Drop screenshots here, click to choose, or paste</span>
-        <span className="muted small">PNG, JPEG, GIF or WebP · up to {max} images · 5 MB each</span>
-        <input ref={input} type="file" accept={ACCEPT.join(',')} multiple hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+        <span>{max === 1 ? 'Drop a screenshot here, click to choose, or paste' : 'Drop screenshots here, click to choose, or paste'}</span>
+        <span className="muted small">PNG, JPEG, GIF or WebP · {max === 1 ? 'one image' : `up to ${max} images`} · 5 MB each</span>
+        <input ref={input} type="file" accept={ACCEPT.join(',')} multiple={max > 1} hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
       </div>
       {error && <div className="alert error">{error}</div>}
       {(existing.length > 0 || files.length > 0) && (

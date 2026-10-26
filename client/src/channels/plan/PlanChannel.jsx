@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
@@ -42,88 +42,63 @@ function ResultSummary({ counts }) {
   );
 }
 
-function PlanRow({ plan, onStatus }) {
+// One target with what the daily reports have reached so far.
+function Target({ item, target, achieved }) {
+  const pct = target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
+  const hit = target > 0 && achieved >= target;
   return (
-    <tr className={plan.scope === 'group' ? 'group-plan' : ''}>
-      <td data-label="Owner">
-        <div className="cell-user">
-          <Avatar name={plan.owner?.name ?? '?'} role={plan.owner?.role ?? 'member'} size={30} />
-          <div>
-            <div className="strong">
-              {plan.scope === 'group' ? `${plan.group?.name ?? 'Group'} plan` : plan.owner?.name}
-              {plan.mine && <span className="muted small"> (you)</span>}
-            </div>
-            <div className="muted small">
-              {plan.scope === 'group' ? `by ${plan.owner?.name}` : plan.group?.name ?? '—'}
-            </div>
+    <li className={`target${hit ? ' hit' : ''}${!target ? ' none' : ''}`}>
+      <span className="target-label">{item.label}</span>
+      <span className="target-nums"><strong>{formatAmount(achieved)}</strong><span className="muted"> / {target ? formatAmount(target) : '—'}</span></span>
+      <span className="target-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></span>
+    </li>
+  );
+}
+
+// One member's (or group's) plan for the period: targets and progress.
+function PlanCard({ plan, items, onStatus }) {
+  const [open, setOpen] = useState(false);
+  const groups = [...new Set(items.map((i) => i.group))];
+  const withTarget = items.filter((i) => plan.targets[i.key] > 0);
+  const hits = withTarget.filter((i) => (plan.achieved?.[i.key] ?? 0) >= plan.targets[i.key]).length;
+  return (
+    <section className={`card plan-card${plan.scope === 'group' ? ' group-plan' : ''}`}>
+      <div className="plan-card-head">
+        <Avatar name={plan.owner?.name ?? '?'} role={plan.owner?.role ?? 'member'} size={24} />
+        <div className="plan-card-who">
+          <div className="strong">
+            {plan.scope === 'group' ? `${plan.group?.name ?? 'Group'} plan` : plan.owner?.name}
+            {plan.mine && <span className="muted small"> (you)</span>}
+          </div>
+          <div className="muted small">
+            {plan.scope === 'group' ? `by ${plan.owner?.name}` : plan.group?.name ?? '—'}
+            {withTarget.length > 0 && ` · ${hits} of ${withTarget.length} targets reached`}
           </div>
         </div>
-      </td>
-      <td data-label="Job bids" className="num">{formatAmount(plan.jobBid)}</td>
-      <td data-label="AI bids" className="num">{formatAmount(plan.aiBid)}</td>
-      <td data-label="Income" className="num">{formatAmount(plan.income)}</td>
-      <td data-label="Result">
         {plan.mine
           ? <StatusPicker value={plan.status} onChange={(s) => onStatus(plan, s)} size="small" />
           : <StatusPill status={plan.status} />}
-      </td>
-      <td data-label="Note" className="cell-note">
-        {plan.note ? <p className="plan-note">{plan.note}</p> : <span className="muted">—</span>}
-      </td>
-    </tr>
-  );
-}
-
-const sumPlans = (plans) => plans.reduce((acc, p) => ({
-  jobBid: acc.jobBid + (p.jobBid || 0),
-  aiBid: acc.aiBid + (p.aiBid || 0),
-  income: acc.income + (p.income || 0),
-  done: acc.done + (p.status === 'done' ? 1 : 0),
-  count: acc.count + 1,
-}), { jobBid: 0, aiBid: 0, income: 0, done: 0, count: 0 });
-
-// The members' plans added up: one row per group, and one for everyone when
-// several groups are on screen.
-function TotalRow({ label, plans, grand }) {
-  const t = sumPlans(plans);
-  return (
-    <tr className={`total-row ${grand ? 'grand' : ''}`}>
-      <td data-label="Owner">
-        <div className="total-label">
-          <span className="total-icon"><Icon name="chart" size={16} /></span>
-          <div>
-            <div className="strong">{label}</div>
-            <div className="muted small">{t.count} {t.count === 1 ? 'plan' : 'plans'} added up</div>
-          </div>
+      </div>
+      <div className="plan-card-groups">
+        {groups.map((g) => (
+          <ul key={g} className="target-list">
+            <li className="rm-section-title target-group">{g}</li>
+            {items.filter((i) => i.group === g).map((i) => (
+              <Target key={i.key} item={i} target={plan.targets[i.key]} achieved={plan.achieved?.[i.key] ?? 0} />
+            ))}
+          </ul>
+        ))}
+      </div>
+      {plan.note && (
+        <div className="plan-card-note">
+          <button type="button" className="link small" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} /> Note
+          </button>
+          {open && <p className="muted small pre-wrap">{plan.note}</p>}
         </div>
-      </td>
-      <td data-label="Job bids" className="num">{formatAmount(t.jobBid)}</td>
-      <td data-label="AI bids" className="num">{formatAmount(t.aiBid)}</td>
-      <td data-label="Income" className="num">{formatAmount(t.income)}</td>
-      <td data-label="Result"><span className="muted small">{t.done} of {t.count} done</span></td>
-      <td className="cell-note" />
-    </tr>
+      )}
+    </section>
   );
-}
-
-// Personal plans by group (in name order, members without a group last), each
-// with the group's own plan, so a boss can compare their target with the sum.
-function groupSections(plans) {
-  const sections = new Map();
-  const section = (g) => {
-    const key = g?.id ?? 'none';
-    if (!sections.has(key)) sections.set(key, { key, name: g?.name ?? 'No group', members: [], groupPlans: [] });
-    return sections.get(key);
-  };
-  plans.forEach((p) => {
-    if (p.scope === 'group') section(p.group).groupPlans.push(p);
-    else section(p.group).members.push(p);
-  });
-  return [...sections.values()].sort((a, b) => {
-    if (a.key === 'none') return 1;
-    if (b.key === 'none') return -1;
-    return a.name.localeCompare(b.name);
-  });
 }
 
 // Section 3 for the Plan channel. The title is the period type (weekly or
@@ -159,6 +134,8 @@ export default function PlanChannel({ title }) {
   useEffect(() => { load(); }, [load]);
   useReconnect(load);
   useSocketEvent('plan:changed', (e) => { if (e.type === type) load(); });
+  // Reports change what has been achieved.
+  useSocketEvent('report:changed', load);
 
   const setPeriod = (value) => {
     const next = new URLSearchParams(searchParams);
@@ -178,14 +155,11 @@ export default function PlanChannel({ title }) {
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
 
-  const { can, period: p } = data;
-  const sections = groupSections(data.plans);
-  const personal = data.plans.filter((pl) => pl.scope === 'personal');
-  // One member on screen: their row is the total, so no total rows.
-  const showTotals = !member && personal.length > 0;
+  const { can, period: p, items } = data;
   const selected = member ? data.plans.find((pl) => pl.owner?.id === member)?.owner : null;
   const scopeLabel = selected?.name
     ?? (data.scope === 'self' ? 'Your plans' : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All members') : data.groups.find((g) => g.slug === group)?.name ?? group);
+  const others = data.plans.filter((pl) => !(pl.mine && pl.scope === 'personal'));
 
   return (
     <div className="page plan-page">
@@ -209,57 +183,49 @@ export default function PlanChannel({ title }) {
             </div>
           )}
           {tab === 'mine' && (
-            <PlanForm title={`My ${type} plan`} type={type} period={p.key} plan={data.mine} onSaved={load} />
+            <div className="plan-mine">
+              <PlanForm title={`My ${type} plan`} type={type} period={p.key} plan={data.mine} items={items} onSaved={load} />
+              {data.mine && <PlanCard plan={data.mine} items={items} onStatus={setStatus} />}
+            </div>
           )}
           {can.planGroup && tab === 'group' && (
-            <PlanForm title={`${user.group?.name ?? 'Group'} plan`} type={type} period={p.key} scope="group" plan={data.myGroupPlan} onSaved={load} />
+            <div className="plan-mine">
+              <PlanForm title={`${user.group?.name ?? 'Group'} plan`} type={type} period={p.key} scope="group" plan={data.myGroupPlan} items={items} onSaved={load} />
+              {data.myGroupPlan && <PlanCard plan={data.myGroupPlan} items={items} onStatus={setStatus} />}
+            </div>
           )}
         </>
       )}
       {!can.plan && (
         <div className="note">
           <Icon name="target" size={16} />
-          <span>Members and bosses make the plans; you can follow their results here.</span>
+          <span>Members and bosses set the targets; what their daily reports add up to shows against each one.</span>
         </div>
       )}
 
-      <ResultSummary counts={data.counts} />
+      {data.scope !== 'self' && <ResultSummary counts={data.counts} />}
 
-      {data.plans.length > 0 && (
-        <section className="card">
+      {others.length > 0 && (
+        <section className="plan-others">
           <div className="report-section-head">
-            <h3>Plans</h3>
+            <h3>{data.scope === 'self' ? 'Group plan' : 'Plans'}</h3>
             <span className="muted small">
-              Targets: {formatAmount(data.totals.jobBid)} job bids · {formatAmount(data.totals.aiBid)} AI bids · {formatAmount(data.totals.income)} income
+              Team: {formatAmount(data.achievedTotals.jobBid)} / {formatAmount(data.totals.jobBid)} applied · {formatAmount(data.achievedTotals.income)} / {formatAmount(data.totals.income)} income
             </span>
           </div>
-          <table className="table plan-table">
-            <thead>
-              <tr><th>Owner</th><th className="num">Job bids</th><th className="num">AI bids</th><th className="num">Income</th><th>Result</th><th>Note</th></tr>
-            </thead>
-            <tbody>
-              {sections.map((sec) => (
-                <Fragment key={sec.key}>
-                  {sec.members.map((plan) => <PlanRow key={plan.id} plan={plan} onStatus={setStatus} />)}
-                  {showTotals && sec.members.length > 0 && <TotalRow label={`${sec.name} total`} plans={sec.members} />}
-                  {sec.groupPlans.map((plan) => <PlanRow key={plan.id} plan={plan} onStatus={setStatus} />)}
-                </Fragment>
-              ))}
-              {showTotals && sections.filter((sec) => sec.members.length).length > 1 && (
-                <TotalRow label="All members total" plans={personal} grand />
-              )}
-            </tbody>
-          </table>
+          <div className="plan-grid">
+            {others.map((plan) => <PlanCard key={plan.id} plan={plan} items={items} onStatus={setStatus} />)}
+          </div>
         </section>
       )}
 
-      {data.missing.length > 0 && (
+      {data.missing.length > 0 && data.scope !== 'self' && (
         <section className="card">
           <div className="report-section-head"><h3>No plan yet</h3><span className="muted small">{data.missing.length}</span></div>
           <ul className="missing-list">
             {data.missing.map((m) => (
               <li key={m.id}>
-                <Avatar name={m.name} role={m.role} size={26} />
+                <Avatar name={m.name} role={m.role} size={18} />
                 <span>{m.name}</span>
                 <span className="muted small">{m.group?.name ?? '—'}</span>
               </li>

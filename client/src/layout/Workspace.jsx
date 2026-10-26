@@ -10,6 +10,7 @@ import TitleList from './TitleList.jsx';
 import ContentArea from './ContentArea.jsx';
 import SidePanel from './SidePanel.jsx';
 import Footer from './Footer.jsx';
+import ReportDue from './ReportDue.jsx';
 
 const LAST_TITLES_KEY = 'bm.lastTitles';
 const PANEL_KEY = 'bm.panelOpen';
@@ -84,12 +85,12 @@ export default function Workspace() {
   if (!channels.length) return <div className="center-screen muted">No channels are available for your account.</div>;
 
   // Unknown or missing channel/title: fall back to the last visited or the first one.
-  if (!channel) return <Navigate to={`/${channels[0].key}`} replace />;
+  if (!channel) return <Navigate to={{ pathname: `/${channels[0].key}`, search: location.search }} replace />;
   if (!title) {
     const last = load(LAST_TITLES_KEY, {})[channel.key];
     const fallback = channel.titles.find((t) => t.key === last) || channel.titles[0];
     if (!fallback) return <div className="center-screen muted">{channel.name} has nothing to show yet.</div>;
-    return <Navigate to={`/${channel.key}/${fallback.key}`} replace />;
+    return <Navigate to={{ pathname: `/${channel.key}/${fallback.key}`, search: location.search }} replace />;
   }
 
   return (
@@ -105,6 +106,7 @@ export default function Workspace() {
         <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
       <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />
+      <ReportDue />
     </div>
   );
 }
