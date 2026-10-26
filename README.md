@@ -158,7 +158,8 @@ Channel titles come from `GET /api/nav`, built per user in
   since promoted, and a **No group** tile holds records that belong to no group. Long
   lists show the newest 500 records; totals and charts count all of them.
 - **Projects** — the list on the left, one project's details on the right: source,
-  the resident it is for, price, when it started and expires, days worked, and the
+  the resident it is for, price, when it started and expires, days worked, what it has
+  **earned so far** from the reported hours and tasks, and the
   **work log**: one row per day, taken from the owner's daily reports. An active
   project with nothing written today is marked **Not written today**, and the owner
   gets a link to their daily report. The API keeps the old name (`/api/tasks`); a

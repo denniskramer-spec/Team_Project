@@ -46,11 +46,15 @@ const serialize = (t, user, work = {}) => ({
   // project, and whether today's report does.
   daysWorked: work.days ?? 0,
   writtenToday: work.today ?? false,
+  // What the reported hours and tasks on it have earned so far.
+  earned: work.earned ?? 0,
+  hours: work.hours ?? 0,
   createdAt: t.createdAt,
   canEdit: canManageFor(user, { _id: t.owner?._id ?? t.owner, group: t.group?._id ?? t.group }),
 });
 
-// Work on these projects, counted from the daily reports: { [taskId]: { days, today } }.
+// Work on these projects, counted from the daily reports:
+// { [taskId]: { days, today, earned, hours } }.
 async function workSummary(tasks) {
   if (!tasks.length) return {};
   const ids = tasks.map((t) => t._id);
@@ -63,9 +67,11 @@ async function workSummary(tasks) {
       const id = String(w.task);
       // Only the owner's own reports count (a project moved between people
       // keeps its log from the current owner).
-      if (!owners.has(id) || owners.get(id) !== String(r.author) || !w.text?.trim()) continue;
-      out[id] ??= { days: 0, today: false };
+      if (!owners.has(id) || owners.get(id) !== String(r.author) || !(w.text?.trim() || w.hours || w.count)) continue;
+      out[id] ??= { days: 0, today: false, earned: 0, hours: 0 };
       out[id].days += 1;
+      out[id].earned = Math.round((out[id].earned + (w.amount || 0)) * 100) / 100;
+      out[id].hours += w.hours || 0;
       if (r.period === today) out[id].today = true;
     }
   }
@@ -204,7 +210,7 @@ router.get('/:id/log', async (req, res) => {
     const lines = workLines(entry?.text);
     return lines.length ? [{ period: r.period, label: parsePeriod('daily', r.period).label, lines, hours: entry?.hours ?? 0, count: entry?.count ?? 0, amount: entry?.amount ?? 0, updatedAt: r.updatedAt }] : [];
   });
-  res.json({ log, days: log.length });
+  res.json({ log, days: log.length, earned: Math.round(log.reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100 });
 });
 
 const mayManage = (user, t) => canManageFor(user, { _id: t.owner._id, group: t.group?._id ?? t.group });

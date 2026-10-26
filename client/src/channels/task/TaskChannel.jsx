@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
-import { formatDay, timeAgo } from '../../format.js';
+import { formatDay, formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import TaskForm from './TaskForm.jsx';
@@ -33,7 +33,7 @@ function ProjectItem({ project, selected, showOwner, onPick }) {
         <span className="muted small">
           {[project.source, project.resident?.name, showOwner ? project.owner?.name : null].filter(Boolean).join(' · ') || '—'}
         </span>
-        <span className="muted small">Started {short(project.startDate)}</span>
+        <span className="muted small">Started {short(project.startDate)}{project.earned > 0 && <> · <span className="earned">earned {formatAmount(project.earned)}</span></>}</span>
         <span className="project-item-foot">
           {needsWork && <span className="tag warn-tag">Not written today</span>}
           {project.status !== 'active' && <StatusPill status={project.status} />}
@@ -47,10 +47,11 @@ function ProjectItem({ project, selected, showOwner, onPick }) {
 // The day-by-day work on the selected project, from the owner's daily reports.
 function WorkLog({ projectId, version }) {
   const [log, setLog] = useState(null);
+  const [earned, setEarned] = useState(0);
   useEffect(() => {
     let live = true;
     setLog(null);
-    api(`/tasks/${projectId}/log`).then((d) => { if (live) setLog(d.log); }).catch(() => { if (live) setLog([]); });
+    api(`/tasks/${projectId}/log`).then((d) => { if (live) { setLog(d.log); setEarned(d.earned ?? 0); } }).catch(() => { if (live) setLog([]); });
     return () => { live = false; };
   }, [projectId, version]);
 
@@ -58,7 +59,7 @@ function WorkLog({ projectId, version }) {
     <section className="card work-log">
       <div className="report-section-head">
         <h3>Work log</h3>
-        <span className="muted small">{log ? `${log.length} ${log.length === 1 ? 'day' : 'days'}` : 'Loading...'}</span>
+        <span className="muted small">{log ? `${log.length} ${log.length === 1 ? 'day' : 'days'}${earned > 0 ? ` · earned ${formatAmount(earned)}` : ''}` : 'Loading...'}</span>
       </div>
       {log?.length === 0 && <p className="muted small">No work written yet. It comes from the daily report.</p>}
       {log?.length > 0 && (
@@ -120,7 +121,8 @@ function Detail({ project, isOwner, showOwner, onEdit, version }) {
               {project.endDate && <span className="muted small">{new Date(project.endDate) < new Date() ? 'Expired' : `Expires ${formatDay(project.endDate)}`}</span>}
             </dd>
           </div>
-          <div><dt>Days worked</dt><dd>{project.daysWorked} {project.daysWorked === 1 ? 'day' : 'days'}</dd></div>
+          <div><dt>Days worked</dt><dd>{project.daysWorked} {project.daysWorked === 1 ? 'day' : 'days'}{project.hours > 0 && <span className="muted small">{formatAmount(project.hours)} h</span>}</dd></div>
+          <div><dt>Earned so far</dt><dd className="earned">{formatAmount(project.earned)}<span className="muted small">from the hours and tasks reported</span></dd></div>
         </dl>
       </section>
 
