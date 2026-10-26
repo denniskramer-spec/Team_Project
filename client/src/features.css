@@ -7,15 +7,17 @@
 /* Fields in a row keep their own height instead of stretching to the tallest. */
 label { align-content: start; }
 /* The side panel is wider, so a direct message thread reads comfortably. */
-:root { --panel-w: 300px; }
+html:root { --panel-w: 300px; }
 .panel-body { overflow-x: hidden; min-width: 0; }
 /* Three tabs fit on one line. */
 .panel-tabs > button:not(.icon-btn) { padding: 6px 8px; white-space: nowrap; }
 
-/* Rail labels stay on one line; long ones ("Chat accounts") shrink a little. */
-.rail { scrollbar-width: thin; }
-.rail-label { max-width: 100%; padding: 0 2px; white-space: nowrap; }
-.rail-label.long { font-size: 10px; letter-spacing: -0.01em; }
+/* The rail is wide enough for its longest label ("Chat accounts") on one
+   line, and never scrolls sideways. */
+html:root { --rail-w: 92px; }
+.rail { overflow-x: hidden; scrollbar-width: thin; }
+.rail-label { max-width: 100%; padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-label.long { letter-spacing: -0.01em; }
 .titles-list > li { min-width: 0; }
 
 /* Shared bits the features use. */
@@ -324,8 +326,10 @@ button.chip .tick { color: var(--accent); }
 .panel-block { padding: 0 0 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 .panel-block .btn { margin-top: 6px; gap: 6px; }
 .panel-plan { margin: 4px 0 2px; }
-.today-list, .upcoming-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.today-list, .upcoming-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .today-list li, .upcoming-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.today-list li, .upcoming-list li { min-width: 0; }
+.today-list li > .small, .upcoming-list li > .small, .today-list li > .status-pill { flex-shrink: 0; }
 .today-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-item { display: grid; }
 button.member-row { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
