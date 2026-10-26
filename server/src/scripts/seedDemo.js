@@ -316,7 +316,6 @@ async function createTasksAndIncome(people, residents) {
       report.task = running[0]._id;
       // The hours reported are what the day is worth: the upcoming amount.
       const earned = report.work.reduce((sum, w) => sum + (w.amount || 0), 0);
-      report.income = earned;
       if (earned > 0) { report.upcomingAmount = earned; report.upcomingDate = report.periodStart; }
       await report.save();
     }

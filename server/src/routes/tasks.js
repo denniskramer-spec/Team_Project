@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import Task, { TASK_STATES, PRICE_UNITS, CURRENCIES } from '../models/Task.js';
 import Report from '../models/Report.js';
+import Income from '../models/Income.js';
 import Resident from '../models/Resident.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -46,15 +47,17 @@ const serialize = (t, user, work = {}) => ({
   // project, and whether today's report does.
   daysWorked: work.days ?? 0,
   writtenToday: work.today ?? false,
-  // What the reported hours and tasks on it have earned so far.
-  earned: work.earned ?? 0,
+  // What the reported hours and tasks still expect to be paid, and what
+  // income records on the project have paid so far.
+  upcoming: work.upcoming ?? 0,
+  paid: work.paid ?? 0,
   hours: work.hours ?? 0,
   createdAt: t.createdAt,
   canEdit: canManageFor(user, { _id: t.owner?._id ?? t.owner, group: t.group?._id ?? t.group }),
 });
 
-// Work on these projects, counted from the daily reports:
-// { [taskId]: { days, today, earned, hours } }.
+// Work on these projects, counted from the daily reports, plus what income
+// records have paid: { [taskId]: { days, today, upcoming, paid, hours } }.
 async function workSummary(tasks) {
   if (!tasks.length) return {};
   const ids = tasks.map((t) => t._id);
@@ -68,12 +71,18 @@ async function workSummary(tasks) {
       // Only the owner's own reports count (a project moved between people
       // keeps its log from the current owner).
       if (!owners.has(id) || owners.get(id) !== String(r.author) || !(w.text?.trim() || w.hours || w.count)) continue;
-      out[id] ??= { days: 0, today: false, earned: 0, hours: 0 };
+      out[id] ??= { days: 0, today: false, upcoming: 0, paid: 0, hours: 0 };
       out[id].days += 1;
-      out[id].earned = Math.round((out[id].earned + (w.amount || 0)) * 100) / 100;
+      if (!w.paidBy) out[id].upcoming = Math.round((out[id].upcoming + (w.amount || 0)) * 100) / 100;
       out[id].hours += w.hours || 0;
       if (r.period === today) out[id].today = true;
     }
+  }
+  const paid = await Income.aggregate([{ $match: { task: { $in: ids } } }, { $group: { _id: '$task', amount: { $sum: '$amount' } } }]);
+  for (const p of paid) {
+    const id = String(p._id);
+    out[id] ??= { days: 0, today: false, upcoming: 0, paid: 0, hours: 0 };
+    out[id].paid = Math.round(p.amount * 100) / 100;
   }
   return out;
 }
@@ -208,9 +217,9 @@ router.get('/:id/log', async (req, res) => {
   const log = reports.flatMap((r) => {
     const entry = (r.work ?? []).find((w) => String(w.task) === String(task._id));
     const lines = workLines(entry?.text);
-    return lines.length ? [{ period: r.period, label: parsePeriod('daily', r.period).label, lines, hours: entry?.hours ?? 0, count: entry?.count ?? 0, amount: entry?.amount ?? 0, updatedAt: r.updatedAt }] : [];
+    return lines.length ? [{ period: r.period, label: parsePeriod('daily', r.period).label, lines, hours: entry?.hours ?? 0, count: entry?.count ?? 0, amount: entry?.amount ?? 0, paid: Boolean(entry?.paidBy), updatedAt: r.updatedAt }] : [];
   });
-  res.json({ log, days: log.length, earned: Math.round(log.reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100 });
+  res.json({ log, days: log.length, upcoming: Math.round(log.filter((e) => !e.paid).reduce((n, e) => n + (e.amount || 0), 0) * 100) / 100 });
 });
 
 const mayManage = (user, t) => canManageFor(user, { _id: t.owner._id, group: t.group?._id ?? t.group });

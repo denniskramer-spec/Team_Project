@@ -213,6 +213,9 @@ html:root { --rail-w: 92px; }
 .project-note { margin: 4px 0 0; white-space: pre-wrap; }
 .project-owner { margin-top: 4px; gap: 6px; }
 .earned { color: var(--text-ok); font-weight: 700; }
+.upcoming-amt { color: var(--text-warn); font-weight: 700; }
+.upcoming-note { align-items: center; }
+.upcoming-note .btn { flex-shrink: 0; }
 .fact-grid {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px;
   margin: 14px 0 0; padding: 0; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;

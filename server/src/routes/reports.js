@@ -124,7 +124,7 @@ const serialize = (r) => (r ? {
   upcomingNote: r.upcomingNote || r.upcoming || '',
   upcomingDate: r.upcomingDate ?? null,
   task: r.task?._id ? { id: r.task._id, name: r.task.name, status: r.task.status } : null,
-  work: (r.work ?? []).filter((w) => w.task?._id).map((w) => ({ task: { id: w.task._id, name: w.task.name, status: w.task.status }, text: w.text, hours: w.hours ?? 0, count: w.count ?? 0, amount: w.amount ?? 0 })),
+  work: (r.work ?? []).filter((w) => w.task?._id).map((w) => ({ task: { id: w.task._id, name: w.task.name, status: w.task.status }, text: w.text, hours: w.hours ?? 0, count: w.count ?? 0, amount: w.amount ?? 0, paid: Boolean(w.paidBy) })),
   todayPlan: r.todayPlan ?? [],
   planTomorrow: r.planTomorrow ?? '',
   calls: r.calls ?? [],
@@ -345,15 +345,23 @@ router.put('/', async (req, res) => {
   }
   if (period.start > new Date()) throw badRequest('That period has not started yet');
 
-  const work = await resolveWork(req, scope);
-  // The hours (or tasks done) reported are what the member earned this day:
-  // they are the report's income and its upcoming amount, due on the report
-  // day (nothing is typed in by hand).
-  const earned = work ? work.reduce((sum, w) => sum + (w.amount || 0), 0) : undefined;
+  let work = await resolveWork(req, scope);
+  // The hours (or tasks done) reported are what the member expects to be
+  // paid for this day: the unpaid ones add up to the report's upcoming
+  // amount, due on the report day. Income is only what Finance records; an
+  // income record on the project settles these entries (see routes/incomes.js),
+  // and a re-saved report keeps that.
+  let upcoming;
+  if (work !== undefined) {
+    const existing = await Report.findOne({ author: req.user._id, type, period: period.key, scope }, 'work').lean();
+    const paid = new Map((existing?.work ?? []).filter((w) => w.paidBy).map((w) => [String(w.task), w.paidBy]));
+    work = work.map((w) => ({ ...w, paidBy: paid.get(String(w.task)) ?? null }));
+    upcoming = Math.round(work.filter((w) => !w.paidBy).reduce((sum, w) => sum + (w.amount || 0), 0) * 100) / 100;
+  }
   const fields = {
     ...checkFields(req.body),
     ...(req.body.task !== undefined ? { task: await resolveTask(req, scope) } : {}),
-    ...(work !== undefined ? { work, income: Math.round(earned * 100) / 100, upcomingAmount: Math.round(earned * 100) / 100, upcomingDate: earned > 0 ? period.start : null } : {}),
+    ...(work !== undefined ? { work, upcomingAmount: upcoming, upcomingDate: upcoming > 0 ? period.start : null } : {}),
     // Saving without `send` keeps (or starts) a draft; `send` marks it sent.
     ...(req.body.send === true ? { sentAt: new Date() } : {}),
     periodStart: period.start,

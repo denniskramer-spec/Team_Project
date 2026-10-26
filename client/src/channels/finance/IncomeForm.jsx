@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { todayInput, formatAmount, timeAgo } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
+import Icon from '../../components/Icon.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
 
 // Income record: who earned it, how much, when and where it came from, with
@@ -16,6 +17,8 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const [tasks, setTasks] = useState([]);
   const [residents, setResidents] = useState([]);
   const [methods, setMethods] = useState([]);
+  // What the chosen project's reported work still expects to be paid.
+  const [upcoming, setUpcoming] = useState(null);
   const [form, setForm] = useState({
     member: '', amount: '', date: todayInput(), task: '', note: '',
     resident: '', residentPercent: '', method: 'paypal', feePercent: '', feeFixed: '',
@@ -53,6 +56,8 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const pickTask = (e) => {
     const t = ownTasks.find((x) => String(x.id) === e.target.value);
     setForm((f) => ({ ...f, task: e.target.value }));
+    setUpcoming(null);
+    if (t) api(`/incomes/upcoming?task=${t.id}`).then(setUpcoming).catch(() => setUpcoming(null));
     if (t?.resident?.id) pickResident(String(t.resident.id));
     const m = t?.method ? methods.find((x) => x.key === t.method) : null;
     if (m) setForm((f) => ({ ...f, method: m.key, feePercent: m.feePercent, feeFixed: m.feeFixed }));
@@ -88,11 +93,11 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
         setFiles([]);
       }
       const images = attached.map(({ file, name, type, size }) => ({ file, name, type, size }));
-      await api('/incomes', {
+      const result = await api('/incomes', {
         method: 'POST',
         body: { ...form, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
       });
-      toast('Income recorded');
+      toast(result.settled ? `Income recorded · ${result.settled} upcoming ${result.settled === 1 ? 'day' : 'days'} settled` : 'Income recorded');
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -153,6 +158,19 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
             </select>
           </label>
         </div>
+        {upcoming && upcoming.amount > 0 && (
+          <div className="note upcoming-note">
+            <Icon name="coins" size={16} />
+            <span className="note-grow">
+              <strong>Upcoming on this project: {formatAmount(upcoming.amount)}</strong>
+              <span className="muted small"> · {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles them.</span>
+            </span>
+            <button type="button" className="btn small-btn" onClick={() => setForm((f) => ({ ...f, amount: upcoming.amount }))}>Use amount</button>
+          </div>
+        )}
+        {upcoming && upcoming.amount === 0 && form.task && (
+          <p className="muted small form-note">Nothing upcoming on this project: all reported work is paid.</p>
+        )}
         <div className="row fee-row">
           <label>
             Payment method

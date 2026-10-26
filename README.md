@@ -116,8 +116,8 @@ Channel titles come from `GET /api/nav`, built per user in
   **issues / blockers** and the **plan for tomorrow**. The hours written on an hourly
   project (or the tasks done on a per-task one) are what the day is worth: price × hours
   or price × tasks, less the project's resident share,
-  becomes the report's **income** (what the day earned) and its **upcoming** amount, due on
-  that day (so it shows in the Finance chart for that week and month). Nothing is typed in. The modal saves a **draft** as you
+  becomes the report's **upcoming** amount, due on that day (so it shows in the Finance chart
+  for that week and month). It is not income: income is only what Finance records. The modal saves a **draft** as you
   type and **Send report** sends it; a **Report due** button sits in the corner of every
   screen until today's is sent. A group's report is not written by anyone: it is
   its members' reports of the day added up (sent count, bids, projects
@@ -143,6 +143,9 @@ Channel titles come from `GET /api/nav`, built per user in
   method, note, screenshots; where it came from is the project, else the resident, else the
   method). Income records are history and
   cannot be changed afterwards (screenshots of the payment can be attached). Each record
+  names the project: when one is picked the form shows what its reported work still expects
+  to be paid (with a button to use that amount), and recording the income **settles** those
+  days, so they stop counting as upcoming on the project and in the chart. It also
   names the **payment method** (PayPal, Payoneer, Wise, USDT, Bitcoin, Upwork, bank wire,
   bank transfer, cash) with its **fee**, which nobody types in: it is the method's current rate from
   **Admin → Payment fees**, where Wise, Bitcoin and USDT fees refresh every day from public
@@ -158,9 +161,9 @@ Channel titles come from `GET /api/nav`, built per user in
   since promoted, and a **No group** tile holds records that belong to no group. Long
   lists show the newest 500 records; totals and charts count all of them.
 - **Projects** — the list on the left, one project's details on the right: source,
-  the resident it is for, price, when it started and expires, days worked, what it has
-  **earned so far** from the reported hours and tasks, and the
-  **work log**: one row per day, taken from the owner's daily reports. An active
+  the resident it is for, price, when it started and expires, days worked, what the
+  reported hours and tasks still expect to be paid (**upcoming**), what income records
+  have **paid**, and the **work log**: one row per day, taken from the owner's daily reports. An active
   project with nothing written today is marked **Not written today**, and the owner
   gets a link to their daily report. The API keeps the old name (`/api/tasks`); a
   database from before the change has its salaries renamed to prices and its

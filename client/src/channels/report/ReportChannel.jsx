@@ -162,7 +162,7 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
             <dl className="mini-stats my-day-stats">
               <div><dt>Applied</dt><dd>{formatAmount(r.jobBid)}</dd></div>
               <div><dt>Calls</dt><dd>{r.calls?.length ?? 0}</dd></div>
-              <div><dt>Earned</dt><dd title="From the hours and tasks reported on your projects">{formatAmount(r.income)}</dd></div>
+              <div><dt>Upcoming</dt><dd title="What the hours and tasks you reported expect to be paid">{formatAmount(r.upcomingAmount)}</dd></div>
             </dl>
           )}
         </div>

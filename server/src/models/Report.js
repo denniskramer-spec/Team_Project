@@ -11,8 +11,10 @@ const workSchema = new mongoose.Schema(
     // Tasks done that day, on a per-task project.
     count: { type: Number, default: 0, min: 0 },
     // What those hours earn the member on an hourly project, after the
-    // resident's share; it adds up to the report's upcoming amount.
+    // resident's share; while unpaid it adds up to the report's upcoming amount.
     amount: { type: Number, default: 0, min: 0 },
+    // The income record that paid for this day's work, once it is recorded.
+    paidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Income', default: null },
   },
   { _id: false },
 );

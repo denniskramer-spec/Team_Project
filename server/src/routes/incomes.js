@@ -18,7 +18,7 @@ import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
-import { incomeChanged } from '../socket/events.js';
+import { incomeChanged, taskWorkChanged } from '../socket/events.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -184,6 +184,25 @@ router.get('/', async (req, res) => {
 // Payment methods and their usual fees, for the form.
 router.get('/methods', (req, res) => res.json({ methods: currentMethods() }));
 
+// The unpaid work reported on one project: what is still expected for it.
+async function upcomingFor(taskId, ownerId) {
+  const reports = await Report.find({ author: ownerId, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null, amount: { $gt: 0 } } } }, 'period periodStart work')
+    .sort({ periodStart: 1 }).lean();
+  const entries = reports.flatMap((r) => (r.work ?? [])
+    .filter((w) => String(w.task) === String(taskId) && !w.paidBy && w.amount > 0)
+    .map((w) => ({ period: r.period, hours: w.hours || 0, count: w.count || 0, amount: w.amount })));
+  return { entries, amount: Math.round(entries.reduce((n, e) => n + e.amount, 0) * 100) / 100, days: entries.length };
+}
+
+// GET /api/incomes/upcoming?task=<id> — what the project's reported hours
+// and tasks still expect to be paid, to check against a new income record.
+router.get('/upcoming', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
+  const task = await Task.findById(req.query.task, 'owner name').lean();
+  if (!task) throw badRequest('Unknown project');
+  res.json({ project: { id: task._id, name: task.name }, ...(await upcomingFor(task._id, task.owner)) });
+});
+
 // Members this user can record income for.
 router.get('/members', async (req, res) => {
   const users = await User.find(assignableFilter(req.user), 'name role group')
@@ -222,8 +241,22 @@ router.post('/', async (req, res) => {
   }).save();
   await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
+  // Recording income for a project settles the unpaid work reported on it:
+  // those days stop counting as upcoming (their reports are recomputed).
+  let settled = 0;
+  if (taskId) {
+    const reports = await Report.find({ author: member._id, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null } } });
+    for (const r of reports) {
+      r.work.forEach((w) => { if (String(w.task) === String(taskId) && !w.paidBy) { w.paidBy = income._id; settled += 1; } });
+      r.upcomingAmount = Math.round(r.work.filter((w) => !w.paidBy).reduce((n, w) => n + (w.amount || 0), 0) * 100) / 100;
+      if (!r.upcomingAmount) r.upcomingDate = null;
+      await r.save();
+    }
+    if (settled) taskWorkChanged(member._id, member.group ?? null);
+  }
+
   incomeChanged(income);
-  res.status(201).json({ income: serialize(income) });
+  res.status(201).json({ income: serialize(income), settled });
 });
 
 // Income records are history: once recorded they cannot be changed or
