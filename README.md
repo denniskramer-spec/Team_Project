@@ -17,17 +17,29 @@ Theme   ─ dark by default; the sun/moon button in the header switches to light
 
 ## Quick start
 
-1. **MongoDB** — the app expects it at the `MONGODB_URI` in `server/.env`.
-   This project uses a Docker container:
-   `docker start business-manager-mongo` (mongo:7, host port 27017).
-2. `cp server/.env.example server/.env` and fill it in (first time only).
-3. `npm run install:all`
-4. `npm run dev` — starts the API, a watch build of the client, and the client.
-5. Open **http://localhost:3000**
+```
+npm run dev
+```
+
+That is all. `scripts/dev-setup.mjs` runs first and takes care of the rest, doing
+nothing that is already done:
+
+1. installs the root, server and client dependencies when `node_modules` is missing;
+2. creates `server/.env` from `.env.example` with a random `JWT_SECRET` and the
+   admin password `admin1234` (change it at first login, or edit the file);
+3. starts **MongoDB** on port 27017: the `business-manager-mongo` Docker container
+   (mongo:7, created if needed) when the Docker daemon is up, otherwise a local
+   `mongod` with its data in `.mongo-data/` (git-ignored). A database that is
+   already listening is left alone. `npm run db` runs this step on its own.
+
+Then the API, a watch build of the client and the client start, and the browser
+opens **http://localhost:3000**. Ctrl+C stops the app; MongoDB keeps running, like
+any database, and is found again next time.
 
 On first start the server creates an **admin** account from `SEED_ADMIN_USERNAME` /
 `SEED_ADMIN_PASSWORD` and the groups **Group1** and **Group2**. The admin must
-choose a new password at first login.
+choose a new password at first login. Note that the Docker container and a local
+`mongod` keep separate data: whichever is running when you start is the one used.
 
 ## Demo data
 
@@ -60,7 +72,7 @@ The admin account is left alone.
 | **Admin** | Accounts, roles and groups. Reads everything; writes no reports or plans. |
 | **Team leader** | Instructs everyone or any group, reads every report, plan and result. |
 | **Boss** | Leads one group: instructs it, writes the group report and plan, manages its members. |
-| **Member** | Writes their own reports and plans, registers projects, records income, chats. Sees only their own residents, chat accounts and projects; the Checkout and Member tabs are not shown to members. |
+| **Member** | Writes their own reports and plans, registers projects, records income, chats. Sees only their own residents, chat accounts and projects; the Checkout and Member tabs are not shown to members, and their Projects, Residents and Chat accounts are gathered under a **Settings** channel at the foot of the rail (see below). |
 
 **Reading follows the hierarchy:** leader and admin see everything, a boss sees their
 own group, a member sees their own records. It is enforced on the server — an
@@ -84,6 +96,7 @@ Capabilities live in `server/src/config/roles.js`; the per-record rules in
 | **Finance** | Income · Outcome · Total — then All · each group · each member | Income and outcome per member: date, amount, source or reason; totals per period and group |
 | **Chat** | general · each group · finance | Live chat, typing indicators, unread markers |
 | **Admin** | Approvals · Users & roles · Groups · Payment fees | Sign-up approvals, role changes, group management, payment method fees |
+| **Settings** (members only) | Account — then Projects · Residents · Chat accounts | A member's rail is icon-only (round buttons; the channel's name flies out on hover), with their own things in one place: their account (profile, password, theme, alerts) under *User settings*, and their records under *Your records*, on the same pages the other roles reach from the rail. Bosses, the leader and admins keep the full rail; there is no switch. Old links (`/task`, `/resident`, `/chataccount`) land on the right Settings page for a member. |
 
 **The title section is a tree, three levels deep** in the group-scoped channels:
 the report type or period (the title), then **All / each group** (`?g=`), then
@@ -116,8 +129,13 @@ Channel titles come from `GET /api/nav`, built per user in
   **issues / blockers** and the **plan for tomorrow**. The hours written on an hourly
   project (or the tasks done on a per-task one) are what the day is worth: price × hours
   or price × tasks, less the project's resident share,
-  becomes the report's **upcoming** amount, due on that day (so it shows in the Finance chart
-  for that week and month). It is not income: income is only what Finance records. The modal saves a **draft** as you
+  is what the day **earned**; the part no income record has paid yet is the report's
+  **upcoming** amount, due on that day (so it shows in the Finance chart
+  for that week and month). It is not income: income is only what Finance records.
+  Changing a project's price (or its resident's share) re-prices the unpaid days;
+  deleting a project drops its days from the reports; recording income on it settles
+  them. Every one of those tells the Dashboard, Plan, Projects, Finance and Checkout
+  screens to refresh. The modal saves a **draft** as you
   type and **Send report** sends it; a **Report due** button sits in the corner of every
   screen until today's is sent. A group's report is not written by anyone: it is
   its members' reports of the day added up (sent count, bids, projects
@@ -128,11 +146,16 @@ Channel titles come from `GET /api/nav`, built per user in
   measurable items of the daily report: applied, AI training bids, résumés tailored,
   forms filled, time bidding, and income. Every
   plan shows as a card with **achieved / target** per item, added up from the daily
-  reports of the period, plus the result state the owner sets and a summary meter
+  reports of the period (the **income** target is met by what Finance records in the
+  period, since a report says what the work is worth and Finance what came in), plus
+  the result state the owner sets and a summary meter
   counting Done / In progress / Not done. Same writers as reports; reading follows the
   same hierarchy: leader and admin see all, a boss their group, a member only their own.
 - **Checkout** — three charts in one row: **Income**, **Job bids** and **AI training
-  bids**, each plan versus result. Below them sit two panels: the plan-result meter and
+  bids**, each plan versus result. Income has three bars: **planned** (Plan),
+  **reported** (what the daily reports' hours and tasks earned, paid or not; the note
+  says how much of it is still upcoming) and **received** (Finance). The per-member
+  table adds an **Upcoming** column. Below them sit two panels: the plan-result meter and
   a Projects panel (done / open / price, from the Projects channel). On narrow screens they
   stack. It counts personal plans and reports only (a group plan would
   double-count), projects that overlap the period (open-ended ones count until they are done), and income by its date. Refreshes
@@ -156,6 +179,14 @@ Channel titles come from `GET /api/nav`, built per user in
   chart stacks **upcoming** income on the recorded income: only what the daily reports say
   is due inside the period shown, by its upcoming date. Outcome is recorded by the leader and bosses, with
   at least one image as proof; a team or group outcome is split into one share per member.
+- **Finance in another currency** — amounts are recorded in the team's base currency
+  (USD). The Finance toolbar's **Show in** picker shows every total, chart, tile and
+  record in EUR, GBP, CAD, AUD or BRL at the day's rate (the choice is remembered on
+  that device). Rates come from the European Central Bank through frankfurter.app, with
+  open.er-api.com as a fallback, and refresh every day on their own; a failed refresh
+  keeps the last rates. A note under the toolbar shows the rate in use and when it was
+  checked, and admins and the leader can refresh it on the spot
+  (`GET /api/finance/rates`, `POST /api/finance/rates/refresh`).
 - **Totals always add up** — finance and checkout list everyone who has records in
   the period, including an account since disabled ("Tess Novak (disabled)") or a member
   since promoted, and a **No group** tile holds records that belong to no group. Long
@@ -175,13 +206,23 @@ Channel titles come from `GET /api/nav`, built per user in
   group reports stay with the group they were written for.
 - **Chat** — general and finance chat are open to every member; a group chat is for
   that group plus the leader and admins. Authors edit their own messages; the leader
-  and admins can delete any.
+  and admins can delete any. **A message in a chat you are not looking at** pops up
+  in the bottom-right corner like a messenger (author, chat or *Direct message*, the
+  text), with a short sound; clicking it opens that chat, or the conversation in the
+  side panel for a direct message. With desktop notifications on (Alerts tab), the
+  same arrives as a system notification while the window is in the background. The
+  tab title shows the unread count, the Chat channel badge updates live, and the
+  footer's **Messages** link carries the unread direct messages. A chat only counts
+  as read while its window is focused: what arrives in the background stays unread.
+  The popups can be switched off in the Alerts tab (*Message popups*).
 - **Older records** still read correctly: a report or plan written before bids were
   split counts as job bids, and a report's old free-text "upcoming" shows as the
   upcoming note.
 - **Residents** — a table with one row per resident: photo, name, age, country,
-  whether they have a laptop and remote access, when and how the first contact
-  happened, and who they belong to. New ones are registered in a form. Same role
+  whether they have a laptop (bought for them, or one they already had) and remote
+  access (through their laptop, a VPS or a proxy), when and how the first contact
+  happened, and who they belong to. New ones are registered in a form, where the
+  country and citizenship are picked from a list with flags. Same role
   rules as tasks: the leader and admins for anyone, a boss for their group, a member
   for themselves; reading follows the same scope. The Member channel shows each
   member's residents as **one sentence per resident** ("Ana Silva, 30 years old,
@@ -210,7 +251,8 @@ Channel titles come from `GET /api/nav`, built per user in
 
 | Script | What it does |
 |---|---|
-| `npm run dev` | API (nodemon) + client watch build + client on http://localhost:3000 |
+| `npm run dev` | Sets up what is missing (dependencies, `.env`, MongoDB), then API (nodemon) + client watch build + client on http://localhost:3000 |
+| `npm run db` | Only the set-up step: makes sure MongoDB is running (Docker container or local `mongod`) |
 | `npm run build` | Production build of the client into `client/dist` |
 | `npm start` | Runs the API; with `NODE_ENV=production` it also serves the built client (see below) |
 | `npm test` | Server unit tests (periods, permission rules, outcome splits) |
@@ -243,7 +285,7 @@ when a reverse proxy is in front. `CLIENT_ORIGIN` should be the public address.
 | Reports | `GET /api/reports`, `GET /api/reports/status`, `GET /api/reports/history`, `PUT /api/reports` (`send: true` sends, otherwise a draft), `DELETE /api/reports/:id` |
 | Plans | `GET /api/plans`, `PUT /api/plans`, `PATCH /api/plans/:id/status`, `DELETE /api/plans/:id` |
 | Projects | `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id`, `GET /api/tasks/:id/log`, `GET /api/tasks/assignees\|residents` |
-| Finance | `GET/POST /api/incomes`, `POST /api/incomes/upload`, `GET /api/incomes/members`, `GET/POST /api/outcomes`, `PATCH/DELETE /api/outcomes/:id`, `POST /api/outcomes/upload`, `GET /api/outcomes/members`, `GET /api/finance/total`, `GET /api/files/:name` |
+| Finance | `GET/POST /api/incomes`, `POST /api/incomes/upload`, `GET /api/incomes/members`, `GET/POST /api/outcomes`, `PATCH/DELETE /api/outcomes/:id`, `POST /api/outcomes/upload`, `GET /api/outcomes/members`, `GET /api/finance/total`, `GET /api/finance/rates`, `POST /api/finance/rates/refresh`, `GET /api/files/:name` |
 | Checkout | `GET /api/checkout?type=weekly\|monthly\|yearly&period=&group=` |
 | Residents | `GET/POST /api/residents`, `PATCH/DELETE /api/residents/:id`, `GET /api/residents/owners`, `POST /api/residents/upload` |
 | Chat accounts | `GET/POST /api/chat-accounts`, `PATCH/DELETE /api/chat-accounts/:id`, `GET /api/chat-accounts/owners\|contacts`, `POST /api/chat-accounts/upload` |
@@ -269,14 +311,15 @@ The arrow at the right edge opens a panel with three tabs:
 - **Messages** — direct messages between any two people, with unread counts, typing
   indicators and the same editing rules as the channels (`/api/chat/dm-<userId>/...`,
   `GET /api/chat/dms`).
-- **Alerts** — unread instructions and alarm settings.
+- **Alerts** — unread instructions and the alarm settings (sound, message popups,
+  desktop notifications).
 
 ## Project layout
 
 ```
 server/
   src/config/     env, roles, channel tree, database
-  src/models/     User, Group, Instruction, Message, ChatRead, Report, Plan, Task, Income, Outcome, Resident, ChatAccount
+  src/models/     User, Group, Instruction, Message, ChatRead, Report, Plan, Task, Income, Outcome, Resident, ChatAccount, PaymentFee, ExchangeRate
   src/routes/     one file per area (see the API table)
   src/socket/     Socket.IO setup, rooms and event helpers
   src/utils/      policies, periods, validation, seeding
@@ -285,7 +328,7 @@ client/
   src/layout/     header, footer + the four sections
   src/channels/   one folder per channel (section 3)
   src/components/ modal, dropdown, toast, avatar, icons, ...
-  src/alerts/     instruction alarm (sound, popup, desktop notification)
+  src/alerts/     instruction alarm and chat message popups (sound, popup, desktop notification)
   src/socket/     socket context and hooks
 ```
 
@@ -309,5 +352,5 @@ client/
   other people on the same network can still log in.
 - Uploaded images live in `server/uploads` (or `UPLOADS_DIR`). Images no record uses
   are removed after a day, so each database needs its own folder.
-- Sound and desktop notifications for instructions are switched on per person in the
+- Sound, message popups and desktop notifications are switched on per person in the
   right-hand panel's **Alerts** tab.
