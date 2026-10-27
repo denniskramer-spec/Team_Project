@@ -8,7 +8,10 @@ import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
-import ResidentForm from './ResidentForm.jsx';
+import ResidentForm, { LAPTOP_SOURCES, ACCESS_TYPES } from './ResidentForm.jsx';
+import { countryLabel } from '../../countries.js';
+
+const labelOf = (list, value) => list.find(([v]) => v === value)?.[1] ?? '';
 import { useLatestRequest } from '../../useLiveData.js';
 
 const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
@@ -125,14 +128,14 @@ export default function ResidentChannel({ title }) {
                       <Avatar name={r.name} role="member" size={24} src={r.photo?.url} />
                       <div>
                         <div className="strong">{r.name}</div>
-                        {r.citizenship && r.citizenship !== r.country && <div className="muted small">Citizen of {r.citizenship}</div>}
+                        {r.citizenship && r.citizenship !== r.country && <div className="muted small">Citizen of {countryLabel(r.citizenship)}</div>}
                       </div>
                     </div>
                   </td>
                   <td data-label="Age" className="num">{r.age ?? '—'}</td>
-                  <td data-label="Country">{r.country || '—'}</td>
-                  <td data-label="Laptop">{r.hasLaptop ? <Yes label="Own" /> : <span className="muted">—</span>}</td>
-                  <td data-label="Access">{r.accessSetUp ? <Yes label="Laptop" /> : <span className="muted">—</span>}</td>
+                  <td data-label="Country">{r.country ? countryLabel(r.country) : '—'}</td>
+                  <td data-label="Laptop">{r.hasLaptop ? <Yes label={r.laptopSource === 'bought' ? 'Bought' : r.laptopSource === 'own' ? 'Own' : 'Yes'} /> : <span className="muted">—</span>}</td>
+                  <td data-label="Access">{r.accessSetUp ? <Yes label={labelOf(ACCESS_TYPES, r.accessType) || 'Set up'} /> : <span className="muted">—</span>}</td>
                   <td data-label="Divide" className="num">{r.sharePercent ? `${r.sharePercent}%` : <span className="muted">—</span>}</td>
                   <td data-label="First contact">
                     {r.firstContact ? formatDay(r.firstContact) : '—'}

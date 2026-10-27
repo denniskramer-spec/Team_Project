@@ -8,6 +8,7 @@ import { sweepOrphans } from './utils/uploads.js';
 import { fileInUse } from './utils/fileRefs.js';
 import { loadFees } from './utils/payments.js';
 import { scheduleFeeRefresh } from './utils/feeRefresh.js';
+import { loadRates, scheduleRateRefresh } from './utils/exchange.js';
 
 // A bug in one handler should be logged, not end the process for everyone.
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
@@ -26,8 +27,10 @@ const sweep = () => sweepOrphans(fileInUse)
 connectDB(env.mongoUri)
   .then(seedAll)
   .then(loadFees)
+  .then(loadRates)
   .then(() => {
     scheduleFeeRefresh();
+    scheduleRateRefresh();
     sweep();
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
   })

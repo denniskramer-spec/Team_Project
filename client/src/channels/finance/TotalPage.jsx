@@ -7,6 +7,8 @@ import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
 import DateTag from '../../components/DateTag.jsx';
+import { useCurrency } from './useCurrency.js';
+import RateNote from './RateNote.jsx';
 
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--series-3)' },
@@ -103,16 +105,20 @@ function groupHistory(history, by) {
 // behind them by person or by date.
 export default function TotalPage() {
   const period = useFinancePeriod();
+  const currency = useCurrency();
+  const { money, convert } = currency;
   const { data, error } = useLiveData(`/finance/total?${period.query}`, ['income:changed', 'outcome:changed']);
   const [by, setBy] = useState('person');
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
   const p = data.period;
-  const net = signed(data.net);
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: c.income, outcome: c.outcome } }));
+  const net = signed(convert(data.net));
+  // The chart and the history in the chosen currency.
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: convert(c.income), outcome: convert(c.outcome) } }));
+  const history = data.history.map((r) => ({ ...r, amount: convert(r.amount) }));
   const recordCount = data.counts.income + data.counts.outcome;
-  const groups = groupHistory(data.history, by);
+  const groups = groupHistory(history, by);
 
   return (
     <div className="page finance-page">
@@ -121,25 +127,27 @@ export default function TotalPage() {
         type={period.type} from={period.from} to={period.to}
         onType={period.setType} onRange={period.setRange}
         scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'total')}
+        currency={currency}
       />
 
+      <RateNote currency={currency} />
       <div className="stat-row finance-stats">
         <div className="stat stat-good">
-          <span className="stat-value">{formatAmount(data.income)}</span>
+          <span className="stat-value">{money(data.income)}</span>
           <span className="muted small">Income · {data.counts.income} {data.counts.income === 1 ? 'record' : 'records'}</span>
         </div>
         <div className="stat stat-bad">
-          <span className="stat-value">{formatAmount(data.outcome)}</span>
+          <span className="stat-value">{money(data.outcome)}</span>
           <span className="muted small">Outcome · {data.counts.outcome} {data.counts.outcome === 1 ? 'record' : 'records'}</span>
         </div>
         <div className={`stat ${data.net < 0 ? 'stat-bad' : 'stat-good'}`}>
-          <span className={`stat-value ${net.cls}`}>{net.text}</span>
+          <span className={`stat-value ${net.cls}`}>{net.text.replace(/^([+−])/, `$1${currency.symbol}`)}</span>
           <span className="muted small">Total · income − outcome</span>
         </div>
         {data.perGroup?.map((g) => (
           <div key={g.id} className={`stat role-border-boss${period.group === g.slug ? ' is-selected' : ''}`}>
-            <span className={`stat-value ${signed(g.net).cls}`}>{signed(g.net).text}</span>
-            <span className="muted small">{g.name} · +{formatAmount(g.income)} / −{formatAmount(g.outcome)}</span>
+            <span className={`stat-value ${signed(g.net).cls}`}>{signed(convert(g.net)).text}</span>
+            <span className="muted small">{g.name} · +{money(g.income)} / −{money(g.outcome)}</span>
           </div>
         ))}
       </div>
@@ -147,7 +155,7 @@ export default function TotalPage() {
       {rows.length > 0 && (
         <FinanceColumns
           title="Income vs outcome"
-          periodLabel={p.label}
+          periodLabel={`${p.label} · ${currency.code}`}
           rows={rows}
           series={SERIES}
           tag={netTag}
@@ -162,7 +170,7 @@ export default function TotalPage() {
             );
           }}
           detail={(row) => {
-            const mine = data.history.filter((r) => String(r.member?.id) === String(row.id));
+            const mine = history.filter((r) => String(r.member?.id) === String(row.id));
             return (
               <div className="income-detail">
                 <div className="stat-row">
@@ -177,11 +185,11 @@ export default function TotalPage() {
         />
       )}
 
-      {!data.history.length && (
+      {!history.length && (
         <div className="empty-inline muted"><Icon name="coins" size={20} /> No income or outcome recorded for {p.label}.</div>
       )}
 
-      {data.history.length > 0 && (
+      {history.length > 0 && (
         <section className="card">
           <div className="report-section-head history-toolbar">
             <h3>History</h3>
@@ -194,7 +202,7 @@ export default function TotalPage() {
               ))}
             </div>
           </div>
-          {shownOf(data.history.length, recordCount) && <p className="muted small list-note">{shownOf(data.history.length, recordCount)}</p>}
+          {shownOf(history.length, recordCount) && <p className="muted small list-note">{shownOf(history.length, recordCount)}</p>}
           {groups.map((g) => (
             <div key={g.key} className="history-group">
               <div className="history-head">

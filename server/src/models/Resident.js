@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 import { imageSchema } from './image.js';
 
+// Where the laptop came from, and how the remote access reaches them.
+export const LAPTOP_SOURCES = ['', 'bought', 'own'];
+export const ACCESS_TYPES = ['', 'laptop', 'vps', 'proxy'];
+
 // A resident is a person a member is in touch with: name, photo, where they
 // are from, how the contact started, and whether they have a laptop and
 // remote access set up. It always belongs to one member.
@@ -17,8 +21,12 @@ const residentSchema = new mongoose.Schema(
     // The platform used the first time: Telegram, Instagram, in person...
     firstContactVia: { type: String, default: '', trim: true, maxlength: 60 },
     hasLaptop: { type: Boolean, default: false },
+    // Bought for them, or one they already had.
+    laptopSource: { type: String, enum: LAPTOP_SOURCES, default: '' },
     // Remote access to their device.
     accessSetUp: { type: Boolean, default: false },
+    // What the access goes through: their laptop, a VPS or a proxy.
+    accessType: { type: String, enum: ACCESS_TYPES, default: '' },
     // The share of the income earned with this resident that is paid to them.
     sharePercent: { type: Number, default: 0, min: 0, max: 100 },
     notes: { type: String, default: '', trim: true, maxlength: 2000 },

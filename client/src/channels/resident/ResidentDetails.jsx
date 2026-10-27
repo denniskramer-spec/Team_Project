@@ -5,7 +5,10 @@ import Avatar from '../../components/Avatar.jsx';
 import RoleBadge from '../../components/RoleBadge.jsx';
 import Icon from '../../components/Icon.jsx';
 import DateTag from '../../components/DateTag.jsx';
-import ResidentForm from './ResidentForm.jsx';
+import ResidentForm, { LAPTOP_SOURCES, ACCESS_TYPES } from './ResidentForm.jsx';
+import { countryLabel } from '../../countries.js';
+
+const labelOf = (list, value) => list.find(([v]) => v === value)?.[1] ?? '';
 
 const Empty = () => <span className="muted">—</span>;
 const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
@@ -80,12 +83,12 @@ export default function ResidentDetails({ member, residents, initialIndex = 0, o
         <dl className="asset-details" key={resident.id}>
           <dt>Name</dt><dd>{resident.name}</dd>
           <dt>Age</dt><dd>{resident.age ?? <Empty />}</dd>
-          <dt>Country</dt><dd>{resident.country || <Empty />}</dd>
-          <dt>Citizenship</dt><dd>{resident.citizenship || <Empty />}</dd>
+          <dt>Country</dt><dd>{resident.country ? countryLabel(resident.country) : <Empty />}</dd>
+          <dt>Citizenship</dt><dd>{resident.citizenship ? countryLabel(resident.citizenship) : <Empty />}</dd>
           <dt>Source</dt><dd>{resident.source || <Empty />}</dd>
           <dt>First contact</dt><dd>{resident.firstContact ? <><DateTag value={resident.firstContact} utc muted={false} />{resident.firstContactVia ? ` via ${resident.firstContactVia}` : ''}</> : <Empty />}</dd>
-          <dt>Laptop</dt><dd>{resident.hasLaptop ? <Yes label="Own" /> : <Empty />}</dd>
-          <dt>Access</dt><dd>{resident.accessSetUp ? <Yes label="Set up" /> : <Empty />}</dd>
+          <dt>Laptop</dt><dd>{resident.hasLaptop ? <Yes label={labelOf(LAPTOP_SOURCES, resident.laptopSource) || 'Yes'} /> : <Empty />}</dd>
+          <dt>Access</dt><dd>{resident.accessSetUp ? <Yes label={resident.accessType ? `Set up · ${labelOf(ACCESS_TYPES, resident.accessType)}` : 'Set up'} /> : <Empty />}</dd>
           <dt>Divide</dt><dd>{resident.sharePercent ? `${resident.sharePercent}%` : <Empty />}</dd>
           <dt>Belongs to</dt>
           <dd>

@@ -387,11 +387,11 @@ const ACCOUNTS = [
 // use to talk to them.
 async function createResidentsAndAccounts(people) {
   const byName = {};
-  for (const r of RESIDENTS) {
+  for (const [i, r] of RESIDENTS.entries()) {
     const owner = people[r.owner];
     byName[r.name] = await new Resident({
       name: r.name, country: r.country, citizenship: r.citizenship, age: r.age, source: r.source,
-      firstContact: day(r.first), firstContactVia: r.via, hasLaptop: r.laptop, accessSetUp: r.access, sharePercent: r.access ? 30 : 0,
+      firstContact: day(r.first), firstContactVia: r.via, hasLaptop: r.laptop, laptopSource: r.laptop ? pick(['own', 'bought'], i) : '', accessSetUp: r.access, accessType: r.access ? pick(['laptop', 'vps', 'proxy'], i) : '', sharePercent: r.access ? 30 : 0,
       notes: r.access ? 'Remote access tested, works.' : '',
       owner: owner._id, group: owner.group ?? null, createdBy: owner._id,
     }).save();

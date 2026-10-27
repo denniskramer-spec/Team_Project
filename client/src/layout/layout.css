@@ -289,6 +289,52 @@
 .rail-label { font-size: 11px; font-weight: 500; }
 .rail-item.active .rail-label { color: var(--accent); font-weight: 600; }
 .rail-pill { display: none; }
+/* A member's Settings sits at the foot of the rail, apart from the channels. */
+.rail-settings { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); border-radius: 0; }
+
+/* Icon-only rail (members): round buttons, the name flies out on hover. */
+.rail.compact { gap: 6px; padding: 10px 0; }
+.rail.compact .rail-item { padding: 2px 0; }
+.rail.compact .rail-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.rail.compact .rail-item:hover .rail-icon { background: var(--hover-strong); color: var(--text); border-color: var(--border-strong); }
+.rail.compact .rail-item.active .rail-icon { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.rail.compact .rail-admin .rail-icon { color: var(--text-admin); }
+.rail.compact .rail-settings { padding-top: 12px; }
+.rail-tip {
+  position: fixed;
+  z-index: 60;
+  transform: translateY(-50%);
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  background: var(--popover);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: menu-in 0.12s ease;
+}
+.rail-tip::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--popover);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
 
 /* ---------- Section 2: titles ---------- */
 .titles {

@@ -211,9 +211,28 @@ export function buildNav(user, groups, {
   ];
 
   // Members work from their own day: Checkout (the team's plan vs result)
-  // and the Member directory are for bosses, the leader and admins.
+  // and the Member directory are for bosses, the leader and admins. A
+  // member's own records (projects, residents, chat accounts) and account
+  // live together under one Settings channel at the foot of the rail; the
+  // other roles keep every channel as it is.
   const forManagers = ['checkout', 'member'];
-  const visible = user.role === 'member' ? channels.filter((c) => !forManagers.includes(c.key)) : channels;
+  const wrapped = ['task', 'resident', 'chataccount'];
+  const visible = user.role === 'member'
+    ? [
+      ...channels.filter((c) => !forManagers.includes(c.key) && !wrapped.includes(c.key)),
+      {
+        key: 'settings',
+        name: 'Settings',
+        icon: 'settings',
+        titles: [
+          { key: 'account', name: 'Account', section: 'User settings' },
+          { key: 'projects', name: 'Projects', section: 'Your records' },
+          { key: 'residents', name: 'Residents', section: 'Your records' },
+          { key: 'chataccounts', name: 'Chat accounts', section: 'Your records' },
+        ],
+      },
+    ]
+    : channels;
 
   const adminTitles = [];
   if (['admin', 'leader', 'boss'].includes(user.role)) adminTitles.push({ key: 'approvals', name: 'Approvals', badge: pendingCount });
