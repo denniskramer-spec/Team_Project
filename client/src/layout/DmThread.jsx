@@ -6,13 +6,16 @@ import { useToast } from '../components/Toast.jsx';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import MessageText from '../channels/chat/MessageText.jsx';
+import { useWatchChat } from '../alerts/ChatAlertsContext.jsx';
 
 const time = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const day = (d) => new Date(d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 // A direct message conversation in the side panel: the thread with one
 // person, on the same chat API as the channels (title key dm-<userId>).
-export default function DmThread({ peer, onBack }) {
+// `visible` is false while the panel is closed: the thread stays mounted,
+// but what arrives then is unread and raises a popup like any other message.
+export default function DmThread({ peer, onBack, visible = true }) {
   const { user } = useAuth();
   const { socket, online } = useSocket();
   const toast = useToast();
@@ -25,8 +28,13 @@ export default function DmThread({ peer, onBack }) {
   const listRef = useRef(null);
   const bottomRef = useRef(null);
   const lastTypingSent = useRef(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  useWatchChat(titleKey, visible);
 
   const markRead = useCallback(() => api(`/chat/${titleKey}/read`, { method: 'POST' }).catch(() => {}), [titleKey]);
+  // Opening the panel on this thread reads what came in while it was closed.
+  useEffect(() => { if (visible) markRead(); }, [visible, markRead]);
 
   const load = useCallback(async () => {
     try {
@@ -47,7 +55,7 @@ export default function DmThread({ peer, onBack }) {
     if (key !== titleKey) return;
     setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
     setTyping(false);
-    markRead();
+    if (visibleRef.current && !document.hidden) markRead();
   });
   useSocketEvent('chat:changed', ({ titleKey: key, message }) => { if (key === titleKey) setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m))); });
   useSocketEvent('chat:deleted', ({ titleKey: key, id }) => { if (key === titleKey) setMessages((prev) => prev.filter((m) => String(m.id) !== String(id))); });

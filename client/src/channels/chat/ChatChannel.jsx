@@ -5,6 +5,7 @@ import { useReconnect, useSocket, useSocketEvent } from '../../socket/SocketCont
 import { useToast } from '../../components/Toast.jsx';
 import Icon from '../../components/Icon.jsx';
 import Message from './Message.jsx';
+import { useWatchChat } from '../../alerts/ChatAlertsContext.jsx';
 
 const GROUP_WINDOW_MS = 5 * 60 * 1000; // same author within 5 minutes = one block
 const TYPING_TIMEOUT_MS = 4000;
@@ -46,6 +47,17 @@ export default function ChatChannel({ title }) {
   const markRead = useCallback(() => {
     api(`/chat/${title.key}/read`, { method: 'POST' }).catch(() => {});
   }, [title.key]);
+  // This chat is on screen: its messages land here instead of in a popup.
+  useWatchChat(title.key);
+  // A message that arrives while the window is in the background stays
+  // unread until the reader comes back to it.
+  const looking = () => !document.hidden && document.hasFocus();
+  useEffect(() => {
+    const onFocus = () => { if (shouldStick.current && looking()) { markRead(); setNewBelow(0); } };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+  }, [markRead]);
 
   const load = useCallback(async () => {
     try {
@@ -123,7 +135,7 @@ export default function ChatChannel({ title }) {
     if (titleKey !== title.key) return;
     setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
     setTyping((t) => t.filter((u) => u.id !== message.author?.id));
-    if (shouldStick.current) markRead();
+    if (shouldStick.current && looking()) markRead();
     else if (message.author?.id !== user.id) setNewBelow((n) => n + 1);
   });
   useSocketEvent('chat:changed', ({ titleKey, message }) => {

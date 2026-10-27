@@ -11,6 +11,7 @@ import Icon from '../components/Icon.jsx';
 import AlertsPanel from '../alerts/AlertsPanel.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
 import DmThread from './DmThread.jsx';
+import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 
 const ROLE_ORDER = ['admin', 'leader', 'boss', 'member'];
 const clock = (v) => new Date(v).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -240,9 +241,9 @@ function Members({ onMessage }) {
 }
 
 // The Messages tab: direct message conversations, and one open thread.
-function Messages({ open, setOpen, dms, reload }) {
+function Messages({ open, setOpen, dms, reload, visible }) {
   const { online } = useSocket();
-  if (open) return <DmThread peer={open} onBack={() => { setOpen(null); reload(); }} />;
+  if (open) return <DmThread peer={open} visible={visible} onBack={() => { setOpen(null); reload(); }} />;
   if (!dms.length) return <p className="muted small">No direct messages yet. Pick someone in Members and press Message.</p>;
   return (
     <ul className="dm-conversations">
@@ -263,12 +264,14 @@ function Messages({ open, setOpen, dms, reload }) {
 }
 
 // Section 4: hidden by default, slides in from the right when the arrow is clicked.
-export default function SidePanel({ open, onToggle, tab, setTab }) {
+export default function SidePanel({ open, onToggle, tab, setTab, thread, setThread }) {
   const { total } = useAlerts();
-  const [thread, setThread] = useState(null);
-  const { data: dmData, reload: reloadDms } = useSocketData('/chat/dms', ['chat:new']);
+  const setCounts = useChatAlerts()?.setCounts;
+  const { data: dmData, reload: reloadDms } = useSocketData('/chat/dms', ['chat:new', 'nav:changed']);
   const dms = dmData?.dms ?? [];
   const dmUnread = dmData?.unread ?? 0;
+  // The footer and the tab title show the unread direct messages too.
+  useEffect(() => { setCounts?.({ dms: dmUnread }); }, [setCounts, dmUnread]);
 
   const message = (peer) => { setThread(peer); setTab('messages'); };
 
@@ -289,7 +292,7 @@ export default function SidePanel({ open, onToggle, tab, setTab }) {
         </div>
         <div className={`panel-body${tab === 'messages' && thread ? ' panel-body-thread' : ''}`}>
           {tab === 'members' && <Members onMessage={message} />}
-          {tab === 'messages' && <Messages open={thread} setOpen={setThread} dms={dms} reload={reloadDms} />}
+          {tab === 'messages' && <Messages open={thread} setOpen={setThread} dms={dms} reload={reloadDms} visible={open} />}
           {tab === 'alerts' && <AlertsPanel />}
         </div>
       </aside>

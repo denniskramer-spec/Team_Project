@@ -17,13 +17,17 @@ export default function AlertsPanel() {
             <button className="link small" type="button" onClick={(e) => { e.preventDefault(); testSound(); }}>test</button>
           )}
         </label>
+        <label className="check">
+          <input type="checkbox" checked={settings.chat} onChange={(e) => updateSettings({ chat: e.target.checked })} />
+          Message popups
+        </label>
         {desktopSupported && (
           <label className="check">
             <input type="checkbox" checked={settings.desktop} onChange={(e) => updateSettings({ desktop: e.target.checked })} />
             Desktop notifications
           </label>
         )}
-        <p className="muted small">Desktop notifications appear when this window isn't focused.</p>
+        <p className="muted small">A chat message you are not looking at pops up in the corner; instructions pop up at the top. Desktop notifications show both when this window isn't focused.</p>
       </div>
 
       <div className="panel-section-head">

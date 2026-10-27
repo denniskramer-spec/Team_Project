@@ -25,7 +25,8 @@ export function AlertsProvider({ children }) {
   const [total, setTotal] = useState(0);
   const [popup, setPopup] = useState(null);
   const [urgentQueue, setUrgentQueue] = useState([]);
-  const [settings, setSettings] = useState(() => ({ sound: true, desktop: false, ...load(SETTINGS_KEY, {}) }));
+  // `chat` is the popup (and sound) for chat messages in chats not on screen.
+  const [settings, setSettings] = useState(() => ({ sound: true, desktop: false, chat: true, ...load(SETTINGS_KEY, {}) }));
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const active = Boolean(user && !user.mustChangePassword);

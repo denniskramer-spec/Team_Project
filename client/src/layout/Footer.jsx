@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSocket } from '../socket/SocketContext.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
+import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import Icon from '../components/Icon.jsx';
 import { formatDate } from '../format.js';
 import ThemeToggle from '../components/ThemeToggle.jsx';
@@ -42,6 +43,7 @@ function Brand({ compact }) {
 export default function Footer({ onPanel, panelOpen, panelTab }) {
   const { connected, online } = useSocket();
   const { total } = useAlerts();
+  const dmUnread = useChatAlerts()?.dmUnread ?? 0;
   const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const date = now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
@@ -55,6 +57,10 @@ export default function Footer({ onPanel, panelOpen, panelTab }) {
       <nav className="footer-links" aria-label="Quick links">
         <button className={`footer-link ${isOn('members') ? 'active' : ''}`} onClick={() => onPanel('members')} aria-pressed={isOn('members')}>
           <Icon name="users" size={14} /> Members
+        </button>
+        <button className={`footer-link ${isOn('messages') ? 'active' : ''}`} onClick={() => onPanel('messages')} aria-pressed={isOn('messages')}>
+          <Icon name="message" size={14} /> Messages
+          {dmUnread > 0 && <span className="badge footer-badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
         </button>
         <button className={`footer-link ${isOn('alerts') ? 'active' : ''}`} onClick={() => onPanel('alerts')} aria-pressed={isOn('alerts')}>
           <Icon name="bell" size={14} /> Alerts
