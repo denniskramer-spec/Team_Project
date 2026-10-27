@@ -42,3 +42,12 @@ export function playAlert(priority = 'normal') {
     tone(ac, 1175, t + 0.16, 0.5, 0.15);
   }
 }
+
+// A chat message: one short, soft "pop", quieter than an instruction.
+export function playMessage() {
+  const ac = context();
+  if (!ac || ac.state === 'suspended') return;
+  const t = ac.currentTime;
+  tone(ac, 880, t, 0.12, 0.12);
+  tone(ac, 1320, t + 0.08, 0.18, 0.1);
+}

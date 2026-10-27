@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
@@ -127,9 +128,10 @@ router.post('/', requireCapability('addMembers'), async (req, res) => {
   const name = checkName(req.body.name);
   const birthday = parseBirthday(req.body.birthday);
 
-  // Only admins pick roles; bosses can only add members to their own group.
+  // Admins and the team leader pick roles; bosses can only add members to
+  // their own group.
   let role = 'member';
-  if (req.user.role === 'admin' && req.body.role) {
+  if (['admin', 'leader'].includes(req.user.role) && req.body.role) {
     if (!ROLES.includes(req.body.role)) throw badRequest('Unknown role');
     role = req.body.role;
   }
@@ -219,7 +221,7 @@ router.post('/:id/status', async (req, res) => {
   res.json({ member: serialize(target, req.user) });
 });
 
-// PATCH /api/members/:id/role { role, group? } — admins only.
+// PATCH /api/members/:id/role { role, group? } — admins and the team leader.
 // A boss leads the group they belong to, so making someone a boss also says
 // which group: `group` moves them there (or they keep their current group).
 router.patch('/:id/role', requireCapability('manageUsers'), async (req, res) => {
@@ -281,6 +283,7 @@ router.post('/:id/approve', requireCapability('approveSignups'), async (req, res
 // POST /api/members/:id/reject — removes the pending sign-up entirely.
 router.post('/:id/reject', requireCapability('approveSignups'), async (req, res) => {
   const user = await findPending(req);
+  await archiveDeleted(user, req, { model: 'User', label: `${user.name} (@${user.username})`, reason: 'sign-up rejected' });
   await user.deleteOne();
   approvalsChanged();
   res.json({ ok: true });

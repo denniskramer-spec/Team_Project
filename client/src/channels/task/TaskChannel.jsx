@@ -134,7 +134,7 @@ function Detail({ project, isOwner, showOwner, onEdit, version }) {
             <strong>Write today's work in your daily report</strong>
             <div className="muted small">The daily report has a box for each active project — what you write there shows up here.</div>
           </div>
-          <Link className="btn primary" to="/report/me"><Icon name="file" size={14} /> Write daily report</Link>
+          <Link className="btn primary" to="/report?write=1"><Icon name="file" size={14} /> Write daily report</Link>
         </div>
       )}
 

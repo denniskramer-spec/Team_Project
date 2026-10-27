@@ -6,7 +6,7 @@ import Task from '../models/Task.js';
 import { pendingFilter } from '../utils/memberPolicy.js';
 import { unreadFilter } from '../utils/instructionPolicy.js';
 import { scopeFilter } from '../utils/visibility.js';
-import { chatUnreadCounts } from './chat.js';
+import { chatUnreadCounts, listDms } from './chat.js';
 import { requireAuth } from '../middleware/auth.js';
 import { buildNav } from '../config/channels.js';
 
@@ -31,6 +31,7 @@ router.get('/', requireAuth, async (req, res) => {
   }
 
   const chatUnread = await chatUnreadCounts(req.user);
+  const dms = await listDms(req.user);
 
   // Members shown under each group in the tree.
   const members = await User.find({ status: 'active', role: { $in: ['member', 'boss'] } }, 'name role group')
@@ -40,7 +41,7 @@ router.get('/', requireAuth, async (req, res) => {
   const tasks = await Task.find(scopeFilter(req.user, 'owner'), 'name status')
     .sort({ startDate: -1, createdAt: -1 }).limit(40).lean();
 
-  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members }) });
+  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members, dms }) });
 });
 
 export default router;

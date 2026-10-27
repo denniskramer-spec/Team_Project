@@ -60,6 +60,7 @@ export default function Signup() {
             autoComplete="username"
             value={form.username}
             onChange={set('username')}
+            maxLength={30}
             pattern="[A-Za-z0-9_.]{3,30}"
             title="3-30 characters: letters, numbers, _ or ."
             required
@@ -80,7 +81,7 @@ export default function Signup() {
         </div>
         <label>
           Password
-          <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} required />
+          <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} minLength={8} maxLength={128} required />
         </label>
         <PasswordRules password={form.password} />
         <label>

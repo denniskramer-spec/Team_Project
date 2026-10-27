@@ -40,7 +40,9 @@ function ReportCard({ row }) {
   const work = (r?.work ?? []).filter((w) => w.text?.trim() || w.hours || w.count);
   const calls = r?.calls ?? [];
   const bids = r ? [['Applied', r.jobBid], ['AI bids', r.aiBid], ['Résumés', r.resumes], ['Forms', r.forms], ['Bidding h', r.biddingHours]] : [];
-  const money = r ? [['Income', r.income], ['Upcoming', r.upcomingAmount]] : [];
+  // Earned is what the day's hours and tasks are worth; upcoming the part not
+  // paid yet. Reports from before projects had prices typed an income in.
+  const money = r ? [['Earned', r.earned], ['Upcoming', r.upcomingAmount], ['Income', r.income]] : [];
 
   return (
     <article className={`card report-card ${state}`}>
@@ -108,7 +110,7 @@ function ReportCard({ row }) {
           <Block title="Issues / blockers" show={Boolean(r.issues)}><div className="pre-wrap small rc-issues">{r.issues}</div></Block>
           <Block title="Plan for tomorrow" show={Boolean(r.planTomorrow)}><div className="pre-wrap small">{r.planTomorrow}</div></Block>
 
-          <Block title="Income" show={money.some(([, v]) => v) || Boolean(r.upcomingNote || r.note)}>
+          <Block title="Money" show={money.some(([, v]) => v) || Boolean(r.upcomingNote || r.note)}>
             <Figures pairs={money} />
             {r.upcomingDate && <div className="muted small">Expected <DateTag value={r.upcomingDate} utc /></div>}
             {r.upcomingNote && <div className="pre-wrap small muted">{r.upcomingNote}</div>}
@@ -129,7 +131,7 @@ export default function TeamReports({ rows, totals }) {
       <div className="report-section-head">
         <h3>Member reports</h3>
         <span className="muted small">
-          {totals.submitted} of {totals.expected} sent · {formatAmount(totals.jobBid)} applied · {formatAmount(totals.aiBid)} AI bids · {formatAmount(totals.income)} income · {formatAmount(totals.upcomingAmount)} upcoming
+          {totals.submitted} of {totals.expected} sent · {formatAmount(totals.jobBid)} applied · {formatAmount(totals.aiBid)} AI bids · {formatAmount(totals.earned)} earned · {formatAmount(totals.upcomingAmount)} upcoming
         </span>
       </div>
       <div className="report-cards">

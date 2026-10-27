@@ -2,7 +2,10 @@ import 'dotenv/config';
 
 const required = ['MONGODB_URI', 'JWT_SECRET'];
 const missing = required.filter((key) => !process.env[key]);
-if (missing.length) {
+// Unit tests (node --test) never open the database or sign tokens, so they
+// run without a .env; anything else refuses to start half-configured.
+const underTestRunner = Boolean(process.env.NODE_TEST_CONTEXT);
+if (missing.length && !underTestRunner) {
   console.error(`Missing required environment variables: ${missing.join(', ')}`);
   console.error('Copy server/.env.example to server/.env and fill it in.');
   process.exit(1);

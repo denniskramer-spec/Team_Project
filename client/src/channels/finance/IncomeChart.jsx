@@ -78,6 +78,11 @@ function MemberDetail({ row, periodLabel, onClose }) {
   );
 }
 
+// The hover card is centred on its column but kept inside the plot, so the
+// last columns don't push it off the right edge (where it would be squeezed).
+const TOOLTIP_HALF = 150; // half of .chart-tooltip's max-width
+const tooltipLeft = (x, width) => Math.min(Math.max(x, TOOLTIP_HALF), Math.max(width - TOOLTIP_HALF, TOOLTIP_HALF));
+
 export default function IncomeChart({ rows, periodLabel }) {
   const wrap = useRef(null);
   const [width, setWidth] = useState(0);
@@ -185,7 +190,7 @@ export default function IncomeChart({ rows, periodLabel }) {
         )}
 
         {hover && rows[hover.index] && (
-          <div className="chart-tooltip" style={{ left: hover.x, top: MARGIN.top }}>
+          <div className="chart-tooltip" style={{ left: tooltipLeft(hover.x, width), top: MARGIN.top }}>
             <strong>{nameOf(rows[hover.index].member)}</strong>
             {SERIES.map((s) => (
               <span key={s.key} className="tooltip-row">

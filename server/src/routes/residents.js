@@ -1,6 +1,7 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
-import Resident from '../models/Resident.js';
+import Resident, { LAPTOP_SOURCES, ACCESS_TYPES } from '../models/Resident.js';
 import ChatAccount from '../models/ChatAccount.js';
 import Task from '../models/Task.js';
 import User from '../models/User.js';
@@ -14,17 +15,21 @@ import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
 import { fileInUse, imageUrl } from '../utils/fileRefs.js';
 import { residentChanged, taskWorkChanged } from '../socket/events.js';
+import { repriceResident } from '../utils/reportWork.js';
 
 const router = Router();
 router.use(requireAuth);
+
+export const LAPTOP_LABELS = { bought: 'Bought for them', own: 'Already had one' };
+export const ACCESS_LABELS = { laptop: 'Laptop', vps: 'VPS', proxy: 'Proxy' };
 
 // The whole resident as one sentence, used in the Member channel.
 export const residentSentence = (r) => [
   r.name,
   r.age !== null && r.age !== undefined ? `${r.age} years old` : null,
   r.country || null,
-  r.hasLaptop ? 'has a laptop' : null,
-  r.accessSetUp ? 'access set up' : null,
+  r.hasLaptop ? (r.laptopSource === 'bought' ? 'laptop bought for them' : 'has a laptop') : null,
+  r.accessSetUp ? `access set up${r.accessType ? ` via ${ACCESS_LABELS[r.accessType]}` : ''}` : null,
   r.sharePercent ? `${r.sharePercent}% share` : null,
 ].filter(Boolean).join(', ');
 
@@ -39,7 +44,9 @@ export const serialize = (r, user) => ({
   firstContact: r.firstContact,
   firstContactVia: r.firstContactVia,
   hasLaptop: r.hasLaptop,
+  laptopSource: r.laptopSource ?? '',
   accessSetUp: r.accessSetUp,
+  accessType: r.accessType ?? '',
   sharePercent: r.sharePercent ?? 0,
   notes: r.notes,
   owner: r.owner?._id ? { id: r.owner._id, name: r.owner.name, role: r.owner.role } : null,
@@ -83,11 +90,19 @@ async function checkFields(body, partial = false) {
   if (body.age !== undefined) fields.age = checkAge(body.age);
   if (body.source !== undefined) fields.source = checkText(body.source, 'Source', 160);
   if (body.firstContact !== undefined) {
-    fields.firstContact = body.firstContact === null || body.firstContact === '' ? null : checkDay(body.firstContact, 'the first contact day');
+    fields.firstContact = body.firstContact === null || body.firstContact === '' ? null : checkDay(body.firstContact, 'the first contact day', { pastOnly: true });
   }
   if (body.firstContactVia !== undefined) fields.firstContactVia = checkText(body.firstContactVia, 'First contacted via', 60);
   if (body.hasLaptop !== undefined) fields.hasLaptop = checkFlag(body.hasLaptop, 'Has a laptop');
+  if (body.laptopSource !== undefined) {
+    if (!LAPTOP_SOURCES.includes(body.laptopSource ?? '')) throw badRequest('Laptop source is bought for them or already had one');
+    fields.laptopSource = body.laptopSource ?? '';
+  }
   if (body.accessSetUp !== undefined) fields.accessSetUp = checkFlag(body.accessSetUp, 'Access set up');
+  if (body.accessType !== undefined) {
+    if (!ACCESS_TYPES.includes(body.accessType ?? '')) throw badRequest('Access type is laptop, VPS or proxy');
+    fields.accessType = body.accessType ?? '';
+  }
   if (body.sharePercent !== undefined) fields.sharePercent = checkShare(body.sharePercent);
   if (body.notes !== undefined) fields.notes = checkText(body.notes, 'Notes', 2000);
   return fields;
@@ -180,6 +195,7 @@ router.patch('/:id', async (req, res) => {
   const resident = await findResident(req);
   if (!mayManage(req.user, resident)) throw forbidden('You cannot change this resident');
   const before = resident.photo?.file;
+  const shareBefore = resident.sharePercent ?? 0;
   Object.assign(resident, await checkFields(req.body, true));
   if (req.body.owner !== undefined) {
     const owner = await resolveOwner(req);
@@ -189,6 +205,11 @@ router.patch('/:id', async (req, res) => {
   await resident.save();
   await populate(resident);
   if (before && before !== resident.photo?.file) await removeUnusedFiles([before], fileInUse);
+  // A new share changes what the unpaid work on their projects is worth.
+  if ((resident.sharePercent ?? 0) !== shareBefore) {
+    await repriceResident(resident._id);
+    taskWorkChanged(resident.owner._id, resident.group?._id ?? null);
+  }
 
   residentChanged(resident);
   res.json({ resident: serialize(resident, req.user) });
@@ -197,6 +218,7 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const resident = await findResident(req);
   if (!mayManage(req.user, resident)) throw forbidden('You cannot delete this resident');
+  await archiveDeleted(resident, req, { model: 'Resident', label: resident.name });
   await resident.deleteOne();
   // Chat accounts that talked to this resident no longer list them.
   await ChatAccount.updateMany({ contacts: resident._id }, { $pull: { contacts: resident._id } });

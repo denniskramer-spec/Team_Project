@@ -12,6 +12,8 @@ import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
 import DateTag from '../../components/DateTag.jsx';
+import { useCurrency } from './useCurrency.js';
+import RateNote from './RateNote.jsx';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
 // More items than this and the hover card only summarises; a click opens the full list.
@@ -30,7 +32,7 @@ function rankTag(row, rows) {
   return null;
 }
 
-function ItemsTable({ items }) {
+function ItemsTable({ items, money = formatAmount }) {
   return (
     <table className="table">
       <thead><tr><th>Date</th><th>Reason</th><th className="num">Amount</th></tr></thead>
@@ -39,7 +41,7 @@ function ItemsTable({ items }) {
           <tr key={o.id}>
             <td><DateTag value={o.date} utc /></td>
             <td>{o.reason}{o.split && <span className="tag split-tag">{o.split}</span>}{o.comment && <div className="muted small">{o.comment}</div>}</td>
-            <td className="num strong">{formatAmount(o.amount)}</td>
+            <td className="num strong">{money(o.amount)}</td>
           </tr>
         ))}
       </tbody>
@@ -52,6 +54,8 @@ function ItemsTable({ items }) {
 export default function OutcomePage() {
   const toast = useToast();
   const period = useFinancePeriod();
+  const currency = useCurrency();
+  const { money, convert } = currency;
   const { data, error, reload: load } = useLiveData(`/outcomes?${period.query}`, ['outcome:changed']);
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -75,7 +79,7 @@ export default function OutcomePage() {
   if (!data) return <div className="page muted">Loading...</div>;
   const p = data.period;
   const top = data.perMember[0]?.amount ?? 0;
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count }));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: convert(c.amount) }, items: c.items.map((o) => ({ ...o, amount: convert(o.amount) })), count: c.count }));
 
   return (
     <div className="page finance-page">
@@ -84,6 +88,7 @@ export default function OutcomePage() {
         type={period.type} from={period.from} to={period.to}
         onType={period.setType} onRange={period.setRange}
         scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'outcome')}
+        currency={currency}
         actions={data.can.record && (
           <button className="btn primary finance-add" onClick={() => setForm({})}>
             <Icon name="plus" size={16} /> Record outcome
@@ -91,14 +96,15 @@ export default function OutcomePage() {
         )}
       />
 
+      <RateNote currency={currency} />
       <div className="stat-row finance-stats">
         <div className="stat stat-bad">
-          <span className="stat-value">{formatAmount(data.total)}</span>
+          <span className="stat-value">{money(data.total)}</span>
           <span className="muted small">Total outcome · {p.label}</span>
         </div>
         {data.perGroup?.map((g) => (
           <div key={g.id} className={`stat role-border-boss${period.group === g.slug ? ' is-selected' : ''}`}>
-            <span className="stat-value">{formatAmount(g.amount)}</span>
+            <span className="stat-value">{money(g.amount)}</span>
             <span className="muted small">{g.name} · {g.count} {g.count === 1 ? 'record' : 'records'}</span>
           </div>
         ))}
@@ -111,7 +117,7 @@ export default function OutcomePage() {
       {rows.length > 0 && (
         <FinanceColumns
           title="Outcome per member"
-          periodLabel={p.label}
+          periodLabel={`${p.label} · ${currency.code}`}
           rows={rows}
           series={SERIES}
           tag={rankTag}
@@ -158,7 +164,7 @@ export default function OutcomePage() {
                 <span className="bar-track">
                   <span className="bar-fill out" style={{ width: `${top ? (row.amount / top) * 100 : 0}%` }} />
                 </span>
-                <span className="bar-value">{formatAmount(row.amount)}</span>
+                <span className="bar-value">{money(row.amount)}</span>
               </li>
             ))}
           </ul>
@@ -190,8 +196,8 @@ export default function OutcomePage() {
                   <td data-label="Reason">
                     {o.reason}
                     {o.split && (
-                      <span className="tag split-tag" title={`${formatAmount(o.split.total)} shared equally by ${o.split.count} people`}>
-                        {o.split.label} · 1/{o.split.count} of {formatAmount(o.split.total)}
+                      <span className="tag split-tag" title={`${money(o.split.total)} shared equally by ${o.split.count} people`}>
+                        {o.split.label} · 1/{o.split.count} of {money(o.split.total)}
                       </span>
                     )}
                     {o.comment && <div className="muted small">{o.comment}</div>}
@@ -207,7 +213,7 @@ export default function OutcomePage() {
                       </ul>
                     )}
                   </td>
-                  <td data-label="Amount" className="num strong">{formatAmount(o.amount)}</td>
+                  <td data-label="Amount" className="num strong">{money(o.amount)}</td>
                   <td className="cell-actions">
                     {o.canEdit && (
                       <Dropdown
@@ -223,7 +229,7 @@ export default function OutcomePage() {
               ))}
             </tbody>
             <tfoot>
-              <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{formatAmount(data.total)}</td><td /></tr>
+              <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{money(data.total)}</td><td /></tr>
             </tfoot>
           </table>
         </section>

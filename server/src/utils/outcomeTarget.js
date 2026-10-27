@@ -52,7 +52,10 @@ export function shares(total, count) {
 // Shared checks for amount, reason and comment.
 export function checkMoneyFields(body, partial = false) {
   const fields = {};
-  if (!partial || body.amount !== undefined) fields.amount = checkAmount(body.amount);
+  if (!partial || body.amount !== undefined) {
+    fields.amount = checkAmount(body.amount);
+    if (!(fields.amount > 0)) throw badRequest('Amount must be more than 0');
+  }
   if (!partial || body.reason !== undefined) {
     fields.reason = checkText(body.reason, 'Reason', 120);
     if (!fields.reason) throw badRequest('Give a reason for the outcome');

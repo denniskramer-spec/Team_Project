@@ -27,7 +27,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
   }, []);
 
   const canPickGroup = editing ? member.permissions.changeGroup : ['admin', 'leader'].includes(user.role);
-  const canPickRole = !editing && user.role === 'admin';
+  const canPickRole = !editing && ['admin', 'leader'].includes(user.role);
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const submit = async (e) => {
@@ -81,6 +81,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
             <input
               value={form.username}
               onChange={set('username')}
+              maxLength={30}
               pattern="[A-Za-z0-9_.]{3,30}"
               title="3-30 characters: letters, numbers, _ or ."
               required
@@ -115,6 +116,8 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
               type="text"
               value={form.password}
               onChange={set('password')}
+              minLength={8}
+              maxLength={128}
               placeholder="Leave empty to generate one"
               autoComplete="off"
             />

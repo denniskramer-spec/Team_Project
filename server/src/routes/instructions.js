@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Instruction from '../models/Instruction.js';
 import Group from '../models/Group.js';
@@ -225,6 +226,7 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const instr = await findVisible(req);
   if (!canModify(req.user, instr)) throw forbidden('You cannot delete this instruction');
+  await archiveDeleted(instr, req, { model: 'Instruction', label: instr.title || String(instr.content ?? '').slice(0, 80) });
   await instr.deleteOne();
   instructionEvent('instruction:deleted', instr, { id: instr._id });
   res.json({ ok: true });

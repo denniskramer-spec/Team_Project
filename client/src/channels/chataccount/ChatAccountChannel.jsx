@@ -12,12 +12,16 @@ import { useLatestRequest } from '../../useLiveData.js';
 
 // Section 3 for the Chat accounts channel: one card per Discord, Telegram or
 // WhatsApp account, with the residents it talks to.
+const byOwnerThenName = (a, b) => (a.owner?.name ?? '').localeCompare(b.owner?.name ?? '') || a.name.localeCompare(b.name);
+
 export default function ChatAccountChannel({ title }) {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const group = title.key === 'me' ? 'all' : title.key;
   const member = searchParams.get('m') || '';
   const [query, setQuery] = useState('');
+  const [platform, setPlatform] = useState('');
+  const [status, setStatus] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [form, setForm] = useState(null);
@@ -58,8 +62,15 @@ export default function ChatAccountChannel({ title }) {
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
 
-  const { accounts } = data;
-  const active = accounts.filter((a) => a.status === 'active').length;
+  const { accounts: all } = data;
+  const active = all.filter((a) => a.status === 'active').length;
+  const accounts = all.filter((a) => (!platform || a.platform === platform) && (!status || a.status === status));
+  const countOn = (key) => all.filter((a) => a.platform === key).length;
+  // One block per platform, each sorted by owner then account name, so a
+  // long list reads as categories instead of a wall of cards.
+  const sections = data.platforms
+    .map((p) => ({ ...p, accounts: accounts.filter((a) => a.platform === p.key).sort(byOwnerThenName) }))
+    .filter((p) => p.accounts.length);
   const scopeLabel = member
     ? accounts[0]?.owner?.name ?? 'Member'
     : data.scope === 'self' ? 'Your accounts'
@@ -80,23 +91,43 @@ export default function ChatAccountChannel({ title }) {
           />
         </div>
         <span className="muted small toolbar-count">
-          {scopeLabel} · {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} · {active} active
+          {scopeLabel} · {all.length} {all.length === 1 ? 'account' : 'accounts'} · {active} active
         </span>
         <button className="btn primary" onClick={() => setForm({})}>
           <Icon name="plus" size={16} /> New account
         </button>
       </div>
+      <div className="toolbar account-filters">
+        <div className="segmented" role="tablist" aria-label="Platform">
+          <button type="button" role="tab" className={platform === '' ? 'on' : ''} onClick={() => setPlatform('')}>All platforms</button>
+          {data.platforms.map((p) => (
+            <button type="button" role="tab" key={p.key} className={platform === p.key ? 'on' : ''} onClick={() => setPlatform(p.key)}>
+              <span className={`platform platform-${p.key}`}>{p.name}</span> <span className="muted">{countOn(p.key)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="segmented" role="tablist" aria-label="Status">
+          <button type="button" role="tab" className={status === '' ? 'on' : ''} onClick={() => setStatus('')}>Any status</button>
+          <button type="button" role="tab" className={status === 'active' ? 'on' : ''} onClick={() => setStatus('active')}>Active</button>
+          <button type="button" role="tab" className={status === 'suspended' ? 'on' : ''} onClick={() => setStatus('suspended')}>Suspended</button>
+        </div>
+      </div>
 
       {!accounts.length && (
         <div className="empty-inline muted">
           <Icon name="message" size={20} />
-          {query ? `No accounts match "${query}".` : 'No chat accounts here yet. Register one to get started.'}
+          {query || platform || status ? 'No accounts match this filter.' : 'No chat accounts here yet. Register one to get started.'}
         </div>
       )}
 
-      {accounts.length > 0 && (
-        <div className="account-grid">
-          {accounts.map((a) => (
+      {sections.map((p) => (
+        <section key={p.key} className="account-section">
+          <h3 className="account-section-title">
+            <span className={`platform platform-${p.key}`}>{p.name}</span>
+            <span className="muted small">{p.accounts.length} {p.accounts.length === 1 ? 'account' : 'accounts'} · {p.accounts.filter((a) => a.status === 'active').length} active</span>
+          </h3>
+          <div className="account-grid">
+          {p.accounts.map((a) => (
             <section key={a.id} className="card account-card">
               <div className="account-head">
                 <span className={`platform platform-${a.platform}`}>{a.platformName}</span>
@@ -139,8 +170,9 @@ export default function ChatAccountChannel({ title }) {
               )}
             </section>
           ))}
-        </div>
-      )}
+          </div>
+        </section>
+      ))}
 
       {form && (
         <ChatAccountForm

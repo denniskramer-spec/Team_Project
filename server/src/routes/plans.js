@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
+import Income from '../models/Income.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -9,7 +11,7 @@ import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { visibleGroups } from '../utils/scope.js';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkOptionalAmount, checkText } from '../utils/validate.js';
+import { checkOptionalAmount, checkCount, checkText } from '../utils/validate.js';
 import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
 import { planChanged } from '../socket/events.js';
 
@@ -28,7 +30,12 @@ function checkType(type) {
 
 function checkFields(body) {
   const fields = { note: checkText(body.note, 'Note', 2000) };
-  for (const item of PLAN_ITEMS) fields[item.key] = checkOptionalAmount(body[item.key], item.label);
+  // Bids, résumés and forms are counted; hours and income are amounts.
+  for (const item of PLAN_ITEMS) {
+    fields[item.key] = ['income', 'biddingHours'].includes(item.key)
+      ? checkOptionalAmount(body[item.key], item.label)
+      : checkCount(body[item.key], item.label);
+  }
   if (body.status !== undefined) {
     if (!PLAN_STATES.includes(body.status)) throw badRequest('Unknown status');
     fields.status = body.status;
@@ -110,18 +117,32 @@ router.get('/', async (req, res) => {
   const byOwner = new Map(personal.map((p) => [String(p.owner._id), p]));
 
   // Achieved so far: the daily reports of the period, added up per author
-  // (for a personal plan) and per group (for a group plan).
-  const reports = await Report.find({
-    scope: 'personal', type: 'daily', periodStart: { $gte: period.start, $lt: period.end },
-    ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
-  }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean();
-  const sumInto = (acc, r) => { for (const i of PLAN_ITEMS) acc[i.key] += i.key === 'jobBid' ? (r.jobBid || r.bid || 0) : (r[i.key] || 0); return acc; };
+  // (for a personal plan) and per group (for a group plan). The income
+  // target is met by what Finance records in the period, not by the
+  // reports: a report says what the work is worth, Finance says what came in.
+  const inside = { $gte: period.start, $lt: period.end };
+  const [reports, incomes] = await Promise.all([
+    Report.find({
+      scope: 'personal', type: 'daily', periodStart: inside,
+      ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
+    }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean(),
+    Income.find({
+      date: inside,
+      ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { member: readable.owner } : {}),
+    }, 'member group amount').lean(),
+  ]);
+  const sumInto = (acc, r) => { for (const i of PLAN_ITEMS) if (i.key !== 'income') acc[i.key] += i.key === 'jobBid' ? (r.jobBid || r.bid || 0) : (r[i.key] || 0); return acc; };
   const zero = () => Object.fromEntries(PLAN_ITEMS.map((i) => [i.key, 0]));
   const byAuthor = new Map();
   const byGroup = new Map();
   for (const r of reports) {
     byAuthor.set(String(r.author), sumInto(byAuthor.get(String(r.author)) ?? zero(), r));
     if (r.group) byGroup.set(String(r.group), sumInto(byGroup.get(String(r.group)) ?? zero(), r));
+  }
+  const addIncome = (map, key, amount) => { const acc = map.get(key) ?? zero(); acc.income = Math.round((acc.income + amount) * 100) / 100; map.set(key, acc); };
+  for (const i of incomes) {
+    addIncome(byAuthor, String(i.member), i.amount || 0);
+    if (i.group) addIncome(byGroup, String(i.group), i.amount || 0);
   }
   const achievedOf = (p) => (p.scope === 'group' ? byGroup.get(String(p.group?._id ?? p.group)) : byAuthor.get(String(p.owner?._id ?? p.owner))) ?? zero();
   // Counts and totals cover the same plans: the personal ones.
@@ -210,6 +231,7 @@ router.patch('/:id/status', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const plan = await findOwnPlan(req);
+  await archiveDeleted(plan, req, { model: 'Plan', label: `${plan.type} plan ${plan.period}` });
   await plan.deleteOne();
   planChanged(req.user, plan);
   res.json({ ok: true });

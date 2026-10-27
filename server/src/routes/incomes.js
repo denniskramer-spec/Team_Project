@@ -19,6 +19,8 @@ import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../util
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, taskWorkChanged } from '../socket/events.js';
+import { settleTaskWork } from '../utils/reportWork.js';
+import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -29,6 +31,10 @@ const serialize = (i) => ({
   group: i.group?._id ? { id: i.group._id, name: i.group.name, slug: i.group.slug } : null,
   date: i.date,
   amount: i.amount,
+  currency: i.currency ?? 'USD',
+  originalAmount: i.originalAmount ?? i.amount,
+  rate: i.rate ?? 1,
+  rateDate: i.rateDate ?? '',
   from: i.from,
   note: i.note,
   task: i.task?._id ? { id: i.task._id, name: i.task.name } : null,
@@ -49,7 +55,10 @@ const serialize = (i) => ({
 function checkFields(body, partial = false) {
   const fields = {};
   if (!partial || body.date !== undefined) fields.date = checkDay(body.date, 'a date');
-  if (!partial || body.amount !== undefined) fields.amount = checkAmount(body.amount);
+  if (!partial || body.amount !== undefined) {
+    fields.amount = checkAmount(body.amount);
+    if (!(fields.amount > 0)) throw badRequest('Amount must be more than 0');
+  }
   if (body.note !== undefined) fields.note = checkText(body.note, 'Note', 2000);
   return fields;
 }
@@ -198,7 +207,8 @@ async function upcomingFor(taskId, ownerId) {
 // and tasks still expect to be paid, to check against a new income record.
 router.get('/upcoming', async (req, res) => {
   if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
-  const task = await Task.findById(req.query.task, 'owner name').lean();
+  // Only a project this role may see: a member their own, a boss their group's.
+  const task = await Task.findOne({ ...scopeFilter(req.user, 'owner'), _id: req.query.task }, 'owner name').lean();
   if (!task) throw badRequest('Unknown project');
   res.json({ project: { id: task._id, name: task.name }, ...(await upcomingFor(task._id, task.owner)) });
 });
@@ -222,6 +232,10 @@ router.post('/upload', uploadLimiter(), (req, res, next) => {
 router.post('/', async (req, res) => {
   const member = await resolveMember(req);
   const fields = checkFields(req.body);
+  // The amount may be typed in any of the app's currencies; it is recorded
+  // in the base at today's rate, and what was typed is kept alongside.
+  const money = toBase(fields.amount, checkCurrency(req.body.currency));
+  fields.amount = money.amount;
   const resident = await resolveResident(req, member);
   // The resident's share defaults to the divide % on their record.
   const payment = checkPayment({ ...req.body, residentPercent: req.body.residentPercent ?? resident?.sharePercent ?? 0 });
@@ -229,6 +243,7 @@ router.post('/', async (req, res) => {
   const task = taskId ? await Task.findById(taskId, 'name').lean() : null;
   const income = await new Income({
     ...fields,
+    ...money,
     ...payment,
     ...computeSplit({ amount: fields.amount, ...payment }),
     from: task?.name ?? resident?.name ?? methodOf(payment.method)?.label ?? '',
@@ -242,20 +257,21 @@ router.post('/', async (req, res) => {
   await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
   // Recording income for a project settles the unpaid work reported on it:
-  // those days stop counting as upcoming (their reports are recomputed).
+  // those days stop counting as upcoming (their reports are recomputed and
+  // the Dashboard, Plan and Finance screens are told). The project's paid
+  // total changes either way, so Projects reloads too.
   let settled = 0;
   if (taskId) {
-    const reports = await Report.find({ author: member._id, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null } } });
-    for (const r of reports) {
-      r.work.forEach((w) => { if (String(w.task) === String(taskId) && !w.paidBy) { w.paidBy = income._id; settled += 1; } });
-      r.upcomingAmount = Math.round(r.work.filter((w) => !w.paidBy).reduce((n, w) => n + (w.amount || 0), 0) * 100) / 100;
-      if (!r.upcomingAmount) r.upcomingDate = null;
-      await r.save();
-    }
-    if (settled) taskWorkChanged(member._id, member.group ?? null);
+    settled = await settleTaskWork(taskId, member._id, income._id);
+    taskWorkChanged(member._id, member.group ?? null);
   }
 
   incomeChanged(income);
+  req.audit = {
+    action: 'incomes.create',
+    target: { model: 'Income', id: income._id, label: `${money.currency} ${money.originalAmount} for ${member.name}` },
+    details: { ...req.body, images: (income.images ?? []).length, base: { amount: money.amount, currency: currentRates().base, rate: money.rate } },
+  };
   res.status(201).json({ income: serialize(income), settled });
 });
 

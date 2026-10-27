@@ -13,6 +13,8 @@ import {
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
 import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/events.js';
 import { disconnectSession } from '../socket/index.js';
+import AuditLog from '../models/AuditLog.js';
+import { clientIp } from '../utils/audit.js';
 
 const router = Router();
 
@@ -93,22 +95,44 @@ router.post('/login', ipLimiter, authLimiter, async (req, res) => {
   // Same message and about the same time for an unknown user and a wrong
   // password, so usernames can't be probed.
   const ok = user ? await user.checkPassword(req.body.password) : await bcrypt.compare(req.body.password, DUMMY_HASH);
+  const username = String(req.body.username).trim().toLowerCase().slice(0, 60);
   if (!user || !ok) {
+    // The failed attempt goes in the security log with the name tried, so a
+    // guessing run (many names, or one name many times) shows up there.
+    req.audit = { action: 'auth.login.failed', username, details: { reason: user ? 'wrong password' : 'unknown username' } };
     throw unauthorized('Wrong username or password');
   }
-  if (user.status === 'pending') throw forbidden('Your account is waiting for approval');
-  if (user.status === 'disabled') throw forbidden('Your account has been disabled');
+  if (user.status === 'pending') {
+    req.audit = { action: 'auth.login.failed', username, details: { reason: 'pending approval' } };
+    throw forbidden('Your account is waiting for approval');
+  }
+  if (user.status === 'disabled') {
+    req.audit = { action: 'auth.login.failed', username, details: { reason: 'account disabled' } };
+    throw forbidden('Your account has been disabled');
+  }
+
+  // A login from an address this account has never used before is flagged.
+  const ip = clientIp(req);
+  const flags = [];
+  if (user.lastLoginAt && !(await AuditLog.exists({ 'user.id': user._id, action: 'auth.login', ip }))) flags.push('new-ip');
+  req.audit = { action: 'auth.login', details: { username }, flags };
 
   user.lastLoginAt = new Date();
   await user.save();
 
   setSessionCookie(res, user);
+  // The log entry names who logged in, even though the request started out anonymous.
+  req.user = user;
   res.json({ user: await publicUser(user) });
 });
 
 router.post('/logout', async (req, res) => {
   const ended = await revokeToken(req);
-  if (ended) await disconnectSession(ended.sub, ended.jti);
+  if (ended) {
+    await disconnectSession(ended.sub, ended.jti);
+    req.user = await User.findById(ended.sub, 'name username role').lean();
+  }
+  req.audit = { action: 'auth.logout', details: null };
   res.clearCookie(TOKEN_COOKIE, cookieOptions);
   res.json({ ok: true });
 });
@@ -143,6 +167,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   await user.setPassword(newPassword);
   user.mustChangePassword = false;
   await user.save();
+  req.audit = { action: 'auth.password', details: null };
 
   // Old tokens are now invalid, so issue a fresh one for this session, and
   // drop every open socket: this session reconnects with the new cookie, the

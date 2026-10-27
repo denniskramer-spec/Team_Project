@@ -10,6 +10,7 @@ import FinanceChannel from './finance/FinanceChannel.jsx';
 import CheckoutChannel from './checkout/CheckoutChannel.jsx';
 import ResidentChannel from './resident/ResidentChannel.jsx';
 import ChatAccountChannel from './chataccount/ChatAccountChannel.jsx';
+import SettingsChannel from './settings/SettingsChannel.jsx';
 
 // Maps a channel key to the component that renders section 3.
 // Each later step registers its channel here.
@@ -25,6 +26,8 @@ const REGISTRY = {
   chataccount: ChatAccountChannel,
   chat: ChatChannel,
   admin: AdminChannel,
+  // A member's account and own records in one place.
+  settings: SettingsChannel,
 };
 
 export default function ChannelContent({ channel, title }) {

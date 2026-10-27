@@ -12,6 +12,7 @@ import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, notFound } from '../utils/httpError.js';
 import { person as personOf } from '../utils/finance.js';
+import { earnedOf, upcomingOf } from '../utils/reportWork.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -22,6 +23,11 @@ const TYPES = { weekly: 'weekly', monthly: 'monthly', yearly: 'annual' };
 const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
 // Records written before bids were split counted them all as job bids.
 const sumJobBids = (rows) => rows.reduce((total, row) => total + (row.jobBid || row.bid || 0), 0);
+// A daily report's income is what its hours and tasks earned (reports written
+// before projects had prices typed an income figure in; it still counts).
+const money = (n) => Math.round(n * 100) / 100;
+const sumEarned = (rows) => money(rows.reduce((total, row) => total + (earnedOf(row.work) || row.income || 0), 0));
+const sumUpcoming = (rows) => money(rows.reduce((total, row) => total + upcomingOf(row.work), 0));
 
 // GET /api/checkout?type=weekly|monthly|yearly&period=&group=all|<slug>
 // Pulls together the Plan, Report, Task and Finance channels for one period.
@@ -100,7 +106,8 @@ router.get('/', async (req, res) => {
   // The three bar charts from the guide.
   const income = {
     planned: sum(plans, 'income'),
-    reported: sum(reports, 'income'),
+    reported: sumEarned(reports),
+    upcoming: sumUpcoming(reports),
     actual: sum(incomes, 'amount'),
   };
   const jobBid = { planned: sumJobBids(plans), reported: sumJobBids(reports) };
@@ -129,8 +136,8 @@ router.get('/', async (req, res) => {
         group: person.group ? { name: person.group.name, slug: person.group.slug } : null,
       },
       planned: { jobBid: sumJobBids(mine.plans), aiBid: sum(mine.plans, 'aiBid'), income: sum(mine.plans, 'income') },
-      reported: { jobBid: sumJobBids(mine.reports), aiBid: sum(mine.reports, 'aiBid'), income: sum(mine.reports, 'income') },
-      upcoming: sum(mine.reports, 'upcomingAmount'),
+      reported: { jobBid: sumJobBids(mine.reports), aiBid: sum(mine.reports, 'aiBid'), income: sumEarned(mine.reports) },
+      upcoming: sumUpcoming(mine.reports),
       actualIncome: sum(mine.incomes, 'amount'),
       tasks: { total: mine.tasks.length, done: mine.tasks.filter((t) => t.status === 'done').length, price: sum(mine.tasks, 'price') },
       planStates: PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: mine.allPlans.filter((p) => p.status === s).length }), {}),

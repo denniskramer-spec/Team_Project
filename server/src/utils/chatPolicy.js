@@ -9,16 +9,19 @@ import { notFound } from './httpError.js';
 //   finance       -> 'finance'
 //   group-<slug>  -> 'group:<groupId>'
 //   dm-<userId>   -> 'dm:<idA>:<idB>'   (the two ids sorted, so both sides agree)
-// General and finance chat are open to every active user. A group chat is for
-// that group's members, plus the team leader and admins (who oversee all groups).
-// A direct message is between two active people, whoever they are.
+// General chat is open to every active user. Finance chat is for bosses and
+// the team leader only. A group chat is for that group's members, plus the
+// team leader and admins (who oversee all groups). A direct message is
+// between two active people, whoever they are.
 
+export const canUseFinanceChat = (user) => ['boss', 'leader'].includes(user.role);
 export const dmKey = (a, b) => `dm:${[String(a), String(b)].sort().join(':')}`;
 export const isDmKey = (key) => key.startsWith('dm:');
 // The other side of a DM channel key, seen from `userId`.
 export const dmPeerOf = (key, userId) => key.slice(3).split(':').find((id) => id !== String(userId)) ?? String(userId);
 
 export async function resolveChannel(user, titleKey) {
+  if (titleKey === 'finance' && !canUseFinanceChat(user)) throw notFound('Chat not found');
   if (titleKey === 'general' || titleKey === 'finance') {
     return { key: titleKey, kind: titleKey, group: null, name: `${titleKey}-chat` };
   }

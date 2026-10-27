@@ -44,7 +44,7 @@ export default function ChangePassword() {
         </label>
         <label>
           New password
-          <input type="password" autoComplete="new-password" value={form.next} onChange={set('next')} required />
+          <input type="password" autoComplete="new-password" value={form.next} onChange={set('next')} minLength={8} maxLength={128} required />
         </label>
         <PasswordRules password={form.next} />
         <label>

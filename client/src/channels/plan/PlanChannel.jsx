@@ -134,8 +134,9 @@ export default function PlanChannel({ title }) {
   useEffect(() => { load(); }, [load]);
   useReconnect(load);
   useSocketEvent('plan:changed', (e) => { if (e.type === type) load(); });
-  // Reports change what has been achieved.
+  // Reports change what has been achieved; income records meet the income target.
   useSocketEvent('report:changed', load);
+  useSocketEvent('income:changed', load);
 
   const setPeriod = (value) => {
     const next = new URLSearchParams(searchParams);
@@ -199,7 +200,7 @@ export default function PlanChannel({ title }) {
       {!can.plan && (
         <div className="note">
           <Icon name="target" size={16} />
-          <span>Members and bosses set the targets; what their daily reports add up to shows against each one.</span>
+          <span>Members and bosses set the targets; what their daily reports add up to shows against each one, and the income recorded in Finance against the income target.</span>
         </div>
       )}
 

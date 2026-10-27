@@ -1,4 +1,5 @@
 import { visibleGroups } from '../utils/scope.js';
+import { canUseFinanceChat } from '../utils/chatPolicy.js';
 
 // Builds the navigation tree (section 1 -> section 2) for one user.
 // Titles are computed from live data, so new groups, members and tasks show up
@@ -107,11 +108,33 @@ function instructionTitles(user, groups, members) {
 }
 
 export function buildNav(user, groups, {
-  pendingCount = 0, instructionUnread = {}, chatUnread = {}, tasks = [], members = [],
+  pendingCount = 0, instructionUnread = {}, chatUnread = {}, tasks = [], members = [], dms = [],
 } = {}) {
   const allGroups = groupTitles(groups);
   const scoped = groupTitles(visibleGroups(user, groups));
   const level = () => groupLevel(user, groups, members);
+
+  // Chat sits at the foot of the rail for every role, below the channels and
+  // Admin, with a member's Settings under it.
+  const chat = {
+    key: 'chat',
+    name: 'Chat',
+    icon: 'chat',
+    // Channels (finance-chat for bosses and the leader only), then this
+    // person's direct messages, newest first. A DM title carries the other
+    // person, so the list can draw them and their presence.
+    titles: [
+      ...withBadges([
+        { key: 'general', name: 'general-chat', section: 'Channels' },
+        ...scoped.map((g) => ({ key: `group-${g.key}`, name: `${g.name.toLowerCase()}-chat`, groupId: g.groupId, section: 'Channels' })),
+        ...(canUseFinanceChat(user) ? [{ key: 'finance', name: 'finance-chat', section: 'Channels' }] : []),
+      ], chatUnread),
+      ...dms.map((d) => ({
+        key: d.titleKey, name: d.peer.name, section: 'Direct messages', dm: d.peer, ...(d.unread ? { badge: d.unread } : {}),
+      })),
+    ],
+    badge: sum(chatUnread) + dms.reduce((n, d) => n + d.unread, 0),
+  };
 
   const channels = [
     {
@@ -197,32 +220,44 @@ export function buildNav(user, groups, {
         ...level(),
       ],
     },
-    {
-      key: 'chat',
-      name: 'Chat',
-      icon: 'chat',
-      titles: withBadges([
-        { key: 'general', name: 'general-chat' },
-        ...scoped.map((g) => ({ key: `group-${g.key}`, name: `${g.name.toLowerCase()}-chat`, groupId: g.groupId })),
-        { key: 'finance', name: 'finance-chat' },
-      ], chatUnread),
-      badge: sum(chatUnread),
-    },
   ];
 
   // Members work from their own day: Checkout (the team's plan vs result)
-  // and the Member directory are for bosses, the leader and admins.
+  // and the Member directory are for bosses, the leader and admins. A
+  // member's own records (projects, residents, chat accounts) and account
+  // live together under one Settings channel under Chat at the foot of the
+  // rail; the other roles keep every channel as it is.
   const forManagers = ['checkout', 'member'];
-  const visible = user.role === 'member' ? channels.filter((c) => !forManagers.includes(c.key)) : channels;
+  const wrapped = ['task', 'resident', 'chataccount'];
+  const visible = user.role === 'member'
+    ? channels.filter((c) => !forManagers.includes(c.key) && !wrapped.includes(c.key))
+    : [...channels];
 
   const adminTitles = [];
   if (['admin', 'leader', 'boss'].includes(user.role)) adminTitles.push({ key: 'approvals', name: 'Approvals', badge: pendingCount });
-  if (user.role === 'admin') {
-    adminTitles.push({ key: 'users', name: 'Users & roles' }, { key: 'groups', name: 'Groups' });
+  if (['admin', 'leader'].includes(user.role)) {
+    adminTitles.push(
+      { key: 'users', name: 'Users & roles' }, { key: 'groups', name: 'Groups' },
+      { key: 'fees', name: 'Payment fees' }, { key: 'security', name: 'Security' },
+    );
   }
-  if (['admin', 'leader'].includes(user.role)) adminTitles.push({ key: 'fees', name: 'Payment fees' });
   if (adminTitles.length) {
     visible.push({ key: 'admin', name: 'Admin', icon: 'shield', titles: adminTitles, badge: pendingCount });
+  }
+
+  visible.push(chat);
+  if (user.role === 'member') {
+    visible.push({
+      key: 'settings',
+      name: 'Settings',
+      icon: 'settings',
+      titles: [
+        { key: 'account', name: 'Account', section: 'User settings' },
+        { key: 'projects', name: 'Projects', section: 'Your records' },
+        { key: 'residents', name: 'Residents', section: 'Your records' },
+        { key: 'chataccounts', name: 'Chat accounts', section: 'Your records' },
+      ],
+    });
   }
 
   return visible;

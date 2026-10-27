@@ -4,6 +4,23 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { toDateInput, todayInput } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
+import { COUNTRIES, countryOf } from '../../countries.js';
+
+export const LAPTOP_SOURCES = [['', 'Not set'], ['bought', 'Bought for them'], ['own', 'Already had one']];
+export const ACCESS_TYPES = [['', 'Not set'], ['laptop', 'Laptop'], ['vps', 'VPS'], ['proxy', 'Proxy']];
+
+// A country picker with flags. A value typed before the list existed is
+// kept as its own option, so nothing saved is lost.
+function CountrySelect({ value, onChange, placeholder }) {
+  const known = countryOf(value);
+  return (
+    <select value={value} onChange={onChange}>
+      <option value="">{placeholder}</option>
+      {value && !known && <option value={value}>{value}</option>}
+      {COUNTRIES.map((c) => <option key={c.code} value={c.name}>{c.flag} {c.name}</option>)}
+    </select>
+  );
+}
 
 const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -39,7 +56,9 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
     firstContact: toDateInput(resident?.firstContact),
     firstContactVia: resident?.firstContactVia ?? '',
     hasLaptop: resident?.hasLaptop ?? false,
+    laptopSource: resident?.laptopSource ?? '',
     accessSetUp: resident?.accessSetUp ?? false,
+    accessType: resident?.accessType ?? '',
     sharePercent: resident?.sharePercent || '',
     owner: resident?.owner?.id ?? defaultOwner ?? '',
     notes: resident?.notes ?? '',
@@ -97,6 +116,8 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
         owner: form.owner || undefined,
         age: form.age === '' ? null : Number(form.age),
         sharePercent: form.sharePercent === '' ? 0 : Number(form.sharePercent),
+        laptopSource: form.hasLaptop ? form.laptopSource : '',
+        accessType: form.accessSetUp ? form.accessType : '',
         firstContact: form.firstContact || null,
         photo: saved ? { file: saved.file, name: saved.name, type: saved.type, size: saved.size } : null,
       };
@@ -146,11 +167,11 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
         <div className="row-3">
           <label>
             Country
-            <input value={form.country} onChange={set('country')} maxLength={60} placeholder="Where they live" />
+            <CountrySelect value={form.country} onChange={set('country')} placeholder="Where they live" />
           </label>
           <label>
             Citizenship
-            <input value={form.citizenship} onChange={set('citizenship')} maxLength={60} placeholder="Passport country" />
+            <CountrySelect value={form.citizenship} onChange={set('citizenship')} placeholder="Passport country" />
           </label>
           <label>
             Age
@@ -171,9 +192,25 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
             <input value={form.firstContactVia} onChange={set('firstContactVia')} maxLength={60} placeholder="Telegram, Instagram, in person..." />
           </label>
         </div>
-        <div className="row-3">
+        <div className="row">
           <YesNo label="Has a laptop?" value={form.hasLaptop} onChange={setFlag('hasLaptop')} />
+          <label>
+            Laptop source
+            <select value={form.laptopSource} onChange={set('laptopSource')} disabled={!form.hasLaptop}>
+              {LAPTOP_SOURCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="row">
           <YesNo label="Access set up?" title="Remote access to their device" value={form.accessSetUp} onChange={setFlag('accessSetUp')} />
+          <label title="What the remote access goes through">
+            Access type
+            <select value={form.accessType} onChange={set('accessType')} disabled={!form.accessSetUp}>
+              {ACCESS_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="row">
           <label title="Their share of the income you earn with them">
             Divide %
             <div className="percent-input">

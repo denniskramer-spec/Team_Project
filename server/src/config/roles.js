@@ -11,9 +11,12 @@ export const ROLE_LABELS = {
   member: 'Member',
 };
 
+// The team leader has every admin power as well: roles, groups, every
+// account. The two differ only in what they write (an admin writes no
+// reports or plans and has no finance chat).
 export const CAPABILITIES = {
-  manageUsers: ['admin'], // change roles
-  manageGroups: ['admin'],
+  manageUsers: ['admin', 'leader'], // change roles
+  manageGroups: ['admin', 'leader'],
   addMembers: ['admin', 'leader', 'boss'], // bosses: own group only
   approveSignups: ['admin', 'leader', 'boss'], // bosses: own group only
   sendInstructions: ['leader', 'boss'], // bosses: own group only

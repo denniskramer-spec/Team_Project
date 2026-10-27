@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
+import { imageSchema } from './image.js';
 
-// A chat message. `channelKey` is 'general', 'finance', 'group:<groupId>'
+// A chat message: text, up to five images (uploaded through
+// POST /api/chat/:titleKey/upload), or both. `channelKey` is 'general', 'finance', 'group:<groupId>'
 // or 'dm:<idA>:<idB>' (a direct message; `peers` holds the two people).
 const messageSchema = new mongoose.Schema(
   {
@@ -8,7 +10,8 @@ const messageSchema = new mongoose.Schema(
     group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     peers: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
-    content: { type: String, required: true, trim: true, maxlength: 2000 },
+    content: { type: String, default: '', trim: true, maxlength: 2000 },
+    images: { type: [imageSchema], default: [] },
     editedAt: { type: Date, default: null },
   },
   { timestamps: true },

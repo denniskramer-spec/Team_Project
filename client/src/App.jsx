@@ -4,6 +4,7 @@ import RequireAuth from './auth/RequireAuth.jsx';
 import { SocketProvider } from './socket/SocketContext.jsx';
 import { ToastProvider } from './components/Toast.jsx';
 import { AlertsProvider } from './alerts/AlertsContext.jsx';
+import { ChatAlertsProvider } from './alerts/ChatAlertsContext.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
@@ -19,6 +20,7 @@ export default function App() {
         <SocketProvider>
           <ToastProvider>
             <AlertsProvider>
+              <ChatAlertsProvider>
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
@@ -27,6 +29,7 @@ export default function App() {
                 <Route path="/:channel/:title?" element={<RequireAuth><Workspace /></RequireAuth>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </ChatAlertsProvider>
             </AlertsProvider>
           </ToastProvider>
         </SocketProvider>

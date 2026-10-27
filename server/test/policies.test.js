@@ -18,7 +18,7 @@ const memberB = { _id: 'memB', role: 'member', group: B };
 test('who manages whom', () => {
   assert.ok(canManage(admin, leader));
   assert.ok(canManage(leader, bossA));
-  assert.ok(!canManage(leader, admin));
+  assert.ok(canManage(leader, admin)); // the leader has every admin power
   assert.ok(canManage(bossA, memberA));
   assert.ok(!canManage(bossA, memberB));
   assert.ok(!canManage(memberA, memberA2));
@@ -83,4 +83,12 @@ test('instructions: who sends, edits and reads', () => {
   assert.ok(canModify(bossA, own));
   assert.ok(!canModify(bossA, { ...own, author: 'lead1' }));
   assert.ok(canModify(leader, own));
+});
+
+test('finance chat is for bosses and the leader only', async () => {
+  const { canUseFinanceChat } = await import('../src/utils/chatPolicy.js');
+  assert.equal(canUseFinanceChat(bossA), true);
+  assert.equal(canUseFinanceChat(leader), true);
+  assert.equal(canUseFinanceChat(memberA), false);
+  assert.equal(canUseFinanceChat(admin), false);
 });

@@ -54,6 +54,7 @@ export default function Login() {
             autoComplete="username"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
+            maxLength={30}
             required
           />
         </label>
