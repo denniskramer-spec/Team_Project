@@ -8,7 +8,17 @@ import FinanceToolbar from './FinanceToolbar.jsx';
 import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
 import { useLiveData } from '../../useLiveData.js';
 import IncomeForm from './IncomeForm.jsx';
+import { useCurrency } from './useCurrency.js';
+import RateNote from './RateNote.jsx';
 import Modal from '../../components/Modal.jsx';
+
+// The chart rows in the chosen currency: every amount in them is converted.
+const convertRows = (rows, convert) => rows.map((r) => ({
+  ...r,
+  planned: convert(r.planned), actual: convert(r.actual), upcoming: convert(r.upcoming),
+  incomeItems: (r.incomeItems ?? []).map((i) => ({ ...i, amount: convert(i.amount) })),
+  upcomingItems: (r.upcomingItems ?? []).map((u) => ({ ...u, amount: convert(u.amount) })),
+}));
 
 // Income for one period, for All or one group: totals, the planned vs real
 // chart, income per member and the records. Members record their own income,
@@ -16,7 +26,10 @@ import Modal from '../../components/Modal.jsx';
 // recorded they cannot be edited or deleted.
 export default function IncomePage() {
   const period = useFinancePeriod();
-  const { data, error, reload } = useLiveData(`/incomes?${period.query}`, ['income:changed']);
+  const currency = useCurrency();
+  const { money, convert } = currency;
+  // Upcoming income comes from the daily reports, so they refresh the chart too.
+  const { data, error, reload } = useLiveData(`/incomes?${period.query}`, ['income:changed', 'report:changed']);
   const [lightbox, setLightbox] = useState(null);
   const [recording, setRecording] = useState(false);
 
@@ -32,6 +45,7 @@ export default function IncomePage() {
         type={period.type} from={period.from} to={period.to}
         onType={period.setType} onRange={period.setRange}
         scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'income')}
+        currency={currency}
         actions={data.can.record && (
           <button className="btn primary finance-add" onClick={() => setRecording(true)}>
             <Icon name="plus" size={16} /> Record income
@@ -39,25 +53,26 @@ export default function IncomePage() {
         )}
       />
 
+      <RateNote currency={currency} />
       <div className="stat-row finance-stats">
         <div className="stat stat-good">
-          <span className="stat-value">{formatAmount(data.total)}</span>
+          <span className="stat-value">{money(data.total)}</span>
           <span className="muted small">Total income · {p.label}</span>
         </div>
         {/* One tile per group this role can see, so the groups sit side by side. */}
         {data.perGroup?.map((g) => (
           <div key={g.id} className={`stat role-border-boss${period.group === g.slug ? ' is-selected' : ''}`}>
-            <span className="stat-value">{formatAmount(g.amount)}</span>
+            <span className="stat-value">{money(g.amount)}</span>
             <span className="muted small">{g.name} · {g.count} {g.count === 1 ? 'record' : 'records'}</span>
           </div>
         ))}
         <div className="stat role-border-member">
-          <span className="stat-value">{formatAmount(data.net)}</span>
-          <span className="muted small">Net · after {formatAmount(data.fees)} fees and {formatAmount(data.residents)} to residents</span>
+          <span className="stat-value">{money(data.net)}</span>
+          <span className="muted small">Net · after {money(data.fees)} fees and {money(data.residents)} to residents</span>
         </div>
       </div>
 
-      {data.chart?.length > 0 && <IncomeChart rows={data.chart} periodLabel={p.label} />}
+      {data.chart?.length > 0 && <IncomeChart rows={convertRows(data.chart, convert)} periodLabel={`${p.label} · ${currency.code}`} />}
 
       {data.perMember.length > 1 && (
         <section className="card">
@@ -69,7 +84,7 @@ export default function IncomePage() {
                 <span className="bar-track">
                   <span className="bar-fill" style={{ width: `${top ? (row.amount / top) * 100 : 0}%` }} />
                 </span>
-                <span className="bar-value">{formatAmount(row.amount)}</span>
+                <span className="bar-value">{money(row.amount)}</span>
               </li>
             ))}
           </ul>
@@ -115,18 +130,18 @@ export default function IncomePage() {
                     )}
                   </td>
                   <td data-label="Amount" className="num">
-                    <div className="strong">{formatAmount(i.amount)}</div>
+                    <div className="strong">{money(i.amount)}</div>
                     <div className="muted small split-line">
-                      {i.methodLabel}{i.feeAmount ? ` · fee ${formatAmount(i.feeAmount)}` : ''}
-                      {i.resident ? ` · ${i.resident.name} ${formatAmount(i.residentAmount)}` : ''}
-                      {(i.feeAmount || i.residentAmount) ? ` · net ${formatAmount(i.net)}` : ''}
+                      {i.methodLabel}{i.feeAmount ? ` · fee ${money(i.feeAmount)}` : ''}
+                      {i.resident ? ` · ${i.resident.name} ${money(i.residentAmount)}` : ''}
+                      {(i.feeAmount || i.residentAmount) ? ` · net ${money(i.net)}` : ''}
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{formatAmount(data.total)}</td></tr>
+              <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{money(data.total)}</td></tr>
             </tfoot>
           </table>
         </section>

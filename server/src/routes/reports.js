@@ -19,6 +19,7 @@ import { checkOptionalAmount, checkText } from '../utils/validate.js';
 import { canChangeGroupRecord } from '../utils/groupRecords.js';
 import { person as personOf } from '../utils/finance.js';
 import { reportChanged, taskWorkChanged } from '../socket/events.js';
+import { earnedOf, upcomingOf } from '../utils/reportWork.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -125,6 +126,9 @@ const serialize = (r) => (r ? {
   upcomingDate: r.upcomingDate ?? null,
   task: r.task?._id ? { id: r.task._id, name: r.task.name, status: r.task.status } : null,
   work: (r.work ?? []).filter((w) => w.task?._id).map((w) => ({ task: { id: w.task._id, name: w.task.name, status: w.task.status }, text: w.text, hours: w.hours ?? 0, count: w.count ?? 0, amount: w.amount ?? 0, paid: Boolean(w.paidBy) })),
+  // What the day's hours and tasks are worth in all (paid or not); the
+  // upcoming amount above is the unpaid part.
+  earned: earnedOf(r.work),
   todayPlan: r.todayPlan ?? [],
   planTomorrow: r.planTomorrow ?? '',
   calls: r.calls ?? [],
@@ -149,8 +153,9 @@ const SUMMED = ['aiBid', 'resumes', 'forms', 'biddingHours', 'contacted', 'repli
 const sumOf = (rows) => rows.reduce((acc, r) => {
   acc.jobBid += r.jobBid || r.bid || 0;
   for (const key of SUMMED) acc[key] += r[key] || 0;
+  acc.earned = Math.round((acc.earned + earnedOf(r.work)) * 100) / 100;
   return acc;
-}, Object.fromEntries(['jobBid', ...SUMMED].map((k) => [k, 0])));
+}, Object.fromEntries(['jobBid', ...SUMMED, 'earned'].map((k) => [k, 0])));
 
 // What the report form needs besides the report: the author's active
 // projects (one box each), their residents (for #tags) and the previous
@@ -356,7 +361,7 @@ router.put('/', async (req, res) => {
     const existing = await Report.findOne({ author: req.user._id, type, period: period.key, scope }, 'work').lean();
     const paid = new Map((existing?.work ?? []).filter((w) => w.paidBy).map((w) => [String(w.task), w.paidBy]));
     work = work.map((w) => ({ ...w, paidBy: paid.get(String(w.task)) ?? null }));
-    upcoming = Math.round(work.filter((w) => !w.paidBy).reduce((sum, w) => sum + (w.amount || 0), 0) * 100) / 100;
+    upcoming = upcomingOf(work);
   }
   const fields = {
     ...checkFields(req.body),

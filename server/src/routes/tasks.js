@@ -15,6 +15,7 @@ import { checkPrice, formatPrice, workLines } from '../utils/project.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf } from '../utils/payments.js';
 import { taskChanged } from '../socket/events.js';
+import { repriceTask, dropTaskWork } from '../utils/reportWork.js';
 
 // Projects (the model keeps its old name, Task): what a member works on,
 // with the day-by-day work log taken from their daily reports.
@@ -227,6 +228,7 @@ const mayManage = (user, t) => canManageFor(user, { _id: t.owner._id, group: t.g
 router.patch('/:id', async (req, res) => {
   const task = await findTask(req);
   if (!mayManage(req.user, task)) throw forbidden('You cannot change this project');
+  const priceBefore = `${task.price}|${task.priceUnit}|${task.resident?._id ?? ''}`;
   Object.assign(task, await checkFields(req));
   if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
     Object.assign(task, checkDates(req.body, task));
@@ -239,6 +241,9 @@ router.patch('/:id', async (req, res) => {
   await task.save();
   await populate(task);
 
+  // A new price (or resident share) changes what the unpaid days are worth.
+  if (`${task.price}|${task.priceUnit}|${task.resident?._id ?? ''}` !== priceBefore) await repriceTask(task._id);
+
   taskChanged(task);
   const work = await workSummary([task]);
   res.json({ task: serialize(task, req.user, work[String(task._id)]) });
@@ -248,8 +253,9 @@ router.delete('/:id', async (req, res) => {
   const task = await findTask(req);
   if (!mayManage(req.user, task)) throw forbidden('You cannot delete this project');
   await task.deleteOne();
-  // The day's work written on it stays in the reports but no longer points anywhere.
-  await Report.updateMany({ 'work.task': task._id }, { $pull: { work: { task: task._id } } });
+  // The day's work written on it leaves the reports, and their upcoming
+  // amounts follow.
+  await dropTaskWork(task._id);
   taskChanged(task);
   res.json({ ok: true });
 });

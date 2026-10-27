@@ -114,7 +114,7 @@ export default function CheckoutChannel({ title }) {
             { label: 'Reported', value: data.income.reported, slot: 2 },
             { label: 'Received', value: data.income.actual, slot: 3, achieved: true },
           ]}
-          note="Planned from Plan · Reported from Report · Received from Finance"
+          note={`Planned from Plan · Reported is what the daily reports' hours and tasks earned${data.income.upcoming > 0 ? ` (${formatAmount(data.income.upcoming)} not paid yet)` : ''} · Received from Finance`}
         />
         <BarCompare
           title="Job bids"
@@ -166,6 +166,7 @@ export default function CheckoutChannel({ title }) {
                 <th>Member</th>
                 <th className="num">Income plan</th>
                 <th className="num">Reported</th>
+                <th className="num">Upcoming</th>
                 <th className="num">Received</th>
                 <th className="num">Job bids p/r</th>
                 <th className="num">AI bids p/r</th>
@@ -187,6 +188,7 @@ export default function CheckoutChannel({ title }) {
                   </td>
                   <td data-label="Income plan" className="num">{formatAmount(row.planned.income)}</td>
                   <td data-label="Reported" className="num">{formatAmount(row.reported.income)}</td>
+                  <td data-label="Upcoming" className="num">{row.upcoming > 0 ? <span className="upcoming-amt">{formatAmount(row.upcoming)}</span> : <span className="muted">—</span>}</td>
                   <td data-label="Received" className={`num strong ${row.actualIncome >= row.planned.income && row.planned.income > 0 ? 'hit' : ''}`}>
                     {formatAmount(row.actualIncome)}
                   </td>

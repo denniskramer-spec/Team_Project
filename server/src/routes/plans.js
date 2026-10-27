@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
+import Income from '../models/Income.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -110,18 +111,32 @@ router.get('/', async (req, res) => {
   const byOwner = new Map(personal.map((p) => [String(p.owner._id), p]));
 
   // Achieved so far: the daily reports of the period, added up per author
-  // (for a personal plan) and per group (for a group plan).
-  const reports = await Report.find({
-    scope: 'personal', type: 'daily', periodStart: { $gte: period.start, $lt: period.end },
-    ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
-  }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean();
-  const sumInto = (acc, r) => { for (const i of PLAN_ITEMS) acc[i.key] += i.key === 'jobBid' ? (r.jobBid || r.bid || 0) : (r[i.key] || 0); return acc; };
+  // (for a personal plan) and per group (for a group plan). The income
+  // target is met by what Finance records in the period, not by the
+  // reports: a report says what the work is worth, Finance says what came in.
+  const inside = { $gte: period.start, $lt: period.end };
+  const [reports, incomes] = await Promise.all([
+    Report.find({
+      scope: 'personal', type: 'daily', periodStart: inside,
+      ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
+    }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean(),
+    Income.find({
+      date: inside,
+      ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { member: readable.owner } : {}),
+    }, 'member group amount').lean(),
+  ]);
+  const sumInto = (acc, r) => { for (const i of PLAN_ITEMS) if (i.key !== 'income') acc[i.key] += i.key === 'jobBid' ? (r.jobBid || r.bid || 0) : (r[i.key] || 0); return acc; };
   const zero = () => Object.fromEntries(PLAN_ITEMS.map((i) => [i.key, 0]));
   const byAuthor = new Map();
   const byGroup = new Map();
   for (const r of reports) {
     byAuthor.set(String(r.author), sumInto(byAuthor.get(String(r.author)) ?? zero(), r));
     if (r.group) byGroup.set(String(r.group), sumInto(byGroup.get(String(r.group)) ?? zero(), r));
+  }
+  const addIncome = (map, key, amount) => { const acc = map.get(key) ?? zero(); acc.income = Math.round((acc.income + amount) * 100) / 100; map.set(key, acc); };
+  for (const i of incomes) {
+    addIncome(byAuthor, String(i.member), i.amount || 0);
+    if (i.group) addIncome(byGroup, String(i.group), i.amount || 0);
   }
   const achievedOf = (p) => (p.scope === 'group' ? byGroup.get(String(p.group?._id ?? p.group)) : byAuthor.get(String(p.owner?._id ?? p.owner))) ?? zero();
   // Counts and totals cover the same plans: the personal ones.

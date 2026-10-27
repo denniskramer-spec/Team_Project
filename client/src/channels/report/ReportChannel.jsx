@@ -55,10 +55,10 @@ function GroupReports({ groups }) {
                 </dl>
               </div>
               <div className="rc-block">
-                <span className="rm-section-title">Income</span>
+                <span className="rm-section-title">Money</span>
                 <dl className="rc-figures">
-                  <div><dt>Income</dt><dd>{formatAmount(g.totals.income)}</dd></div>
-                  <div><dt>Upcoming</dt><dd>{formatAmount(g.totals.upcomingAmount)}</dd></div>
+                  <div><dt>Earned</dt><dd title="What the reported hours and tasks are worth">{formatAmount(g.totals.earned)}</dd></div>
+                  <div><dt>Upcoming</dt><dd title="Not paid yet">{formatAmount(g.totals.upcomingAmount)}</dd></div>
                 </dl>
               </div>
               {g.issues.length > 0 && (
@@ -162,7 +162,8 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
             <dl className="mini-stats my-day-stats">
               <div><dt>Applied</dt><dd>{formatAmount(r.jobBid)}</dd></div>
               <div><dt>Calls</dt><dd>{r.calls?.length ?? 0}</dd></div>
-              <div><dt>Upcoming</dt><dd title="What the hours and tasks you reported expect to be paid">{formatAmount(r.upcomingAmount)}</dd></div>
+              <div><dt>Earned</dt><dd title="What the hours and tasks you reported are worth">{formatAmount(r.earned)}</dd></div>
+              <div><dt>Upcoming</dt><dd title="Not paid yet: record the income in Finance to settle it">{formatAmount(r.upcomingAmount)}</dd></div>
             </dl>
           )}
         </div>

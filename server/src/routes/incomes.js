@@ -19,6 +19,7 @@ import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../util
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, taskWorkChanged } from '../socket/events.js';
+import { settleTaskWork } from '../utils/reportWork.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -242,17 +243,13 @@ router.post('/', async (req, res) => {
   await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
   // Recording income for a project settles the unpaid work reported on it:
-  // those days stop counting as upcoming (their reports are recomputed).
+  // those days stop counting as upcoming (their reports are recomputed and
+  // the Dashboard, Plan and Finance screens are told). The project's paid
+  // total changes either way, so Projects reloads too.
   let settled = 0;
   if (taskId) {
-    const reports = await Report.find({ author: member._id, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null } } });
-    for (const r of reports) {
-      r.work.forEach((w) => { if (String(w.task) === String(taskId) && !w.paidBy) { w.paidBy = income._id; settled += 1; } });
-      r.upcomingAmount = Math.round(r.work.filter((w) => !w.paidBy).reduce((n, w) => n + (w.amount || 0), 0) * 100) / 100;
-      if (!r.upcomingAmount) r.upcomingDate = null;
-      await r.save();
-    }
-    if (settled) taskWorkChanged(member._id, member.group ?? null);
+    settled = await settleTaskWork(taskId, member._id, income._id);
+    taskWorkChanged(member._id, member.group ?? null);
   }
 
   incomeChanged(income);
