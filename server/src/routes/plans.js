@@ -11,7 +11,7 @@ import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { visibleGroups } from '../utils/scope.js';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkOptionalAmount, checkText } from '../utils/validate.js';
+import { checkOptionalAmount, checkCount, checkText } from '../utils/validate.js';
 import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
 import { planChanged } from '../socket/events.js';
 
@@ -30,7 +30,12 @@ function checkType(type) {
 
 function checkFields(body) {
   const fields = { note: checkText(body.note, 'Note', 2000) };
-  for (const item of PLAN_ITEMS) fields[item.key] = checkOptionalAmount(body[item.key], item.label);
+  // Bids, résumés and forms are counted; hours and income are amounts.
+  for (const item of PLAN_ITEMS) {
+    fields[item.key] = ['income', 'biddingHours'].includes(item.key)
+      ? checkOptionalAmount(body[item.key], item.label)
+      : checkCount(body[item.key], item.label);
+  }
   if (body.status !== undefined) {
     if (!PLAN_STATES.includes(body.status)) throw badRequest('Unknown status');
     fields.status = body.status;

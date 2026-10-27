@@ -11,6 +11,7 @@ import { periodKey } from '../utils/period.js';
 import { dmKey } from '../utils/chatPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { dmEvent } from '../socket/events.js';
+import { clean } from '../utils/validate.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -110,8 +111,8 @@ router.post('/:id/nudge', async (req, res) => {
   const member = await User.findOne({ _id: req.params.id, status: 'active' }, 'name role group').lean();
   if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
   if (String(member._id) === String(req.user._id)) throw badRequest('That is you');
-  const content = typeof req.body.message === 'string' && req.body.message.trim()
-    ? req.body.message.trim().slice(0, 500)
+  const content = typeof req.body.message === 'string' && clean(req.body.message).trim()
+    ? clean(req.body.message).trim().slice(0, 500)
     : "Reminder: today's daily report is still due. Please send it when you can.";
   const key = dmKey(req.user._id, member._id);
   const message = await new Message({ channelKey: key, author: req.user._id, peers: [req.user._id, member._id], content }).save();

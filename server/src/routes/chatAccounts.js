@@ -9,7 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canManageFor, canReadTeam, assignableFilter, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay } from '../utils/validate.js';
+import { checkDay, checkList } from '../utils/validate.js';
 import { checkPlatform, checkAccountName, checkPhone, PLATFORM_NAMES } from '../utils/chatAccount.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
@@ -43,8 +43,7 @@ const serialize = (a, user) => ({
 const contactFilter = (user) => scopeFilter(user, 'owner');
 
 async function checkContacts(user, list) {
-  if (!Array.isArray(list)) throw badRequest('Contacts must be a list');
-  const ids = [...new Set(list.map(String))];
+  const ids = [...new Set(checkList(list, 'Contacts', 200).map(String))];
   if (ids.some((id) => !mongoose.isValidObjectId(id))) throw badRequest('Unknown resident');
   if (!ids.length) return [];
   const found = await Resident.find({ ...contactFilter(user), _id: { $in: ids } }, '_id').lean();
@@ -62,7 +61,7 @@ async function checkFields(req, current = null) {
   if (body.phone !== undefined) fields.phone = platform === 'telegram' ? checkPhone(body.phone) : '';
   else if (fields.platform && platform !== 'telegram') fields.phone = '';
   if (body.joinedAt !== undefined) {
-    fields.joinedAt = body.joinedAt === null || body.joinedAt === '' ? null : checkDay(body.joinedAt, 'the joined date');
+    fields.joinedAt = body.joinedAt === null || body.joinedAt === '' ? null : checkDay(body.joinedAt, 'the joined date', { pastOnly: true });
   }
   if (body.contacts !== undefined) fields.contacts = await checkContacts(req.user, body.contacts);
   if (body.status !== undefined) {

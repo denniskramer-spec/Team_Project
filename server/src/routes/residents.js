@@ -90,7 +90,7 @@ async function checkFields(body, partial = false) {
   if (body.age !== undefined) fields.age = checkAge(body.age);
   if (body.source !== undefined) fields.source = checkText(body.source, 'Source', 160);
   if (body.firstContact !== undefined) {
-    fields.firstContact = body.firstContact === null || body.firstContact === '' ? null : checkDay(body.firstContact, 'the first contact day');
+    fields.firstContact = body.firstContact === null || body.firstContact === '' ? null : checkDay(body.firstContact, 'the first contact day', { pastOnly: true });
   }
   if (body.firstContactVia !== undefined) fields.firstContactVia = checkText(body.firstContactVia, 'First contacted via', 60);
   if (body.hasLaptop !== undefined) fields.hasLaptop = checkFlag(body.hasLaptop, 'Has a laptop');

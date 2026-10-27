@@ -61,3 +61,27 @@ test('control characters are dropped, line breaks kept', async () => {
   assert.equal(checkOptionalAmount('7.5', 'Salary'), 7.5);
   for (const bad of [{ toString: 'x' }, {}, [], true, 'abc', -2]) assert.throws(() => checkOptionalAmount(bad, 'Salary'), { status: 400 });
 });
+
+test('a password has to be text of the right length with a digit', async () => {
+  const { checkPassword } = await import('../src/utils/validate.js');
+  assert.equal(checkPassword('demo1234'), 'demo1234');
+  for (const bad of [12345678, null, undefined, { length: 10 }, 'short1', 'noDigitsHere', 'a1'.repeat(70)]) {
+    assert.throws(() => checkPassword(bad), { status: 400 }, String(bad));
+  }
+});
+
+test('counts are whole numbers and lists have a size limit', async () => {
+  const { checkCount, checkList, checkDay } = await import('../src/utils/validate.js');
+  assert.equal(checkCount('', 'Bids'), 0);
+  assert.equal(checkCount('12', 'Bids'), 12);
+  assert.equal(checkCount(3, 'Bids'), 3);
+  for (const bad of [2.5, '1.5', -1, 'abc', {}, [], true]) assert.throws(() => checkCount(bad, 'Bids'), { status: 400 }, String(bad));
+  assert.throws(() => checkCount(10, 'Bids', 5), { status: 400 });
+  assert.deepEqual(checkList([1, 2], 'Calls', 2), [1, 2]);
+  assert.throws(() => checkList([1, 2, 3], 'Calls', 2), { status: 400 });
+  assert.throws(() => checkList('x', 'Calls', 2), { status: 400 });
+  // A joined date or first contact cannot be in the future.
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  assert.throws(() => checkDay(tomorrow, 'the joined date', { pastOnly: true }), { status: 400 });
+  assert.ok(checkDay(tomorrow, 'a start date') instanceof Date);
+});

@@ -20,6 +20,7 @@ export function checkUsername(username) {
 }
 
 export function checkPassword(password) {
+  if (typeof password !== 'string') throw badRequest('Password must be text');
   if (password.length < 8 || password.length > 128) {
     throw badRequest('Password must be 8-128 characters');
   }
@@ -63,7 +64,8 @@ const EARLIEST_DAY = Date.UTC(2000, 0, 1);
 // A calendar day from a request body: YYYY-MM-DD (or a full ISO date-time).
 // Days that don't exist (2026-02-31) are refused instead of rolling over into
 // the next month, and so are dates before 2000 or over ten years ahead.
-export function checkDay(value, label) {
+// `pastOnly` refuses a day after today (a joined date, a first contact).
+export function checkDay(value, label, { pastOnly = false } = {}) {
   if (typeof value !== 'string' || !value.trim()) throw badRequest(`Choose ${label}`);
   const name = `${label[0].toUpperCase()}${label.slice(1)}`;
   const text = value.trim();
@@ -77,6 +79,7 @@ export function checkDay(value, label) {
   const latest = new Date();
   latest.setUTCFullYear(latest.getUTCFullYear() + 10);
   if (day.getTime() < EARLIEST_DAY || day > latest) throw badRequest(`${name} is out of range`);
+  if (pastOnly && day.getTime() > Date.now()) throw badRequest(`${name} cannot be in the future`);
   return day;
 }
 
@@ -93,3 +96,20 @@ export function checkAmount(value, label = 'Amount') {
 export const checkOptionalAmount = (value, label) => (
   value === undefined || value === null || value === '' ? 0 : checkAmount(value, label)
 );
+
+// A count of things (bids sent, forms filled, replies): a whole number, 0 or
+// more, empty counts as 0. Half a bid is not a bid.
+export function checkCount(value, label, max = 1e6) {
+  if (value === undefined || value === null || value === '') return 0;
+  const n = (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '')) ? Number(value) : NaN;
+  if (!Number.isInteger(n) || n < 0) throw badRequest(`${label} must be a whole number, 0 or more`);
+  if (n > max) throw badRequest(`${label} is too large`);
+  return n;
+}
+
+// A list from a request body, no longer than `max` items.
+export function checkList(value, label, max) {
+  if (!Array.isArray(value)) throw badRequest(`${label} must be a list`);
+  if (value.length > max) throw badRequest(`${label} can have at most ${max} items`);
+  return value;
+}

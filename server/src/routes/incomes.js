@@ -55,7 +55,10 @@ const serialize = (i) => ({
 function checkFields(body, partial = false) {
   const fields = {};
   if (!partial || body.date !== undefined) fields.date = checkDay(body.date, 'a date');
-  if (!partial || body.amount !== undefined) fields.amount = checkAmount(body.amount);
+  if (!partial || body.amount !== undefined) {
+    fields.amount = checkAmount(body.amount);
+    if (!(fields.amount > 0)) throw badRequest('Amount must be more than 0');
+  }
   if (body.note !== undefined) fields.note = checkText(body.note, 'Note', 2000);
   return fields;
 }
@@ -204,7 +207,8 @@ async function upcomingFor(taskId, ownerId) {
 // and tasks still expect to be paid, to check against a new income record.
 router.get('/upcoming', async (req, res) => {
   if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
-  const task = await Task.findById(req.query.task, 'owner name').lean();
+  // Only a project this role may see: a member their own, a boss their group's.
+  const task = await Task.findOne({ ...scopeFilter(req.user, 'owner'), _id: req.query.task }, 'owner name').lean();
   if (!task) throw badRequest('Unknown project');
   res.json({ project: { id: task._id, name: task.name }, ...(await upcomingFor(task._id, task.owner)) });
 });

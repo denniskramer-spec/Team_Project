@@ -16,7 +16,7 @@ import {
 import { visibleGroups } from '../utils/scope.js';
 import { canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkOptionalAmount, checkText } from '../utils/validate.js';
+import { checkOptionalAmount, checkCount, checkDay, checkList, checkText } from '../utils/validate.js';
 import { canChangeGroupRecord } from '../utils/groupRecords.js';
 import { person as personOf } from '../utils/finance.js';
 import { reportChanged, taskWorkChanged } from '../socket/events.js';
@@ -32,32 +32,25 @@ const HISTORY_LENGTH = 8;
 function checkFields(body) {
   const fields = {};
   const num = (key, label) => { if (body[key] !== undefined) fields[key] = checkOptionalAmount(body[key], label); };
+  const count = (key, label) => { if (body[key] !== undefined) fields[key] = checkCount(body[key], label); };
   const text = (key, label, max = 2000) => { if (body[key] !== undefined) fields[key] = checkText(body[key], label, max); };
-  num('jobBid', 'Job bids'); num('aiBid', 'AI training bids'); num('income', 'Income'); num('upcomingAmount', 'Upcoming amount');
-  num('resumes', 'Résumés tailored'); num('forms', 'Forms filled'); num('biddingHours', 'Time bidding');
-  num('contacted', 'Contacted'); num('replies', 'Replies'); num('agreed', 'Agreed to work with us');
+  count('jobBid', 'Job bids'); count('aiBid', 'AI training bids'); num('income', 'Income'); num('upcomingAmount', 'Upcoming amount');
+  count('resumes', 'Résumés tailored'); count('forms', 'Forms filled'); num('biddingHours', 'Time bidding');
+  count('contacted', 'Contacted'); count('replies', 'Replies'); count('agreed', 'Agreed to work with us');
   if (fields.biddingHours > 24) throw badRequest('Time bidding is in hours, at most 24');
   text('upcomingNote', 'Upcoming note'); text('note', 'Note'); text('bidNote', 'Bid note'); text('contactNote', 'Candidate note');
   text('channels', 'Channels', 300); text('residentsUpdate', 'Residents update'); text('issues', 'Issues'); text('planTomorrow', 'Plan for tomorrow');
   if (body.upcomingDate !== undefined) {
     const value = body.upcomingDate;
-    if (value === null || value === '') fields.upcomingDate = null;
-    else {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw badRequest('Upcoming date must be a date (YYYY-MM-DD)');
-      const d = new Date(`${value}T00:00:00.000Z`);
-      if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== value) throw badRequest('Upcoming date is not a valid date');
-      fields.upcomingDate = d;
-    }
+    fields.upcomingDate = value === null || value === '' ? null : checkDay(value, 'the upcoming date');
   }
   if (body.todayPlan !== undefined) {
-    if (!Array.isArray(body.todayPlan)) throw badRequest("Today's plan must be a list");
-    fields.todayPlan = body.todayPlan
+    fields.todayPlan = checkList(body.todayPlan, "Today's plan", 100)
       .map((item) => ({ text: checkText(item?.text, 'Plan item', 300), done: item?.done === true }))
       .filter((item) => item.text);
   }
   if (body.calls !== undefined) {
-    if (!Array.isArray(body.calls)) throw badRequest('Calls must be a list');
-    fields.calls = body.calls.map((c) => {
+    fields.calls = checkList(body.calls, 'Calls', 100).map((c) => {
       const title = checkText(c?.title, 'Call', 160);
       const result = c?.result ?? '';
       if (result && !CALL_RESULTS.includes(result)) throw badRequest('A call went well, mixed or badly');
@@ -83,16 +76,14 @@ async function resolveTask(req, scope) {
 async function resolveWork(req, scope) {
   if (req.body.work === undefined) return undefined;
   if (scope !== 'personal') return [];
-  if (!Array.isArray(req.body.work)) throw badRequest('Work must be a list');
   const entries = new Map();
-  for (const item of req.body.work) {
+  for (const item of checkList(req.body.work, 'Work', 200)) {
     const id = String(item?.task ?? '');
     if (!mongoose.isValidObjectId(id)) throw badRequest('Unknown project');
     const text = checkText(item?.text, 'Work', 2000);
     const hours = checkOptionalAmount(item?.hours, 'Hours');
     if (hours > 24) throw badRequest('Hours on a project are at most 24');
-    const count = checkOptionalAmount(item?.count, 'Tasks done');
-    if (count > 10000) throw badRequest('Tasks done on a project is too large');
+    const count = checkCount(item?.count, 'Tasks done', 10000);
     if (text || hours || count) entries.set(id, { text, hours, count });
   }
   if (!entries.size) return [];
