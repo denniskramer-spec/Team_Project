@@ -1,5 +1,6 @@
 import ExchangeRate from '../models/ExchangeRate.js';
 import { CURRENCIES } from '../models/Task.js';
+import { badRequest } from './httpError.js';
 
 // Exchange rates for the Finance pages. Amounts are recorded in the team's
 // base currency (USD); the pages can show them in any of the app's
@@ -10,6 +11,10 @@ import { CURRENCIES } from '../models/Task.js';
 
 export const BASE = 'USD';
 const TIMEOUT_MS = 10000;
+// Rates are checked this often while the server runs, and again whenever
+// someone asks for them and the stored ones are older than a day.
+const REFRESH_EVERY_MS = 6 * 60 * 60 * 1000;
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const OTHERS = CURRENCIES.filter((c) => c !== BASE);
 
 let current = { base: BASE, rates: { [BASE]: 1 }, source: '', rateDate: '', fetchedAt: null };
@@ -64,22 +69,63 @@ export async function loadRates() {
 
 export const currentRates = () => ({ ...current, currencies: CURRENCIES });
 
-export async function refreshRates() {
-  const fetched = await fetchRates();
-  const doc = await ExchangeRate.findOneAndUpdate(
-    { base: BASE },
-    { rates: fetched.rates, source: fetched.source, rateDate: fetched.rateDate, fetchedAt: new Date() },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  ).lean();
-  current = fromDoc(doc);
-  return current;
+export const ratesStale = () => !current.fetchedAt || Date.now() - new Date(current.fetchedAt).getTime() > STALE_AFTER_MS;
+
+let refreshing = null;
+
+// One refresh at a time: a second caller waits for the one under way.
+export function refreshRates() {
+  if (!refreshing) {
+    refreshing = (async () => {
+      const fetched = await fetchRates();
+      const doc = await ExchangeRate.findOneAndUpdate(
+        { base: BASE },
+        { rates: fetched.rates, source: fetched.source, rateDate: fetched.rateDate, fetchedAt: new Date() },
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      ).lean();
+      current = fromDoc(doc);
+      return current;
+    })().finally(() => { refreshing = null; });
+  }
+  return refreshing;
 }
 
-// Runs the refresh now and then once a day.
+const logRefresh = () => refreshRates()
+  .then((r) => console.log(`Exchange rates refreshed (${r.source}, ${r.rateDate}): ${OTHERS.map((c) => `${c} ${r.rates[c]}`).join(', ')}`))
+  .catch((err) => console.error('Exchange rate refresh failed:', err.message));
+
+// Refreshes in the background when the stored rates are a day old (the
+// server was off, or a refresh failed); the caller gets today's rates on
+// its next request.
+export function refreshIfStale() {
+  if (ratesStale() && !refreshing) logRefresh();
+}
+
+// Runs the refresh now and then every few hours.
 export function scheduleRateRefresh() {
-  const run = () => refreshRates()
-    .then((r) => console.log(`Exchange rates refreshed (${r.source}, ${r.rateDate}): ${OTHERS.map((c) => `${c} ${r.rates[c]}`).join(', ')}`))
-    .catch((err) => console.error('Exchange rate refresh failed:', err.message));
-  run();
-  setInterval(run, 24 * 60 * 60 * 1000).unref();
+  logRefresh();
+  setInterval(logRefresh, REFRESH_EVERY_MS).unref();
+}
+
+// A currency code from a request body: one of the app's, the base when empty.
+export function checkCurrency(value) {
+  if (value === undefined || value === null || value === '') return BASE;
+  const code = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!CURRENCIES.includes(code)) throw badRequest('Unknown currency');
+  return code;
+}
+
+const cents = (n) => Math.round(n * 100) / 100;
+
+// An amount typed in one currency, as the base amount it is recorded as:
+//   { amount, currency, originalAmount, rate, rateDate }
+// `amount` is in the base; `rate` is how much of the currency one base
+// unit bought (1 for the base itself). No rate yet for the currency (the
+// first refresh has not run) is an error, not a silent 1:1.
+export function toBase(originalAmount, currency, rates = currentRates()) {
+  const amount = Number(originalAmount) || 0;
+  if (currency === rates.base) return { amount: cents(amount), currency, originalAmount: cents(amount), rate: 1, rateDate: '' };
+  const rate = Number(rates.rates?.[currency]);
+  if (!Number.isFinite(rate) || rate <= 0) throw badRequest(`No exchange rate for ${currency} yet, please try again in a moment or record it in ${rates.base}`);
+  return { amount: cents(amount / rate), currency, originalAmount: cents(amount), rate, rateDate: rates.rateDate ?? '' };
 }

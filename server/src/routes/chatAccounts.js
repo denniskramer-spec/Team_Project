@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import ChatAccount, { STATUSES } from '../models/ChatAccount.js';
 import Resident from '../models/Resident.js';
@@ -183,6 +184,7 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const account = await findAccount(req);
   if (!mayManage(req.user, account)) throw forbidden('You cannot delete this chat account');
+  await archiveDeleted(account, req, { model: 'ChatAccount', label: `${account.platform ?? ''} ${account.name}`.trim() });
   await account.deleteOne();
   if (account.screenshot?.file) await removeUnusedFiles([account.screenshot.file], fileInUse);
   chatAccountChanged(account);

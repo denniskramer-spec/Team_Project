@@ -131,6 +131,11 @@ export default function IncomePage() {
                   </td>
                   <td data-label="Amount" className="num">
                     <div className="strong">{money(i.amount)}</div>
+                    {i.currency && i.currency !== currency.base && (
+                      <div className="muted small" title={`1 ${currency.base} = ${i.rate} ${i.currency}${i.rateDate ? ` · rate of ${i.rateDate}` : ''}`}>
+                        received {i.currency} {formatAmount(i.originalAmount)}
+                      </div>
+                    )}
                     <div className="muted small split-line">
                       {i.methodLabel}{i.feeAmount ? ` · fee ${money(i.feeAmount)}` : ''}
                       {i.resident ? ` · ${i.resident.name} ${money(i.residentAmount)}` : ''}

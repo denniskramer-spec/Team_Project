@@ -474,17 +474,91 @@ code {
 .typing-dots i:nth-child(3) { animation-delay: 0.4s; }
 @keyframes blink { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
 
-.chat-composer { display: flex; gap: 8px; align-items: flex-end; padding: 0 16px 16px; }
+/* The composer: a rounded box with + (attach) on the left, the text in the
+   middle, emoji and send on the right. Images waiting to go sit above it. */
+.chat-composer { display: grid; gap: 8px; padding: 0 16px 16px; }
+.composer-box {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 6px 4px 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.composer-box:focus-within { border-color: var(--accent); }
+.chat-composer.drag-over .composer-box { border-color: var(--accent); border-style: dashed; }
 .chat-composer textarea {
   flex: 1;
   max-height: 160px;
-  min-height: 44px;
-  padding: 11px 12px;
+  min-height: 36px;
+  padding: 8px 6px;
   resize: none;
-  border-radius: var(--radius-md);
+  border: 0;
+  background: transparent;
+  border-radius: 0;
   field-sizing: content;
 }
-.chat-composer .btn { height: 44px; padding: 0 14px; }
+.chat-composer textarea:focus { outline: none; box-shadow: none; }
+.composer-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.composer-btn:hover, .composer-btn.active { color: var(--text); background: var(--hover-strong); }
+.composer-emoji { position: relative; }
+.chat-composer .composer-send { height: 36px; padding: 0 12px; border-radius: var(--radius-sm); }
+.chat-composer .composer-thumbs { padding: 6px 2px 0; }
+.chat-composer .composer-thumbs img { width: 72px; height: 72px; }
+
+/* Emoji picker, popping up above the smiley button. */
+.emoji-picker {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  width: min(360px, calc(100vw - 32px));
+  height: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.emoji-search { position: relative; padding: 10px 10px 6px; }
+.emoji-search input { width: 100%; padding-right: 32px; }
+.emoji-search .icon { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.emoji-tabs { display: flex; gap: 2px; padding: 0 10px 6px; border-bottom: 1px solid var(--border); }
+.emoji-tab { flex: 1; padding: 4px 0; font-size: 18px; line-height: 1; border: 0; border-radius: var(--radius-sm); background: none; cursor: pointer; }
+.emoji-tab:hover { background: var(--hover-strong); }
+.emoji-scroll { overflow-y: auto; padding: 4px 10px 10px; }
+.emoji-heading { position: sticky; top: 0; margin: 0; padding: 8px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); background: var(--surface); }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+.emoji-btn { height: 36px; font-size: 22px; line-height: 1; border: 0; border-radius: var(--radius-sm); background: none; cursor: pointer; }
+.emoji-btn:hover, .emoji-btn:focus-visible { background: var(--hover-strong); outline: none; }
+.emoji-none { margin: 12px 0; }
+
+/* Images in a message: a row of thumbnails, each opening full size. */
+.msg-images { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.msg-images img {
+  display: block;
+  max-width: min(360px, 100%);
+  max-height: 240px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.msg-images li:not(:only-child) img { width: 160px; height: 160px; object-fit: cover; }
 
 .jump-bottom {
   position: absolute;
@@ -508,6 +582,7 @@ code {
 @media (max-width: 760px) {
   .chat-scroll { padding: 12px 8px 0; }
   .chat-composer { padding: 0 8px 12px; }
+  .emoji-picker { height: 320px; }
   .msg { grid-template-columns: 32px 1fr auto; gap: 8px; }
 }
 
@@ -701,6 +776,9 @@ code {
   transform: translateX(-50%);
   display: grid;
   gap: 4px;
+  /* Its own width (not the room left beside the column), so the last
+     columns' cards aren't squeezed against the plot's edge. */
+  width: max-content;
   min-width: 190px;
   max-width: 300px;
   padding: 8px 10px;

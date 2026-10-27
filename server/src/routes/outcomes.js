@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Outcome from '../models/Outcome.js';
 import User from '../models/User.js';
@@ -215,6 +216,7 @@ router.delete('/:id', async (req, res) => {
   const outcome = await findOutcome(req);
   const all = await editableSiblings(req, outcome);
   const files = all.flatMap((o) => (o.images ?? []).map((i) => i.file));
+  await archiveDeleted(all, req, { model: 'Outcome', label: `${outcome.reason} · ${outcome.split?.total ?? outcome.amount}` });
   await Outcome.deleteMany({ _id: { $in: all.map((o) => o._id) } });
   await removeUnusedFiles(files, stillUsed);
   all.forEach(outcomeChanged);

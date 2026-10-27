@@ -3,16 +3,23 @@ import { api, upload } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { todayInput, formatAmount, timeAgo } from '../../format.js';
+import { load, save } from '../../storage.js';
+import { useCurrency } from './useCurrency.js';
 import Modal from '../../components/Modal.jsx';
 import Icon from '../../components/Icon.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
 
-// Income record: who earned it, how much, when and where it came from, with
-// the task it belongs to if there is one. Members record their own; bosses
-// and the team leader can record it for the people they manage.
+const CURRENCY_KEY = 'bm.incomeCurrency';
+
+// Income record: who earned it, how much (in whatever currency it arrived
+// in), when and where it came from, with the task it belongs to if there is
+// one. Members record their own; bosses and the team leader can record it
+// for the people they manage. The record is kept in the base currency at
+// today's rate, with the amount as typed beside it.
 export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const toast = useToast();
   const { user } = useAuth();
+  const rates = useCurrency();
   const [members, setMembers] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [residents, setResidents] = useState([]);
@@ -20,7 +27,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   // What the chosen project's reported work still expects to be paid.
   const [upcoming, setUpcoming] = useState(null);
   const [form, setForm] = useState({
-    member: '', amount: '', date: todayInput(), task: '', note: '',
+    member: '', amount: '', currency: load(CURRENCY_KEY, 'USD'), date: todayInput(), task: '', note: '',
     resident: '', residentPercent: '', method: 'paypal', feePercent: '', feeFixed: '',
   });
   // Screenshots already uploaded (kept across a failed save) and new files.
@@ -41,6 +48,8 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   }, [forOthers]);
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  // The currency last used on this device is offered first next time.
+  const pickCurrency = (e) => { save(CURRENCY_KEY, e.target.value); setForm({ ...form, currency: e.target.value }); };
 
   // Only the chosen person's projects and residents can be linked ('' = the person recording).
   const ownerId = String(form.member || user.id);
@@ -52,10 +61,12 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
     const r = ownResidents.find((x) => String(x.id) === String(id));
     setForm((f) => ({ ...f, resident: id, residentPercent: r ? (r.sharePercent || '') : '' }));
   };
-  // Picking a project brings its resident and its payment method (with the usual fee).
+  // Picking a project brings its resident, its currency and its payment
+  // method (with the usual fee).
   const pickTask = (e) => {
     const t = ownTasks.find((x) => String(x.id) === e.target.value);
-    setForm((f) => ({ ...f, task: e.target.value }));
+    const currency = t?.currency && rates.currencies.includes(t.currency) ? t.currency : null;
+    setForm((f) => ({ ...f, task: e.target.value, ...(currency ? { currency } : {}) }));
     setUpcoming(null);
     if (t) api(`/incomes/upcoming?task=${t.id}`).then(setUpcoming).catch(() => setUpcoming(null));
     if (t?.resident?.id) pickResident(String(t.resident.id));
@@ -72,8 +83,16 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
     ? `${method.feePercent ? `${method.feePercent}%` : ''}${method.feePercent && method.feeFixed ? ' + ' : ''}${method.feeFixed ? formatAmount(method.feeFixed) : ''}${!method.feePercent && !method.feeFixed ? 'free' : ''}`
     : '—';
 
+  // The amount in the base currency, as the server will record it: fees
+  // (in the base) and the split come off that.
+  const inBase = form.currency === rates.base;
+  const rate = inBase ? 1 : rates.rates?.[form.currency];
+  const hasRate = inBase || Number.isFinite(rate);
+  const typed = Number(form.amount) || 0;
+  const gross = hasRate ? typed / rate : 0;
+  const baseMoney = (n) => `${rates.base} ${formatAmount(n)}`;
+
   // The split, as the server will work it out: fee first, then the resident's share.
-  const gross = Number(form.amount) || 0;
   const feeAmount = Math.min(gross, gross * ((Number(form.feePercent) || 0) / 100) + (Number(form.feeFixed) || 0));
   const residentAmount = (gross - feeAmount) * ((Number(form.residentPercent) || 0) / 100);
   const net = gross - feeAmount - residentAmount;
@@ -135,13 +154,27 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
         <div className="row">
           <label>
             Money
-            <input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} required autoFocus />
+            <span className="money-input">
+              <input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} required autoFocus aria-label="Amount" />
+              <select value={form.currency} onChange={pickCurrency} aria-label="Currency">
+                {rates.currencies.map((c) => (
+                  <option key={c} value={c} disabled={c !== rates.base && !Number.isFinite(rates.rates?.[c])}>{c}</option>
+                ))}
+              </select>
+            </span>
           </label>
           <label>
             Date
             <input type="date" value={form.date} onChange={set('date')} required />
           </label>
         </div>
+        {!inBase && (
+          <p className={`muted small form-note money-rate ${hasRate ? '' : 'alert-text'}`}>
+            {hasRate
+              ? <>Recorded as <strong>{baseMoney(gross)}</strong> · 1 {rates.base} = {rate} {form.currency}{rates.rateDate ? ` · rate of ${rates.rateDate}` : ''}{rates.fetchedAt ? ` · checked ${timeAgo(rates.fetchedAt)}` : ''}, refreshed automatically.</>
+              : `No exchange rate for ${form.currency} yet. Record it in ${rates.base} or try again in a moment.`}
+          </p>
+        )}
         <div className="row">
           <label>
             Project
@@ -187,7 +220,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
           </div>
         </div>
         <div className="split-preview">
-          <div><span className="muted small">Fee</span><strong>−{formatAmount(feeAmount)}</strong></div>
+          <div><span className="muted small">Fee{inBase ? '' : ` · ${rates.base}`}</span><strong>−{formatAmount(feeAmount)}</strong></div>
           <div>
             <span className="muted small">Resident share</span>
             <span className="split-share">
@@ -196,7 +229,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
               <strong>−{formatAmount(residentAmount)}</strong>
             </span>
           </div>
-          <div className="split-net"><span className="muted small">Net to you</span><strong>{formatAmount(net)}</strong></div>
+          <div className="split-net"><span className="muted small">Net to you{inBase ? '' : ` · ${rates.base}`}</span><strong>{formatAmount(net)}</strong></div>
         </div>
         <label>
           Note
@@ -212,7 +245,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
           />
         </div>
         <p className="muted small form-note">
-          Income records are history: once recorded they cannot be changed or deleted, so check the amount and date.
+          Income records are history: once recorded they cannot be changed or deleted, so check the amount, currency and date.
         </p>
       </form>
     </Modal>

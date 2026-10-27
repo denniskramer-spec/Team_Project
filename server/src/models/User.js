@@ -25,6 +25,9 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },
     mustChangePassword: { type: Boolean, default: false },
+    // Set when an admin (or the person) ends every session of the account:
+    // tokens issued before it are refused.
+    sessionsEndedAt: { type: Date, default: null },
     lastLoginAt: { type: Date, default: null },
     // Last time a socket of theirs disconnected (or connected): "last seen".
     lastSeenAt: { type: Date, default: null },

@@ -3,7 +3,7 @@ import Income from '../models/Income.js';
 import Outcome from '../models/Outcome.js';
 import { requireAuth } from '../middleware/auth.js';
 import { forbidden } from '../utils/httpError.js';
-import { currentRates, refreshRates } from '../utils/exchange.js';
+import { currentRates, refreshRates, refreshIfStale } from '../utils/exchange.js';
 import {
   financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, who, whoKey,
   ownerId, PERSON_FIELDS, LIST_LIMIT,
@@ -19,6 +19,7 @@ const sum = (rows) => rows.reduce((acc, r) => acc + r.amount, 0);
 // GET /api/finance/rates — the day's exchange rates from the base currency,
 // for showing the Finance pages in another currency.
 router.get('/rates', (req, res) => {
+  refreshIfStale();
   res.json({ ...currentRates(), canRefresh: ['admin', 'leader'].includes(req.user.role) });
 });
 
@@ -26,6 +27,7 @@ router.get('/rates', (req, res) => {
 router.post('/rates/refresh', async (req, res) => {
   if (!['admin', 'leader'].includes(req.user.role)) throw forbidden('Only admins and the team leader refresh exchange rates');
   await refreshRates();
+  req.audit = { action: 'finance.rates.refresh', details: { rateDate: currentRates().rateDate, source: currentRates().source } };
   res.json({ ...currentRates(), canRefresh: true });
 });
 

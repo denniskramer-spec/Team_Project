@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { imageSchema } from './image.js';
+import { CURRENCIES } from './Task.js';
 
 // An income record for one member: date, amount and where it came from.
 const incomeSchema = new mongoose.Schema(
@@ -8,7 +9,15 @@ const incomeSchema = new mongoose.Schema(
     group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     date: { type: Date, required: true },
+    // Always in the team's base currency (USD): totals, fees and charts
+    // work on this one.
     amount: { type: Number, required: true, min: 0 },
+    // What was actually received: the currency, the amount in it and the
+    // rate (currency per base unit) it was converted at, with the rate's day.
+    currency: { type: String, enum: CURRENCIES, default: 'USD' },
+    originalAmount: { type: Number, default: null, min: 0 },
+    rate: { type: Number, default: 1, min: 0 },
+    rateDate: { type: String, default: '' },
     // Where it came from, worked out on save: the project, else the resident,
     // else the payment method (older records hold what was typed).
     from: { type: String, default: '', trim: true, maxlength: 120 },

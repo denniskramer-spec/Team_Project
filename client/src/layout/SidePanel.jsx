@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useSocket, useSocketEvent, useReconnect } from '../socket/SocketContext.jsx';
@@ -10,8 +10,7 @@ import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import AlertsPanel from '../alerts/AlertsPanel.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
-import DmThread from './DmThread.jsx';
-import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
+import { dmPath } from './NewDm.jsx';
 
 const ROLE_ORDER = ['admin', 'leader', 'boss', 'member'];
 const clock = (v) => new Date(v).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -240,49 +239,18 @@ function Members({ onMessage }) {
   );
 }
 
-// The Messages tab: direct message conversations, and one open thread.
-function Messages({ open, setOpen, dms, reload, visible }) {
-  const { online } = useSocket();
-  if (open) return <DmThread peer={open} visible={visible} onBack={() => { setOpen(null); reload(); }} />;
-  if (!dms.length) return <p className="muted small">No direct messages yet. Pick someone in Members and press Message.</p>;
-  return (
-    <ul className="dm-conversations">
-      {dms.map((d) => (
-        <li key={d.titleKey}>
-          <button type="button" className={`member-row dm-row${d.unread ? ' has-unread' : ''}`} onClick={() => d.peer && setOpen({ id: d.peer.id, name: d.peer.name, role: d.peer.role, group: d.peer.group })}>
-            <Avatar name={d.peer?.name ?? '?'} role={d.peer?.role ?? 'member'} online={d.peer ? online.has(String(d.peer.id)) : undefined} size={24} />
-            <div className="member-text">
-              <span className={`member-name role-text-${d.peer?.role}`}>{d.peer?.name ?? 'Former member'}<span className="muted small dm-when"> · {timeAgo(d.last.at)}</span></span>
-              <span className="muted small dm-preview">{d.last.mine ? 'You: ' : ''}{d.last.content}</span>
-            </div>
-            {d.unread > 0 && <span className="badge">{d.unread}</span>}
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 // Section 4: hidden by default, slides in from the right when the arrow is clicked.
-export default function SidePanel({ open, onToggle, tab, setTab, thread, setThread }) {
+export default function SidePanel({ open, onToggle, tab, setTab }) {
   const { total } = useAlerts();
-  const setCounts = useChatAlerts()?.setCounts;
-  const { data: dmData, reload: reloadDms } = useSocketData('/chat/dms', ['chat:new', 'nav:changed']);
-  const dms = dmData?.dms ?? [];
-  const dmUnread = dmData?.unread ?? 0;
-  // The footer and the tab title show the unread direct messages too.
-  useEffect(() => { setCounts?.({ dms: dmUnread }); }, [setCounts, dmUnread]);
-
-  const message = (peer) => { setThread(peer); setTab('messages'); };
+  const navigate = useNavigate();
+  // "Message" opens the conversation under Chat -> Direct messages.
+  const message = (peer) => { const { to, state } = dmPath(peer); navigate(to, { state }); };
 
   return (
     <>
       <aside className={`side-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
         <div className="panel-tabs">
           <button className={tab === 'members' ? 'active' : ''} onClick={() => setTab('members')}>Members</button>
-          <button className={tab === 'messages' ? 'active' : ''} onClick={() => setTab('messages')}>
-            Messages{dmUnread > 0 && <span className="badge tab-badge">{dmUnread}</span>}
-          </button>
           <button className={tab === 'alerts' ? 'active' : ''} onClick={() => setTab('alerts')}>
             Alerts{total > 0 && <span className="badge tab-badge">{total}</span>}
           </button>
@@ -290,9 +258,8 @@ export default function SidePanel({ open, onToggle, tab, setTab, thread, setThre
             <Icon name="close" size={16} />
           </button>
         </div>
-        <div className={`panel-body${tab === 'messages' && thread ? ' panel-body-thread' : ''}`}>
+        <div className="panel-body">
           {tab === 'members' && <Members onMessage={message} />}
-          {tab === 'messages' && <Messages open={thread} setOpen={setThread} dms={dms} reload={reloadDms} visible={open} />}
           {tab === 'alerts' && <AlertsPanel />}
         </div>
       </aside>

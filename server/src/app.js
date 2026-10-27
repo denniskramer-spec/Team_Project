@@ -1,3 +1,5 @@
+// First: the data layer's audit hooks must exist before any model is compiled.
+import './utils/auditPlugin.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +25,8 @@ import checkoutRoutes from './routes/checkout.js';
 import residentRoutes from './routes/residents.js';
 import chatAccountRoutes from './routes/chatAccounts.js';
 import paymentRoutes from './routes/payments.js';
+import securityRoutes from './routes/security.js';
+import { auditRequests } from './utils/audit.js';
 import { requireAuth } from './middleware/auth.js';
 import { uploadsDir } from './utils/uploads.js';
 
@@ -33,22 +37,30 @@ const app = express();
 app.set('trust proxy', env.trustProxy);
 // Every query parameter is a plain string: a repeated key (?q=a&q=b) keeps
 // its last value instead of turning into an array that routes don't expect.
-app.set('query parser', (str) => Object.fromEntries(new URLSearchParams(str)));
+app.set('query parser', (str) => Object.fromEntries(new URLSearchParams(str ?? '')));
 app.disable('x-powered-by');
-// Basic security headers. Uploaded files in particular must never be
-// sniffed into HTML or framed by another site.
+// Security headers. Uploaded files in particular must never be sniffed
+// into HTML or framed by another site; the browser is told it needs no
+// camera, microphone or location; and, in production over HTTPS, to keep
+// using HTTPS for a year. API answers carry a policy that lets nothing
+// run; the page itself gets its own in the static handler below.
 app.use((req, res, next) => {
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
   });
+  if (env.isProd && req.secure) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+// Every request that changes data, and every login, goes in the security log.
+app.use(auditRequests);
 // A request sent without a body has none; routes read fields off an object.
 app.use((req, res, next) => {
   if (req.body === undefined || req.body === null || typeof req.body !== 'object' || Array.isArray(req.body)) req.body = {};
@@ -84,6 +96,7 @@ app.use('/api/checkout', checkoutRoutes);
 app.use('/api/residents', residentRoutes);
 app.use('/api/chat-accounts', chatAccountRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/security', securityRoutes);
 // Uploaded images (outcome attachments, resident photos, screenshots), behind login.
 app.use('/api/files', requireAuth, express.static(uploadsDir, {
   fallthrough: false,
@@ -100,12 +113,29 @@ app.use('/api', (req, res) => {
 // In production the API also serves the built client (client/dist), so one
 // process on one port is the whole app. Any other path is a page of the
 // single-page app. During development Vite serves the client instead.
+// The page may run only its own scripts and styles (React sets styles
+// inline, so inline styles are allowed), load images it made itself
+// (previews of files being attached) and talk to its own origin, over
+// WebSocket too.
+const PAGE_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self' ws: wss:",
+  "media-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
 if (env.isProd && fs.existsSync(path.join(clientDir, 'index.html'))) {
-  app.use(express.static(clientDir, { index: false, maxAge: '1h' }));
+  app.use(express.static(clientDir, { index: false, maxAge: '1h', setHeaders: (res) => res.set('Content-Security-Policy', PAGE_CSP) }));
   app.get(/^\/(?!api\/|socket\.io\/).*/, (req, res) => {
     // A missing file (/assets/old.js, /.env) is a 404, not a page.
     if (path.extname(req.path) || req.path.includes('/.')) return res.status(404).type('text').send('Not found');
-    res.set('Cache-Control', 'no-cache').sendFile(path.join(clientDir, 'index.html'));
+    res.set({ 'Cache-Control': 'no-cache', 'Content-Security-Policy': PAGE_CSP }).sendFile(path.join(clientDir, 'index.html'));
   });
 }
 

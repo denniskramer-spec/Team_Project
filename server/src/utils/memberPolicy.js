@@ -2,7 +2,7 @@
 // client as per-row permissions so the UI only shows allowed actions.
 //
 //   admin  -> everyone except themselves (for role/status changes)
-//   leader -> bosses and members
+//   leader -> everyone, like an admin
 //   boss   -> members of their own group
 //   member -> nobody
 
@@ -10,8 +10,7 @@ const sameGroup = (a, b) => Boolean(a.group && b.group && String(a.group._id ?? 
 const isSelf = (a, b) => String(a._id) === String(b._id);
 
 export function canManage(actor, target) {
-  if (actor.role === 'admin') return true;
-  if (actor.role === 'leader') return ['boss', 'member'].includes(target.role);
+  if (actor.role === 'admin' || actor.role === 'leader') return true;
   if (actor.role === 'boss') return target.role === 'member' && sameGroup(actor, target);
   return false;
 }
@@ -24,7 +23,7 @@ export function permissionsFor(actor, target) {
     changeGroup: manage && ['admin', 'leader'].includes(actor.role),
     resetPassword: manage && !self,
     disable: manage && !self && ['admin', 'leader'].includes(actor.role),
-    changeRole: actor.role === 'admin' && !self,
+    changeRole: ['admin', 'leader'].includes(actor.role) && !self,
   };
 }
 

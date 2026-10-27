@@ -10,7 +10,7 @@ import MemberActions from '../member/MemberActions.jsx';
 
 const ROLE_HELP = {
   admin: 'Manages accounts, roles and groups',
-  leader: 'Instructs everyone, sees all reports',
+  leader: 'Everything an admin does, and instructs everyone',
   boss: 'Leads one group',
   member: 'Regular team member',
 };
@@ -109,7 +109,7 @@ function RoleSelect({ member, onChanged }) {
   );
 }
 
-// Admin only: every account with its role and status.
+// Admins and the team leader: every account with its role and status.
 export default function UsersRoles() {
   const active = useLiveData('/members?group=all', ['directory:changed']);
   const disabled = useLiveData('/members?group=all&status=disabled', ['directory:changed']);

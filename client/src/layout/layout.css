@@ -253,60 +253,66 @@
 .role-text-member { color: var(--text); }
 
 /* ---------- Section 1: channel rail ---------- */
+/* Icon-only for every role. The name flies out beside the icon on hover or
+   focus (.rail-tip), and a pill on the rail's left edge marks the open
+   channel (tall) or the hovered / focused one (short). */
 .rail {
   width: var(--rail-w);
-  padding: 8px 0;
+  padding: 10px 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 .rail-item {
+  position: relative;
   display: grid;
   justify-items: center;
-  gap: 3px;
-  padding: 6px 4px;
+  padding: 2px 0;
   color: var(--muted);
-  border-radius: var(--radius-sm);
+  outline: none;
 }
 .rail-item:hover { text-decoration: none; color: var(--text); }
 .rail-icon {
   position: relative;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  color: inherit;
-  transition: background 0.15s, color 0.15s;
-}
-.rail-item:hover .rail-icon { background: var(--hover-strong); }
-.rail-item.active { color: var(--accent); }
-.rail-item.active .rail-icon { background: var(--accent-soft); }
-.rail-admin .rail-icon { color: var(--text-admin); }
-.rail-label { font-size: 11px; font-weight: 500; }
-.rail-item.active .rail-label { color: var(--accent); font-weight: 600; }
-.rail-pill { display: none; }
-/* A member's Settings sits at the foot of the rail, apart from the channels. */
-.rail-settings { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); border-radius: 0; }
-
-/* Icon-only rail (members): round buttons, the name flies out on hover. */
-.rail.compact { gap: 6px; padding: 10px 0; }
-.rail.compact .rail-item { padding: 2px 0; }
-.rail.compact .rail-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+  color: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, border-radius 0.15s;
 }
-.rail.compact .rail-item:hover .rail-icon { background: var(--hover-strong); color: var(--text); border-color: var(--border-strong); }
-.rail.compact .rail-item.active .rail-icon { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.rail.compact .rail-admin .rail-icon { color: var(--text-admin); }
-.rail.compact .rail-settings { padding-top: 12px; }
+.rail-item:hover .rail-icon,
+.rail-item:focus-visible .rail-icon { background: var(--hover-strong); color: var(--text); border-color: var(--border-strong); }
+.rail-item:focus-visible { outline: none; }
+.rail-item:focus-visible .rail-icon { box-shadow: 0 0 0 2px var(--accent); }
+.rail-item.active .rail-icon { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.rail-admin .rail-icon { color: var(--text-admin); }
+.rail-admin.active .rail-icon { color: var(--on-accent); }
+/* The left-edge pill: hidden, short on hover / focus, tall when active. */
+.rail-pill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 0;
+  transform: translateY(-50%);
+  border-radius: 0 4px 4px 0;
+  background: var(--text-strong);
+  transition: height 0.15s ease;
+}
+.rail-item:hover .rail-pill,
+.rail-item:focus-visible .rail-pill { height: 20px; }
+.rail-item.active .rail-pill { height: 36px; }
+/* Chat (with a member's Settings under it) sits at the foot of the rail,
+   apart from the channels. */
+.rail-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); border-radius: 0; }
+.rail-foot .rail-pill { top: calc(50% + 6px); }
 .rail-tip {
   position: fixed;
   z-index: 60;

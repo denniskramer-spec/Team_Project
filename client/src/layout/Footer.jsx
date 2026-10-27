@@ -58,10 +58,10 @@ export default function Footer({ onPanel, panelOpen, panelTab }) {
         <button className={`footer-link ${isOn('members') ? 'active' : ''}`} onClick={() => onPanel('members')} aria-pressed={isOn('members')}>
           <Icon name="users" size={14} /> Members
         </button>
-        <button className={`footer-link ${isOn('messages') ? 'active' : ''}`} onClick={() => onPanel('messages')} aria-pressed={isOn('messages')}>
+        <Link className="footer-link" to="/chat" title="Direct messages, under Chat">
           <Icon name="message" size={14} /> Messages
           {dmUnread > 0 && <span className="badge footer-badge">{dmUnread > 99 ? '99+' : dmUnread}</span>}
-        </button>
+        </Link>
         <button className={`footer-link ${isOn('alerts') ? 'active' : ''}`} onClick={() => onPanel('alerts')} aria-pressed={isOn('alerts')}>
           <Icon name="bell" size={14} /> Alerts
           {total > 0 && <span className="badge footer-badge">{total > 99 ? '99+' : total}</span>}

@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
+import Avatar from '../components/Avatar.jsx';
+import NewDm from './NewDm.jsx';
+import { useSocket } from '../socket/SocketContext.jsx';
+
+const DM_SECTION = 'Direct messages';
 
 // Section 2: the titles of the selected channel.
 //
@@ -10,7 +15,9 @@ import Icon from '../components/Icon.jsx';
 // A title with `queryKey` keeps the current title and sets a query value instead.
 export default function TitleList({ channel, current }) {
   const [searchParams] = useSearchParams();
+  const { online } = useSocket();
   const isChat = channel.key === 'chat';
+  const [newDm, setNewDm] = useState(false);
   const selectedMember = searchParams.get('m') ?? '';
   const selectedGroup = searchParams.get('g') ?? '';
 
@@ -21,6 +28,8 @@ export default function TitleList({ channel, current }) {
     if (last && last.name === name) last.titles.push(t);
     else sections.push({ name, titles: [t] });
   });
+  // Chat always offers Direct messages, even before the first conversation.
+  if (isChat && !sections.some((s) => s.name === DM_SECTION)) sections.push({ name: DM_SECTION, titles: [] });
 
   // The same member is listed under "All" and under their own group, so a member
   // row is only highlighted when its branch is the selected one too.
@@ -115,11 +124,15 @@ export default function TitleList({ channel, current }) {
             className="title-item"
             aria-current={active ? 'page' : undefined}
           >
-            <Icon
-              name={parent ? 'user' : isChat ? 'hash' : t.groupId || expandable ? 'users' : 'dot'}
-              size={parent ? 14 : 16}
-              className="title-icon"
-            />
+            {t.dm ? (
+              <Avatar name={t.name} role={t.dm.role} online={online.has(String(t.dm.id))} size={22} />
+            ) : (
+              <Icon
+                name={parent ? 'user' : isChat ? 'hash' : t.groupId || expandable ? 'users' : 'dot'}
+                size={parent ? 14 : 16}
+                className="title-icon"
+              />
+            )}
             <span className="title-name">{t.name}</span>
             {t.badge > 0 && <span className="badge">{t.badge}</span>}
           </Link>
@@ -139,11 +152,24 @@ export default function TitleList({ channel, current }) {
       <div className="titles-scroll">
         {sections.map((section, i) => (
           <section key={section.name || `section-${i}`} className={`title-section ${i > 0 ? 'divided' : ''}`}>
-            {section.name && <h4 className="title-section-head">{section.name}</h4>}
+            {section.name && (
+              <h4 className="title-section-head">
+                {section.name}
+                {isChat && section.name === DM_SECTION && (
+                  <button type="button" className="icon-btn section-add" onClick={() => setNewDm(true)} title="New direct message" aria-label="New direct message">
+                    <Icon name="plus" size={14} />
+                  </button>
+                )}
+              </h4>
+            )}
+            {isChat && section.name === DM_SECTION && !section.titles.length && (
+              <p className="muted small title-section-empty">No conversations yet. Press + to write to someone.</p>
+            )}
             <ul className="titles-list">{section.titles.map((t) => renderItem(t, null))}</ul>
           </section>
         ))}
       </div>
+      {newDm && <NewDm onClose={() => setNewDm(false)} />}
     </div>
   );
 }

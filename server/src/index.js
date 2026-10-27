@@ -1,3 +1,5 @@
+// First: the data layer's audit hooks must exist before any model is compiled.
+import './utils/auditPlugin.js';
 import http from 'node:http';
 import { env } from './config/env.js';
 import { connectDB } from './config/db.js';

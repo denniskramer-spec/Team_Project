@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Task, { TASK_STATES, PRICE_UNITS, CURRENCIES } from '../models/Task.js';
 import Report from '../models/Report.js';
@@ -252,6 +253,7 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const task = await findTask(req);
   if (!mayManage(req.user, task)) throw forbidden('You cannot delete this project');
+  await archiveDeleted(task, req, { model: 'Task', label: task.name });
   await task.deleteOne();
   // The day's work written on it leaves the reports, and their upcoming
   // amounts follow.

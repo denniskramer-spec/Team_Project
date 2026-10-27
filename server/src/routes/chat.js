@@ -1,17 +1,20 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage, dmPeerOf, isDmKey } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, canDeleteMessage, dmPeerOf, isDmKey, canUseFinanceChat } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { chatLimit } from '../middleware/limits.js';
 import { chatEvent, navChangedFor, dmEvent } from '../socket/events.js';
+import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
+import { imageUrl } from '../utils/fileRefs.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -25,16 +28,22 @@ const serialize = (m) => ({
     ? { id: m.author._id, name: m.author.name, role: m.author.role, username: m.author.username }
     : null,
   content: m.content,
+  images: (m.images ?? []).map(imageUrl),
   createdAt: m.createdAt,
   editedAt: m.editedAt,
 });
 
-function checkContent(value) {
+// A message is text, images, or both; `hasImages` says whether it will
+// carry any, so text may then be left out.
+function checkContent(value, hasImages = false) {
   const content = typeof value === 'string' ? clean(value).trim() : '';
-  if (!content) throw badRequest('Write a message first');
+  if (!content && !hasImages) throw badRequest('Write a message first');
   if (content.length > 2000) throw badRequest('Messages can be at most 2000 characters');
   return content;
 }
+
+// What a message reads as where only one line fits (the DM list, popups).
+export const previewOf = (m) => m.content || (m.images?.length > 1 ? `${m.images.length} images` : 'Image');
 
 // Unread counts for every chat this user can open (used for nav badges).
 export async function chatUnreadCounts(user) {
@@ -42,7 +51,7 @@ export async function chatUnreadCounts(user) {
   const channels = [
     { key: 'general', titleKey: 'general' },
     ...visibleGroups(user, groups).map((g) => ({ key: `group:${g._id}`, titleKey: `group-${g.slug}` })),
-    { key: 'finance', titleKey: 'finance' },
+    ...(canUseFinanceChat(user) ? [{ key: 'finance', titleKey: 'finance' }] : []),
   ];
   const reads = await ChatRead.find({ user: user._id, channelKey: { $in: channels.map((c) => c.key) } }).lean();
   const readAt = new Map(reads.map((r) => [r.channelKey, r.lastReadAt]));
@@ -78,10 +87,20 @@ router.get('/:titleKey/messages', async (req, res) => {
   });
 });
 
-// POST /api/chat/:titleKey/messages { content }
+// POST /api/chat/:titleKey/upload — multipart `images` files (up to five,
+// PNG, JPEG, GIF or WebP); returns the references to send with the message.
+router.post('/:titleKey/upload', uploadLimiter(), async (req, res, next) => {
+  await resolveChannel(req.user, req.params.titleKey);
+  next();
+}, imageUpload, (req, res) => {
+  res.status(201).json({ images: (req.files ?? []).map(describeUpload) });
+});
+
+// POST /api/chat/:titleKey/messages { content, images? }
 router.post('/:titleKey/messages', chatLimit, async (req, res) => {
   const channel = await resolveChannel(req.user, req.params.titleKey);
-  const content = checkContent(req.body.content);
+  const images = (await checkImages(req.body.images)) ?? [];
+  const content = checkContent(req.body.content, images.length > 0);
 
   const message = await new Message({
     channelKey: channel.key,
@@ -89,6 +108,7 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
     author: req.user._id,
     ...(channel.kind === 'dm' ? { peers: channel.peers } : {}),
     content,
+    images,
   }).save();
   await message.populate('author', AUTHOR_FIELDS);
 
@@ -116,6 +136,7 @@ function sendChatEvent(event, channel, user, payloadFor) {
   const them = channel.other;
   dmEvent(event, String(user._id), payloadFor(`dm-${them._id}`, them));
   dmEvent(event, String(them._id), payloadFor(`dm-${me._id}`, me));
+  if (event === 'chat:new') { navChangedFor(user._id); navChangedFor(them._id); }
 }
 
 async function findMessage(req) {
@@ -134,7 +155,7 @@ async function findMessage(req) {
 router.patch('/messages/:id', async (req, res) => {
   const { message, channel, titleKey } = await findMessage(req);
   if (!canEditMessage(req.user, message)) throw forbidden('You can only edit your own messages');
-  message.content = checkContent(req.body.content);
+  message.content = checkContent(req.body.content, message.images?.length > 0);
   message.editedAt = new Date();
   await message.save();
 
@@ -145,6 +166,7 @@ router.patch('/messages/:id', async (req, res) => {
 router.delete('/messages/:id', async (req, res) => {
   const { message, channel, titleKey } = await findMessage(req);
   if (!canDeleteMessage(req.user, message)) throw forbidden('You cannot delete this message');
+  await archiveDeleted(message, req, { model: 'Message', label: `${titleKey}: ${previewOf(message).slice(0, 80)}` });
   await message.deleteOne();
 
   sendChatEvent('chat:deleted', channel, req.user, (key) => ({ titleKey: key, id: message._id }));
@@ -167,33 +189,40 @@ router.get('/unread', async (req, res) => {
   res.json({ counts: await chatUnreadCounts(req.user) });
 });
 
-// GET /api/chat/dms — this user's direct message conversations, newest
-// first, with the other person, the last message and how many are unread.
-router.get('/dms', async (req, res) => {
-  const me = String(req.user._id);
+// This user's direct message conversations, newest first, with the other
+// person, the last message and how many are unread. Listed in the Chat
+// channel's nav under "Direct messages".
+export async function listDms(user) {
+  const me = String(user._id);
   const latest = await Message.aggregate([
-    { $match: { peers: req.user._id } },
+    { $match: { peers: user._id } },
     { $sort: { createdAt: -1 } },
     { $group: { _id: '$channelKey', last: { $first: '$$ROOT' } } },
     { $sort: { 'last.createdAt': -1 } },
     { $limit: 50 },
   ]);
   const keys = latest.map((l) => l._id);
-  const reads = await ChatRead.find({ user: req.user._id, channelKey: { $in: keys } }).lean();
+  const reads = await ChatRead.find({ user: user._id, channelKey: { $in: keys } }).lean();
   const readAt = new Map(reads.map((r) => [r.channelKey, r.lastReadAt]));
   const peerIds = latest.map((l) => dmPeerOf(l._id, me));
   const peers = await User.find({ _id: { $in: peerIds } }, 'name role group status').populate('group', 'name').lean();
   const peerOf = new Map(peers.map((p) => [String(p._id), p]));
-  const dms = await Promise.all(latest.map(async (l) => {
-    const peer = peerOf.get(dmPeerOf(l._id, me));
-    const unread = await Message.countDocuments({ channelKey: l._id, author: { $ne: req.user._id }, createdAt: { $gt: readAt.get(l._id) ?? req.user.createdAt } });
+  return Promise.all(latest.map(async (l) => {
+    const peerId = dmPeerOf(l._id, me);
+    const peer = peerOf.get(peerId);
+    const unread = await Message.countDocuments({ channelKey: l._id, author: { $ne: user._id }, createdAt: { $gt: readAt.get(l._id) ?? user.createdAt } });
     return {
-      titleKey: `dm-${dmPeerOf(l._id, me)}`,
-      peer: peer ? { id: peer._id, name: peer.name, role: peer.role, group: peer.group?.name ?? null, active: peer.status === 'active' } : null,
-      last: { content: l.last.content.slice(0, 120), at: l.last.createdAt, mine: String(l.last.author) === me },
+      titleKey: `dm-${peerId}`,
+      peer: { id: peerId, name: peer?.name ?? 'Former member', role: peer?.role ?? 'member', group: peer?.group?.name ?? null, active: peer?.status === 'active' },
+      last: { content: previewOf(l.last).slice(0, 120), at: l.last.createdAt, mine: String(l.last.author) === me },
       unread,
     };
   }));
+}
+
+// GET /api/chat/dms
+router.get('/dms', async (req, res) => {
+  const dms = await listDms(req.user);
   res.json({ dms, unread: dms.reduce((n, d) => n + d.unread, 0) });
 });
 

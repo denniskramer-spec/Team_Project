@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
@@ -225,6 +226,7 @@ router.patch('/:id/status', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const plan = await findOwnPlan(req);
+  await archiveDeleted(plan, req, { model: 'Plan', label: `${plan.type} plan ${plan.period}` });
   await plan.deleteOne();
   planChanged(req.user, plan);
   res.json({ ok: true });

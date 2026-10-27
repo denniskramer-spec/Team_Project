@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { load, save } from '../storage.js';
@@ -30,10 +30,8 @@ export default function Workspace() {
   const [panelOpen, setPanelOpen] = useState(() => load(PANEL_KEY, false));
   const [navOpen, setNavOpen] = useState(false);
   const [panelTab, setPanelTab] = useState('members');
-  // The direct message open in the side panel, if any.
-  const [thread, setThread] = useState(null);
   const { user } = useAuth();
-  const { setCounts, setPanelApi } = useChatAlerts() ?? {};
+  const { setCounts } = useChatAlerts() ?? {};
 
   const track = useLatestRequest();
   const loadNav = useCallback(() => {
@@ -55,15 +53,19 @@ export default function Workspace() {
     navTimer.current = setTimeout(loadNav, 300 + Math.random() * 700);
   });
   useEffect(() => () => clearTimeout(navTimer.current), []);
-  // A message from someone else changes the Chat badge in the rail.
+  // A message from someone else changes the Chat badge in the rail; a direct
+  // message (either way) changes the Direct messages list under Chat.
   useSocketEvent('chat:new', ({ message, dm }) => {
-    if (dm || String(message?.author?.id) === String(user?.id)) return;
+    if (!dm && String(message?.author?.id) === String(user?.id)) return;
     clearTimeout(navTimer.current);
     navTimer.current = setTimeout(loadNav, 300 + Math.random() * 700);
   });
-  // The tab title counts unread chat messages.
+  // The tab title and the footer count unread chat messages: channels and
+  // direct messages apart.
   useEffect(() => {
-    setCounts?.({ channels: channels?.find((c) => c.key === 'chat')?.badge ?? 0 });
+    const titles = channels?.find((c) => c.key === 'chat')?.titles ?? [];
+    const count = (pick) => titles.filter(pick).reduce((n, t) => n + (t.badge ?? 0), 0);
+    setCounts?.({ channels: count((t) => !t.dm), dms: count((t) => t.dm) });
   }, [channels, setCounts]);
 
   // Close the mobile drawer after navigating.
@@ -81,14 +83,18 @@ export default function Workspace() {
   };
   const toggleAlerts = () => openPanelTab('alerts');
 
-  // A message popup opens its conversation in the panel's Messages tab.
-  useEffect(() => {
-    setPanelApi?.({
-      openThread: (peer) => { setThread(peer); setPanelTab('messages'); setPanelOpen(true); save(PANEL_KEY, true); },
-    });
-  }, [setPanelApi]);
-
-  const channel = channels?.find((c) => c.key === channelKey);
+  // A direct message that has no messages yet is not in the nav: the
+  // conversation is listed from the person it was opened with (sent along in
+  // the navigation state), until the first message puts it there for good.
+  const channel = useMemo(() => {
+    const found = channels?.find((c) => c.key === channelKey);
+    if (!found || found.key !== 'chat' || !titleKey?.startsWith('dm-') || found.titles.some((t) => t.key === titleKey)) return found;
+    const peer = location.state?.peer;
+    const id = titleKey.slice(3);
+    if (!/^[0-9a-f]{24}$/.test(id) || (peer && String(peer.id) !== id) || id === String(user?.id)) return found;
+    const dm = peer ?? { id, name: 'Direct message', role: 'member', group: null };
+    return { ...found, titles: [...found.titles, { key: titleKey, name: dm.name, section: 'Direct messages', dm }] };
+  }, [channels, channelKey, titleKey, location.state, user?.id]);
   const title = channel?.titles.find((t) => t.key === titleKey);
 
   useEffect(() => {
@@ -126,12 +132,12 @@ export default function Workspace() {
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
       <div className="workspace">
         <nav className={`nav-drawer ${navOpen ? 'open' : ''}`} aria-label="Channels">
-          <ChannelRail channels={channels} current={channel.key} compact={user?.role === 'member'} />
+          <ChannelRail channels={channels} current={channel.key} />
           <TitleList channel={channel} current={title.key} />
         </nav>
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
         <ContentArea channel={channel} title={title} panelOpen={panelOpen} onTogglePanel={togglePanel} />
-        <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} thread={thread} setThread={setThread} />
+        <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
       <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />
       <ReportDue />

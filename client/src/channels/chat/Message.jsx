@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
 import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
-import { ConfirmDialog } from '../../components/Modal.jsx';
+import Modal, { ConfirmDialog } from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import MessageText from './MessageText.jsx';
@@ -18,9 +18,12 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
   const [draft, setDraft] = useState(m.content);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // index of the open image
+  const images = m.images ?? [];
 
   const save = async () => {
-    if (!draft.trim() || draft === m.content) return setEditing(false);
+    // A message with pictures may have its text taken away entirely.
+    if ((!draft.trim() && !images.length) || draft === m.content) return setEditing(false);
     setBusy(true);
     try {
       const { message } = await api(`/chat/messages/${m.id}`, { method: 'PATCH', body: { content: draft } });
@@ -75,7 +78,18 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
           </div>
         ) : (
           <>
-            <MessageText content={m.content} />
+            {m.content && <MessageText content={m.content} />}
+            {images.length > 0 && (
+              <ul className="msg-images" aria-label="Attached images">
+                {images.map((img, i) => (
+                  <li key={img.file}>
+                    <button type="button" className="thumb-open" onClick={() => setLightbox(i)} aria-label={`Open ${img.name}`}>
+                      <img src={img.url} alt={img.name} title={img.name} loading="lazy" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {m.editedAt && <span className="muted small edited-tag">(edited)</span>}
           </>
         )}
@@ -90,6 +104,22 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
             ]}
           />
         </div>
+      )}
+      {lightbox !== null && (
+        <Modal title={`${m.author?.name ?? 'Image'} · ${lightbox + 1} / ${images.length}`} onClose={() => setLightbox(null)} width={900}>
+          <div className="lightbox">
+            <img src={images[lightbox].url} alt={images[lightbox].name} />
+            <div className="lightbox-nav">
+              {images.length > 1
+                ? <button className="btn" type="button" onClick={() => setLightbox((lightbox + images.length - 1) % images.length)}>Previous</button>
+                : <span />}
+              <a className="muted small" href={images[lightbox].url} target="_blank" rel="noopener noreferrer">{images[lightbox].name}</a>
+              {images.length > 1
+                ? <button className="btn" type="button" onClick={() => setLightbox((lightbox + 1) % images.length)}>Next</button>
+                : <span />}
+            </div>
+          </div>
+        </Modal>
       )}
       {confirm && (
         <ConfirmDialog

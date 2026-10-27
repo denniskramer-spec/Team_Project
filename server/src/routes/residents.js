@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Resident, { LAPTOP_SOURCES, ACCESS_TYPES } from '../models/Resident.js';
 import ChatAccount from '../models/ChatAccount.js';
@@ -217,6 +218,7 @@ router.patch('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const resident = await findResident(req);
   if (!mayManage(req.user, resident)) throw forbidden('You cannot delete this resident');
+  await archiveDeleted(resident, req, { model: 'Resident', label: resident.name });
   await resident.deleteOne();
   // Chat accounts that talked to this resident no longer list them.
   await ChatAccount.updateMany({ contacts: resident._id }, { $pull: { contacts: resident._id } });

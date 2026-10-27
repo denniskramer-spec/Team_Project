@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Group, { slugify } from '../models/Group.js';
 import User from '../models/User.js';
@@ -103,6 +104,7 @@ router.delete('/:id', requireCapability('manageGroups'), async (req, res) => {
   await User.updateMany({ group: group._id }, { $set: { group: null } });
   // Their records keep no pointer to a group that is gone.
   await clearGroupFromRecords(group._id);
+  await archiveDeleted(group, req, { model: 'Group', label: group.name });
   await group.deleteOne();
   changed();
   // Each of them reloads their session and rejoins the right socket rooms.

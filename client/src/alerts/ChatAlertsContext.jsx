@@ -21,9 +21,8 @@ export function ChatAlertsProvider({ children }) {
   const navigate = useNavigate();
   const [popups, setPopups] = useState([]);
   const [counts, setCounts] = useState({ channels: 0, dms: 0 });
-  // Chats on screen right now (title keys), and the side panel's openers.
+  // Chats on screen right now (title keys).
   const viewing = useRef(new Set());
-  const panel = useRef({ openThread: null });
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const active = Boolean(user && !user.mustChangePassword);
@@ -32,17 +31,12 @@ export function ChatAlertsProvider({ children }) {
 
   const dismiss = useCallback((id) => setPopups((list) => list.filter((p) => p.id !== id)), []);
 
-  // Opens the chat a popup came from: a channel in section 3, a direct
-  // message in the side panel.
+  // Opens the chat a popup came from, under Chat: a channel, or the direct
+  // message with that person (sent along, so a brand-new one has a name).
   const open = useCallback((popup) => {
     dismiss(popup.id);
-    if (popup.dm) {
-      const peer = { id: popup.titleKey.slice(3), name: popup.channelName, role: popup.author?.role ?? 'member', group: null };
-      if (panel.current.openThread) panel.current.openThread(peer);
-      else navigate('/chat/general');
-    } else {
-      navigate(`/chat/${popup.titleKey}`);
-    }
+    const peer = popup.dm ? { id: popup.titleKey.slice(3), name: popup.channelName, role: popup.author?.role ?? 'member', group: null } : null;
+    navigate(`/chat/${popup.titleKey}`, peer ? { state: { peer } } : undefined);
   }, [dismiss, navigate]);
 
   useSocketEvent('chat:new', ({ titleKey, channelName, message, dm }) => {
@@ -52,13 +46,15 @@ export function ChatAlertsProvider({ children }) {
     // Already reading that chat: the message lands in it, nothing more.
     if (focused && viewing.current.has(titleKey)) return;
 
-    const popup = { id: message.id, titleKey, channelName, dm: Boolean(dm), author: message.author, content: message.content, at: message.createdAt };
+    // A message with no text is a picture: the popup says so.
+    const text = message.content || (message.images?.length > 1 ? `📷 ${message.images.length} images` : '📷 Image');
+    const popup = { id: message.id, titleKey, channelName, dm: Boolean(dm), author: message.author, content: text, at: message.createdAt };
     setPopups((list) => (list.some((p) => p.id === popup.id) ? list : [...list.slice(-(MAX_POPUPS - 1)), popup]));
     if (settingsRef.current.sound) playMessage();
 
     if (settingsRef.current.desktop && desktopSupported() && Notification.permission === 'granted' && !focused) {
       const n = new Notification(dm ? `${message.author?.name ?? 'Someone'} · direct message` : `${message.author?.name ?? 'Someone'} in #${channelName}`, {
-        body: message.content,
+        body: text,
         tag: `chat-${titleKey}`,
       });
       n.onclick = () => { window.focus(); open(popup); n.close(); };
@@ -74,7 +70,6 @@ export function ChatAlertsProvider({ children }) {
 
   // A chat screen says while it is on screen, so it raises no popup.
   const watch = useCallback((titleKey) => { viewing.current.add(titleKey); return () => viewing.current.delete(titleKey); }, []);
-  const setPanelApi = useCallback((api) => { panel.current = { ...panel.current, ...api }; }, []);
   // Same numbers again leave the state alone, so the screens that report
   // them do not re-render each other in a loop.
   const updateCounts = useCallback((patch) => setCounts((c) => {
@@ -84,8 +79,8 @@ export function ChatAlertsProvider({ children }) {
 
   const value = useMemo(() => ({
     popups, open, dismiss, unread, dmUnread: counts.dms, channelUnread: counts.channels,
-    watch, setPanelApi, setCounts: updateCounts,
-  }), [popups, open, dismiss, unread, counts, watch, setPanelApi, updateCounts]);
+    watch, setCounts: updateCounts,
+  }), [popups, open, dismiss, unread, counts, watch, updateCounts]);
 
   return (
     <ChatAlertsContext.Provider value={value}>

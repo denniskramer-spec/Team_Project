@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Report, { CALL_RESULTS } from '../models/Report.js';
 import Task from '../models/Task.js';
@@ -393,6 +394,7 @@ router.delete('/:id', async (req, res) => {
     ? canChangeGroupRecord(req.user, report)
     : String(report.author) === String(req.user._id);
   if (!allowed) throw forbidden('You can only delete your own report');
+  await archiveDeleted(report, req, { model: 'Report', label: `${report.scope} ${report.type} report ${report.period}` });
   await report.deleteOne();
   reportChanged(req.user, report);
   res.json({ ok: true });

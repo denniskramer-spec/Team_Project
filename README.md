@@ -70,9 +70,9 @@ The admin account is left alone.
 | Role | What they do |
 |---|---|
 | **Admin** | Accounts, roles and groups. Reads everything; writes no reports or plans. |
-| **Team leader** | Instructs everyone or any group, reads every report, plan and result. |
+| **Team leader** | Everything an admin can do (accounts, roles, groups, security), and instructs everyone or any group, reads every report, plan and result. |
 | **Boss** | Leads one group: instructs it, writes the group report and plan, manages its members. |
-| **Member** | Writes their own reports and plans, registers projects, records income, chats. Sees only their own residents, chat accounts and projects; the Checkout and Member tabs are not shown to members, and their Projects, Residents and Chat accounts are gathered under a **Settings** channel at the foot of the rail (see below). |
+| **Member** | Writes their own reports and plans, registers projects, records income, chats. Sees only their own residents, chat accounts and projects; the Checkout and Member tabs are not shown to members, and their Projects, Residents and Chat accounts are gathered under a **Settings** channel at the foot of the rail, under Chat (see below). |
 
 **Reading follows the hierarchy:** leader and admin see everything, a boss sees their
 own group, a member sees their own records. It is enforced on the server — an
@@ -94,9 +94,9 @@ Capabilities live in `server/src/config/roles.js`; the per-record rules in
 | **Chat accounts** | All · each group · each member (a member sees "My accounts") | The Discord, Telegram and WhatsApp accounts a member uses, the residents they talk to from each, and whether the account is active or suspended (with a screenshot) |
 | **Member** | All · each group · each member | Directory (with each member's residents in one line); add members, reset passwords, disable accounts |
 | **Finance** | Income · Outcome · Total — then All · each group · each member | Income and outcome per member: date, amount, source or reason; totals per period and group |
-| **Chat** | general · each group · finance | Live chat, typing indicators, unread markers |
-| **Admin** | Approvals · Users & roles · Groups · Payment fees | Sign-up approvals, role changes, group management, payment method fees |
-| **Settings** (members only) | Account — then Projects · Residents · Chat accounts | A member's rail is icon-only (round buttons; the channel's name flies out on hover), with their own things in one place: their account (profile, password, theme, alerts) under *User settings*, and their records under *Your records*, on the same pages the other roles reach from the rail. Bosses, the leader and admins keep the full rail; there is no switch. Old links (`/task`, `/resident`, `/chataccount`) land on the right Settings page for a member. |
+| **Chat** | general · each group · finance | Live chat, typing indicators, unread markers; messages take up to five images (the **+** button, a paste or a drop on the composer) and emoji from a searchable picker |
+| **Admin** | Approvals · Users & roles · Groups · Payment fees · Security | Sign-up approvals, role changes, group management, payment method fees, the security log and deleted records (admins and the team leader; bosses see Approvals only) |
+| **Settings** (members only) | Account — then Projects · Residents · Chat accounts | The rail is icon-only for every role (the channel's name flies out on hover, and a pill on the left marks the open channel); a member's Settings sits at its foot, with their own things in one place: their account (profile, password, theme, alerts) under *User settings*, and their records under *Your records*, on the same pages the other roles reach from the rail. Old links (`/task`, `/resident`, `/chataccount`) land on the right Settings page for a member. |
 
 **The title section is a tree, three levels deep** in the group-scoped channels:
 the report type or period (the title), then **All / each group** (`?g=`), then
@@ -162,9 +162,14 @@ Channel titles come from `GET /api/nav`, built per user in
   live when any source channel changes. Chart colours were checked with the data-viz
   validator against this app's surface; every bar carries its own label and value.
 - **Finance** — members record their own income; bosses and the leader record it
-  for the people they manage (**Record income**: amount, date, project, resident, payment
+  for the people they manage (**Record income**: amount **with its currency**, date, project, resident, payment
   method, note, screenshots; where it came from is the project, else the resident, else the
-  method). Income records are history and
+  method). The amount can be typed in any of the app's currencies (USD, EUR, GBP, CAD,
+  AUD, BRL): the picker sits beside the amount, picking a project switches to the
+  project's currency, and the form shows what the record will hold in the base currency at
+  today's rate. The record keeps both: the base amount (what every total, fee and chart
+  works on) and the amount and currency received, with the rate and its day; the income
+  table shows "received EUR 92" under the base amount. Income records are history and
   cannot be changed afterwards (screenshots of the payment can be attached). Each record
   names the project: when one is picked the form shows what its reported work still expects
   to be paid (with a button to use that amount), and recording the income **settles** those
@@ -183,10 +188,42 @@ Channel titles come from `GET /api/nav`, built per user in
   (USD). The Finance toolbar's **Show in** picker shows every total, chart, tile and
   record in EUR, GBP, CAD, AUD or BRL at the day's rate (the choice is remembered on
   that device). Rates come from the European Central Bank through frankfurter.app, with
-  open.er-api.com as a fallback, and refresh every day on their own; a failed refresh
-  keeps the last rates. A note under the toolbar shows the rate in use and when it was
+  open.er-api.com as a fallback, and refresh on their own: at start-up, every six hours
+  while the server runs, and whenever someone asks for rates that are more than a day
+  old; a failed refresh keeps the last rates. A note under the toolbar shows the rate in use and when it was
   checked, and admins and the leader can refresh it on the spot
   (`GET /api/finance/rates`, `POST /api/finance/rates/refresh`).
+- **Security (Admin → Security)** — admins and the team leader see who accessed the
+  team's data, when, from which IP address and device, and what changed. Three parts:
+  - The **security log**: every login and failed login (with the username tried and why
+    it failed), every look at the data (which list or record, with which filters; the
+    same person opening the same thing again within ten minutes is one visit), every
+    request that changes data, rate-limited and refused requests, and every look at
+    sensitive history (an export, opening or restoring a deleted record). For every
+    change the data layer itself writes down each record created, edited or removed,
+    with each edited field's old and new value, whichever screen did it (passwords are
+    never written). A login from an address the account has never used before is
+    flagged **new address**. The log can be filtered (views, changes, deletions,
+    restores, logins, failed & refused, admin actions, flagged), searched by name,
+    username, address or path, and exported as CSV (the export itself is logged).
+  - **Deleted records**: everything anyone deletes — an outcome, a project, a resident,
+    a chat account, a message, an instruction, a plan, a report, a group, a rejected
+    sign-up — is kept whole first, with who deleted it, when and from where; the data
+    layer does this for any delete, so no route can skip it. Its images are kept on
+    disk as long as the copy exists. An admin can open the record as it was and
+    **restore** it: it goes back under its old id exactly as it was, the copy stays
+    and is marked restored (by whom, when), and the restore is logged. A restore is
+    refused when a record with that id exists again or the copy was already restored.
+  - **Sessions**: end every session of one account on every device (tokens issued before
+    that moment stop working and its sockets are dropped), for when an account may be in
+    the wrong hands; pair it with a password reset from Users & roles.
+
+  Both collections are append-only: the app has no code path that edits or removes an
+  entry, the data layer refuses update and delete operations on them, and nothing in them
+  expires. Income records were already unchangeable. The server also sends a
+  Content-Security-Policy (only its own scripts and styles run, the page cannot be
+  framed), a Permissions-Policy (no camera, microphone or location) and, over HTTPS in
+  production, Strict-Transport-Security.
 - **Totals always add up** — finance and checkout list everyone who has records in
   the period, including an account since disabled ("Tess Novak (disabled)") or a member
   since promoted, and a **No group** tile holds records that belong to no group. Long
@@ -204,17 +241,21 @@ Channel titles come from `GET /api/nav`, built per user in
 - **Moving a member to another group** moves their records with them: the new boss
   sees and manages everything, the old boss no longer does. A boss's group plans and
   group reports stay with the group they were written for.
-- **Chat** — general and finance chat are open to every member; a group chat is for
-  that group plus the leader and admins. Authors edit their own messages; the leader
+- **Chat** — two lists under the Chat channel, like a messenger: **Channels**
+  (#general-chat for everyone, a group's chat for that group plus the leader and
+  admins, and #finance-chat for bosses and the leader only) and **Direct messages**
+  (this person's conversations, newest first, with the other person's avatar and
+  presence; **+** starts one with anyone in the directory, and *Message* on a member
+  in the side panel does the same). Authors edit their own messages; the leader
   and admins can delete any. **A message in a chat you are not looking at** pops up
   in the bottom-right corner like a messenger (author, chat or *Direct message*, the
-  text), with a short sound; clicking it opens that chat, or the conversation in the
-  side panel for a direct message. With desktop notifications on (Alerts tab), the
-  same arrives as a system notification while the window is in the background. The
-  tab title shows the unread count, the Chat channel badge updates live, and the
-  footer's **Messages** link carries the unread direct messages. A chat only counts
-  as read while its window is focused: what arrives in the background stays unread.
-  The popups can be switched off in the Alerts tab (*Message popups*).
+  text), with a short sound; clicking it opens that chat. With desktop notifications
+  on (Alerts tab), the same arrives as a system notification while the window is in
+  the background. The tab title shows the unread count, the Chat channel badge and
+  the Direct messages list update live, and the footer's **Messages** link carries
+  the unread direct messages. A chat only counts as read while its window is focused:
+  what arrives in the background stays unread. The popups can be switched off in the
+  Alerts tab (*Message popups*).
 - **Older records** still read correctly: a report or plan written before bids were
   split counts as job bids, and a report's old free-text "upcoming" shows as the
   upcoming note.
@@ -281,10 +322,11 @@ when a reverse proxy is in front. `CLIENT_ORIGIN` should be the public address.
 | Members | `GET/POST /api/members`, `PATCH /api/members/:id`, `POST /api/members/:id/status\|reset-password`, `PATCH /api/members/:id/role`, `GET /api/members/pending`, `POST /api/members/:id/approve\|reject` |
 | Groups | `GET/POST /api/groups`, `PATCH/DELETE /api/groups/:id`, `GET /api/groups/options` |
 | Instructions | `GET/POST /api/instructions`, `PATCH/DELETE /api/instructions/:id`, `POST /api/instructions/:id/read`, `POST /api/instructions/read-all`, `GET /api/instructions/:id/reads`, `GET /api/instructions/unread` |
-| Chat | `GET/POST /api/chat/:title/messages`, `PATCH/DELETE /api/chat/messages/:id`, `POST /api/chat/:title/read`, `GET /api/chat/unread` |
+| Chat | `GET/POST /api/chat/:title/messages`, `POST /api/chat/:title/upload`, `PATCH/DELETE /api/chat/messages/:id`, `POST /api/chat/:title/read`, `GET /api/chat/unread` |
 | Reports | `GET /api/reports`, `GET /api/reports/status`, `GET /api/reports/history`, `PUT /api/reports` (`send: true` sends, otherwise a draft), `DELETE /api/reports/:id` |
 | Plans | `GET /api/plans`, `PUT /api/plans`, `PATCH /api/plans/:id/status`, `DELETE /api/plans/:id` |
 | Projects | `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/:id`, `GET /api/tasks/:id/log`, `GET /api/tasks/assignees\|residents` |
+| Security | `GET /api/security/overview`, `GET /api/security/log`, `GET /api/security/log.csv`, `GET /api/security/deleted`, `GET /api/security/deleted/:id`, `POST /api/security/users/:id/sign-out` (admins and the leader) |
 | Finance | `GET/POST /api/incomes`, `POST /api/incomes/upload`, `GET /api/incomes/members`, `GET/POST /api/outcomes`, `PATCH/DELETE /api/outcomes/:id`, `POST /api/outcomes/upload`, `GET /api/outcomes/members`, `GET /api/finance/total`, `GET /api/finance/rates`, `POST /api/finance/rates/refresh`, `GET /api/files/:name` |
 | Checkout | `GET /api/checkout?type=weekly\|monthly\|yearly&period=&group=` |
 | Residents | `GET/POST /api/residents`, `PATCH/DELETE /api/residents/:id`, `GET /api/residents/owners`, `POST /api/residents/upload` |

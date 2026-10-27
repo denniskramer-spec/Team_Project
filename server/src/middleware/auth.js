@@ -75,6 +75,9 @@ export async function loadSession(token) {
   if (user.passwordChangedAt && Math.floor(user.passwordChangedAt / 1000) > payload.iat) {
     throw unauthorized('Password was changed, please log in again');
   }
+  if (user.sessionsEndedAt && Math.floor(user.sessionsEndedAt / 1000) >= payload.iat) {
+    throw unauthorized('Your sessions were ended, please log in again');
+  }
   return { user, payload };
 }
 

@@ -85,7 +85,7 @@ function GroupRow({ group, onChanged }) {
   );
 }
 
-// Admin only: create, rename and delete groups.
+// Admins and the team leader: create, rename and delete groups.
 export default function Groups() {
   const toast = useToast();
   const { data, error, reload } = useLiveData('/groups', ['nav:changed', 'directory:changed']);

@@ -27,7 +27,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
   }, []);
 
   const canPickGroup = editing ? member.permissions.changeGroup : ['admin', 'leader'].includes(user.role);
-  const canPickRole = !editing && user.role === 'admin';
+  const canPickRole = !editing && ['admin', 'leader'].includes(user.role);
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const submit = async (e) => {

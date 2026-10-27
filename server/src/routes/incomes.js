@@ -20,6 +20,7 @@ import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, taskWorkChanged } from '../socket/events.js';
 import { settleTaskWork } from '../utils/reportWork.js';
+import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -30,6 +31,10 @@ const serialize = (i) => ({
   group: i.group?._id ? { id: i.group._id, name: i.group.name, slug: i.group.slug } : null,
   date: i.date,
   amount: i.amount,
+  currency: i.currency ?? 'USD',
+  originalAmount: i.originalAmount ?? i.amount,
+  rate: i.rate ?? 1,
+  rateDate: i.rateDate ?? '',
   from: i.from,
   note: i.note,
   task: i.task?._id ? { id: i.task._id, name: i.task.name } : null,
@@ -223,6 +228,10 @@ router.post('/upload', uploadLimiter(), (req, res, next) => {
 router.post('/', async (req, res) => {
   const member = await resolveMember(req);
   const fields = checkFields(req.body);
+  // The amount may be typed in any of the app's currencies; it is recorded
+  // in the base at today's rate, and what was typed is kept alongside.
+  const money = toBase(fields.amount, checkCurrency(req.body.currency));
+  fields.amount = money.amount;
   const resident = await resolveResident(req, member);
   // The resident's share defaults to the divide % on their record.
   const payment = checkPayment({ ...req.body, residentPercent: req.body.residentPercent ?? resident?.sharePercent ?? 0 });
@@ -230,6 +239,7 @@ router.post('/', async (req, res) => {
   const task = taskId ? await Task.findById(taskId, 'name').lean() : null;
   const income = await new Income({
     ...fields,
+    ...money,
     ...payment,
     ...computeSplit({ amount: fields.amount, ...payment }),
     from: task?.name ?? resident?.name ?? methodOf(payment.method)?.label ?? '',
@@ -253,6 +263,11 @@ router.post('/', async (req, res) => {
   }
 
   incomeChanged(income);
+  req.audit = {
+    action: 'incomes.create',
+    target: { model: 'Income', id: income._id, label: `${money.currency} ${money.originalAmount} for ${member.name}` },
+    details: { ...req.body, images: (income.images ?? []).length, base: { amount: money.amount, currency: currentRates().base, rate: money.rate } },
+  };
   res.status(201).json({ income: serialize(income), settled });
 });
 
