@@ -239,6 +239,7 @@ export function buildNav(user, groups, {
     adminTitles.push(
       { key: 'users', name: 'Users & roles' }, { key: 'groups', name: 'Groups' },
       { key: 'fees', name: 'Payment fees' }, { key: 'security', name: 'Security' },
+      { key: 'team', name: 'Team settings' },
     );
   }
   if (adminTitles.length) {

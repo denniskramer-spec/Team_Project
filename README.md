@@ -296,6 +296,10 @@ Channel titles come from `GET /api/nav`, built per user in
 - **Periods** — ISO weeks in UTC, so `2026-W39` means the same for everyone
   (`server/src/utils/period.js`). Period and group live in the URL, so any view can
   be bookmarked.
+- **Team time zone** — Admin → Team settings (admins and the team leader) picks
+  the zone that decides which day is "today" for reports, plans, Finance and
+  Checkout, and when the day turns over. Stored dates are calendar days and never
+  move. `TEAM_TIME_ZONE` sets it until someone saves one (default UTC).
 
 ## Scripts (run from this folder)
 

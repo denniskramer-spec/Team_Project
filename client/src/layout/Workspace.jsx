@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { load, save } from '../storage.js';
@@ -15,6 +15,7 @@ import SidePanel from './SidePanel.jsx';
 import Footer from './Footer.jsx';
 import ReportDue from './ReportDue.jsx';
 import { ReportStatusProvider } from '../channels/report/ReportStatus.jsx';
+import { TeamSettingsProvider, useTeamSettings } from '../team/TeamSettings.jsx';
 
 const LAST_TITLES_KEY = 'bm.lastTitles';
 // For members these channels live under Settings; older links still land.
@@ -135,6 +136,7 @@ export default function Workspace() {
   }
 
   return (
+    <TeamSettingsProvider>
     <ReportStatusProvider>
     <div className="app">
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
@@ -144,7 +146,7 @@ export default function Workspace() {
           <TitleList channel={channel} current={title.key} />
         </nav>
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
-        <ContentArea channel={channel} title={title} panelOpen={panelOpen} onTogglePanel={togglePanel} />
+        <TeamDay><ContentArea channel={channel} title={title} panelOpen={panelOpen} onTogglePanel={togglePanel} /></TeamDay>
         <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
       <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />
@@ -157,5 +159,13 @@ export default function Workspace() {
       <ReportDue />
     </div>
     </ReportStatusProvider>
+    </TeamSettingsProvider>
   );
+}
+
+// When the team's time zone changes, "today" may be another day: the page
+// on screen is drawn again from scratch so it loads the new current period.
+function TeamDay({ children }) {
+  const zone = useTeamSettings()?.data?.timeZone ?? '';
+  return <Fragment key={zone}>{children}</Fragment>;
 }

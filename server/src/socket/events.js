@@ -13,6 +13,8 @@ export const navChangedFor = (userId) => getIO()?.to(`user:${userId}`).emit('nav
 export const approvalsChanged = () => getIO()?.to(['role:admin', 'role:leader', 'role:boss']).emit('nav:changed');
 // A payment fee changed, by hand or by the daily refresh: fee tables reload.
 export const feesChanged = () => getIO()?.emit('fees:changed');
+// The team time zone changed: "today" may be another day for everyone.
+export const settingsChanged = () => getIO()?.emit('settings:changed');
 
 // A specific user's role, group or status changed: their client reloads
 // its session, and their sockets reconnect so they join the right rooms.

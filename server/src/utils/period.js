@@ -5,9 +5,12 @@
 //   quarterly 2026-Q3
 //   halfyear  2026-H2
 //   annual  2026
-// All dates are handled in UTC so a period means the same thing everywhere.
+// A period's dates are calendar dates, held as UTC midnights, so a period
+// means the same thing everywhere. Which period is the current one follows
+// the team's time zone (utils/teamTime.js).
 
 import { badRequest } from './httpError.js';
+import { teamNow } from './teamTime.js';
 
 export const PERIOD_TYPES = ['daily', 'weekly', 'monthly', 'quarterly', 'halfyear', 'annual'];
 
@@ -31,7 +34,7 @@ function isoWeekNumber(date) {
   return { year: thursday.getUTCFullYear(), week };
 }
 
-export function periodKey(type, date = new Date()) {
+export function periodKey(type, date = teamNow()) {
   const d = new Date(date);
   switch (type) {
     case 'daily': return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
@@ -60,7 +63,7 @@ export function parsePeriod(type, key) {
   // The same bounds as a date field: nothing before 2000 or more than ten
   // years ahead, so a typo in the year cannot plant records in year 9999.
   const year = period.start.getUTCFullYear();
-  if (year < 2000 || year > new Date().getUTCFullYear() + 10) throw badRequest(`"${key}" is outside the years this app covers`);
+  if (year < 2000 || year > teamNow().getUTCFullYear() + 10) throw badRequest(`"${key}" is outside the years this app covers`);
   return period;
 }
 
@@ -139,4 +142,4 @@ export function shiftPeriod(type, key, delta) {
   return periodKey(type, d);
 }
 
-export const isFuturePeriod = (type, key) => parsePeriod(type, key).start > new Date();
+export const isFuturePeriod = (type, key) => parsePeriod(type, key).start > teamNow();

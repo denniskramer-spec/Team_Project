@@ -8,7 +8,7 @@ import { EVENTS } from '../../constants.js';
 const ReportStatusContext = createContext(null);
 
 export function ReportStatusProvider({ children }) {
-  const live = useLiveData('/reports/status', [EVENTS.REPORT_CHANGED]);
+  const live = useLiveData('/reports/status', [EVENTS.REPORT_CHANGED, EVENTS.SETTINGS_CHANGED]);
   const { data, reload } = live;
   // "Today" is a server (UTC) day: when it ends the status is due again,
   // though no event says so. Check again just after the day's end.
