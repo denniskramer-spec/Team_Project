@@ -13,7 +13,7 @@ import { TOOLTIP_LIMIT } from './constants.js';
 // Values are money, so the two columns share one axis.
 const SERIES = [
   { key: 'planned', label: 'Planned', color: 'var(--series-1)' },
-  { key: 'actual', label: 'Income', color: 'var(--series-3)' },
+  { key: 'actual', label: 'Net income', color: 'var(--series-3)' },
   { key: 'upcoming', label: 'Upcoming', color: 'var(--series-2)' },
 ];
 

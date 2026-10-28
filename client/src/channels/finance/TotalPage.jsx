@@ -124,12 +124,11 @@ export default function TotalPage() {
 }
 
 function TotalBody({ data, group, currency, by, setBy }) {
-  const { money, convert } = currency;
+  const { money } = currency;
   const p = data.period;
-  const net = signed(convert(data.net));
-  // The chart and the history in the chosen currency.
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: convert(c.income), outcome: convert(c.outcome) } }));
-  const history = data.history.map((r) => ({ ...r, amount: convert(r.amount) }));
+  const net = signed(data.net);
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: c.income, outcome: c.outcome } }));
+  const { history } = data;
   const recordCount = data.counts.income + data.counts.outcome;
   const groups = groupHistory(history, by);
 
@@ -150,7 +149,7 @@ function TotalBody({ data, group, currency, by, setBy }) {
         </div>
         <GroupTiles
           tiles={data.perGroup} selected={group}
-          value={(g) => <span className={signed(g.net).cls}>{signed(convert(g.net)).text}</span>}
+          value={(g) => <span className={signed(g.net).cls}>{signed(g.net).text}</span>}
           caption={(g) => `${g.name} · +${money(g.income)} / −${money(g.outcome)}`}
         />
       </div>

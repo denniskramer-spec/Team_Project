@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api.js';
-import { load, save } from '../../storage.js';
 import { formatAmount } from '../../format.js';
 
-const KEY = 'bm.currency';
 const SYMBOLS = { USD: '$', EUR: '€', GBP: '£', CAD: 'CA$', AUD: 'A$', BRL: 'R$' };
-const EMPTY = { base: 'USD', rates: { USD: 1 }, currencies: ['USD'], source: '', rateDate: '', fetchedAt: null, canRefresh: false };
+const EMPTY = { base: 'USD', rates: { USD: 1 }, currencies: ['USD'], source: '', rateDate: '', fetchedAt: null };
 
-// Shared across the Finance pages: today's rates are fetched once per
-// session, and the chosen currency is remembered on this device.
+// Shared across the Finance pages: today's rates are fetched once per session.
 let cached = null;
 let loading = null;
 const listeners = new Set();
@@ -22,14 +19,14 @@ function fetchRates() {
   return loading;
 }
 
-// The currency the Finance pages show amounts in, with the rate to apply.
-//   code      the chosen currency (USD = the base, as recorded)
-//   rate      how many of it one base unit buys today
-//   convert   base amount -> chosen currency
-//   money     base amount -> "€1,234.5"
+// The currency the Finance pages show amounts in: the base one, as every
+// amount is recorded. Income can be typed in another currency (IncomeForm),
+// which is why today's rates are here too.
+//   code      the base currency ("USD")
+//   money     amount -> "$1,234.5"
+//   rates     how many of each currency one base unit buys today
 //   limits    the server's sizes (longest duration, list caps), once loaded
 export function useCurrency() {
-  const [code, setCodeState] = useState(() => load(KEY, 'USD'));
   const [rates, setRates] = useState(() => cached ?? EMPTY);
 
   useEffect(() => {
@@ -39,25 +36,13 @@ export function useCurrency() {
     return () => listeners.delete(sync);
   }, []);
 
-  const setCode = useCallback((next) => { setCodeState(next); save(KEY, next); }, []);
-  const refresh = useCallback(async () => {
-    cached = await api('/finance/rates/refresh', { method: 'POST' });
-    tell();
-    return cached;
-  }, []);
-
-  // A currency without a rate yet (the first refresh has not run) falls back to the base.
-  const known = code === rates.base || Number.isFinite(rates.rates?.[code]);
-  const shown = known ? code : rates.base;
-  const rate = shown === rates.base ? 1 : rates.rates[shown];
-  const symbol = SYMBOLS[shown] ?? `${shown} `;
-  const convert = useCallback((n) => (Number(n) || 0) * rate, [rate]);
-  const money = useCallback((n) => `${symbol}${formatAmount((Number(n) || 0) * rate)}`, [symbol, rate]);
+  const symbol = SYMBOLS[rates.base] ?? `${rates.base} `;
+  const money = useCallback((n) => `${symbol}${formatAmount(Number(n) || 0)}`, [symbol]);
 
   return {
-    code: shown, setCode, rate, symbol, convert, money, refresh,
-    base: rates.base, rates: rates.rates, currencies: rates.currencies ?? ['USD'],
-    rateDate: rates.rateDate, fetchedAt: rates.fetchedAt, source: rates.source, canRefresh: rates.canRefresh,
+    code: rates.base, base: rates.base, symbol, money,
+    rates: rates.rates, currencies: rates.currencies ?? ['USD'],
+    rateDate: rates.rateDate, fetchedAt: rates.fetchedAt, source: rates.source,
     limits: rates.limits,
   };
 }

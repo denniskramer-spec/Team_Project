@@ -12,13 +12,14 @@ import {
   financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName,
   person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
-import { badRequest, forbidden } from '../utils/httpError.js';
+import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkAmount, checkDay, checkText } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
-import { incomeChanged, taskWorkChanged } from '../socket/events.js';
+import { incomeChanged, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
+import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
 import { settleTaskWork } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 
@@ -47,10 +48,18 @@ const serialize = (i) => ({
   resident: i.resident?._id ? { id: i.resident._id, name: i.resident.name } : null,
   residentPercent: i.residentPercent ?? 0,
   residentAmount: i.residentAmount ?? 0,
-  // Older records (before fees) are all net.
-  net: i.net ?? (i.feeAmount === undefined ? i.amount : 0),
+  net: netOf(i),
+  // Set when the amount was far from what the reported work expected.
+  variance: i.variancePercent === null || i.variancePercent === undefined ? null : {
+    expected: i.expected, percent: i.variancePercent, reason: i.varianceReason,
+    checkedBy: (i.varianceCheckedBy ?? []).map((c) => ({ id: c.user, name: c.name, at: c.at })),
+  },
   createdAt: i.createdAt,
 });
+
+// What the member keeps of a record: after the payment fee and the
+// resident's share. Older records (from before fees) are all net.
+const netOf = (i) => i.net ?? (i.feeAmount === undefined ? i.amount : 0);
 
 function checkFields(body, partial = false) {
   const fields = {};
@@ -121,6 +130,7 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
         id: i._id,
         date: i.date,
         amount: i.amount,
+        net: netOf(i),
         task: i.task?._id ? { id: i.task._id, name: i.task.name } : null,
         from: i.from,
         note: i.note || '',
@@ -131,6 +141,7 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
       incomeCount: own.length,
       planned,
       actual: byMember.get(id)?.amount ?? 0,
+      actualNet: byMember.get(id)?.net ?? 0,
       upcoming,
       incomeItems,
       // What is still expected, with the day it is due and the task it belongs to.
@@ -154,22 +165,24 @@ router.get('/', async (req, res) => {
   const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
     .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name').lean();
 
-  // Totals overall and per member, for the summary.
-  const byMember = perMember(incomes);
+  // Totals overall and per member, for the summary: received and net.
   const cents = (n) => Math.round(n * 100) / 100;
+  const byMember = perMember(incomes);
+  for (const [key, entry] of perMember(incomes.map((i) => ({ ...i, amount: netOf(i) })))) byMember.get(key).net = cents(entry.amount);
   const total = cents(incomes.reduce((sum, i) => sum + i.amount, 0));
   const raw = incomes.reduce((acc, i) => ({
     fees: acc.fees + (i.feeAmount || 0),
     residents: acc.residents + (i.residentAmount || 0),
-    net: acc.net + (i.net ?? (i.feeAmount === undefined ? i.amount : 0)),
+    net: acc.net + netOf(i),
   }), { fees: 0, residents: 0, net: 0 });
   const sums = { fees: cents(raw.fees), residents: cents(raw.residents), net: cents(raw.net) };
 
   const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, incomes);
 
-  const sumFor = await perGroupSums(Income, req.user, allowed, period);
+  const sumFor = await perGroupSums(Income, req.user, allowed, period, { net: true });
   const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
     amount: sumFor.get(k)?.amount ?? 0,
+    net: cents(sumFor.get(k)?.net ?? 0),
     count: sumFor.get(k)?.count ?? 0,
   }));
 
@@ -245,6 +258,18 @@ router.post('/', async (req, res) => {
   const payment = checkPayment({ ...req.body, residentPercent: req.body.residentPercent ?? resident?.sharePercent ?? 0 });
   const taskId = await resolveTask(req, member);
   const task = taskId ? await Task.findById(taskId, 'name').lean() : null;
+  // Far from what the reported work expected: a reason is required, and the
+  // team leader and the member's boss are told (see utils/incomeVariance.js).
+  const expected = taskId ? (await upcomingFor(taskId, member._id)).amount : 0;
+  const variance = varianceOf(fields.amount, payment.residentPercent, expected);
+  let varianceFields = {};
+  if (variance.outside) {
+    const reason = checkText(req.body.varianceReason, 'Reason', 500);
+    if (!reason) {
+      throw badRequest(`This is ${Math.abs(variance.percent)}% ${variance.percent > 0 ? 'more' : 'less'} than the ${currentRates().base} ${expected} the reported work expected: say why in the reason`);
+    }
+    varianceFields = { expected, variancePercent: variance.percent, varianceReason: reason };
+  }
   const income = await new Income({
     ...fields,
     ...money,
@@ -257,6 +282,7 @@ router.post('/', async (req, res) => {
     task: taskId,
     resident: resident?._id ?? null,
     createdBy: req.user._id,
+    ...varianceFields,
   }).save();
   await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
@@ -271,12 +297,31 @@ router.post('/', async (req, res) => {
   }
 
   incomeChanged(income);
+  if (variance.outside) varianceRaised(income.group?._id ?? income.group);
   req.audit = {
     action: 'incomes.create',
     target: { model: 'Income', id: income._id, label: `${money.currency} ${money.originalAmount} for ${member.name}` },
     details: { ...req.body, images: (income.images ?? []).length, base: { amount: money.amount, currency: currentRates().base, rate: money.rate } },
   };
   res.status(201).json({ income: serialize(income), settled });
+});
+
+// POST /api/incomes/:id/check — the team leader or the member's boss has
+// looked at an income that was far from what the work expected. Noting who
+// checked it is the one change an income record takes after it is made.
+router.post('/:id/check', async (req, res) => {
+  if (!canCheckVariance(req.user)) throw forbidden('Only the team leader and bosses check income');
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' } });
+  if (!income) throw notFound('Income record not found');
+  if (!income.varianceCheckedBy.some((c) => String(c.user) === String(req.user._id))) {
+    income.varianceCheckedBy.push({ user: req.user._id, name: req.user.name, at: new Date() });
+    await income.save();
+    navChangedFor(req.user._id);
+    incomeChanged(income);
+  }
+  req.audit = { action: 'incomes.check', target: { model: 'Income', id: income._id, label: income.from || 'income' } };
+  res.json({ ok: true });
 });
 
 // Income records are history: once recorded they cannot be changed or
