@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
+import { formatClock } from '../format.js';
 
 const AUTO_HIDE_MS = 8000;
-const time = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function Popup({ popup, onOpen, onDismiss }) {
   const dismissRef = useRef(onDismiss);
@@ -23,7 +23,7 @@ function Popup({ popup, onOpen, onDismiss }) {
             <span className="muted small chat-popup-where">
               <Icon name={popup.dm ? 'message' : 'hash'} size={12} /> {popup.dm ? 'Direct message' : popup.channelName}
             </span>
-            <span className="muted small chat-popup-time">{time(popup.at)}</span>
+            <span className="muted small chat-popup-time">{formatClock(popup.at)}</span>
           </span>
           <span className="chat-popup-content">{popup.content}</span>
         </span>

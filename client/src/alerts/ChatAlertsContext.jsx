@@ -2,14 +2,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useSocketEvent } from '../socket/SocketContext.jsx';
+import { EVENTS, dmPeerId } from '../constants.js';
+import { useOpenDm } from '../channels/chat/useOpenDm.js';
 import { useAlerts } from './AlertsContext.jsx';
 import { playMessage } from './sound.js';
+import { notify, windowFocused } from './notify.js';
 import ChatPopups from './ChatPopups.jsx';
 
 const ChatAlertsContext = createContext(null);
 const MAX_POPUPS = 3;
 const APP_TITLE = 'Business Manager';
-const desktopSupported = () => typeof Notification !== 'undefined';
 
 // Tells the reader about chat messages they are not looking at, the way a
 // messenger does: a popup in the corner, a sound, a desktop notification
@@ -19,6 +21,7 @@ export function ChatAlertsProvider({ children }) {
   const { user } = useAuth();
   const { settings } = useAlerts();
   const navigate = useNavigate();
+  const openDm = useOpenDm();
   const [popups, setPopups] = useState([]);
   const [counts, setCounts] = useState({ channels: 0, dms: 0 });
   // Chats on screen right now (title keys).
@@ -30,21 +33,23 @@ export function ChatAlertsProvider({ children }) {
   useEffect(() => { if (!active) { setPopups([]); setCounts({ channels: 0, dms: 0 }); } }, [active]);
 
   const dismiss = useCallback((id) => setPopups((list) => list.filter((p) => p.id !== id)), []);
+  const dismissViewed = useCallback(() => setPopups((list) => (
+    list.some((p) => viewing.current.has(p.titleKey)) ? list.filter((p) => !viewing.current.has(p.titleKey)) : list
+  )), []);
 
   // Opens the chat a popup came from, under Chat: a channel, or the direct
   // message with that person (sent along, so a brand-new one has a name).
   const open = useCallback((popup) => {
     dismiss(popup.id);
-    const peer = popup.dm ? { id: popup.titleKey.slice(3), name: popup.channelName, role: popup.author?.role ?? 'member', group: null } : null;
-    navigate(`/chat/${popup.titleKey}`, peer ? { state: { peer } } : undefined);
-  }, [dismiss, navigate]);
+    if (popup.dm) openDm({ id: dmPeerId(popup.titleKey), name: popup.channelName, role: popup.author?.role ?? 'member', group: null });
+    else navigate(`/chat/${popup.titleKey}`);
+  }, [dismiss, navigate, openDm]);
 
-  useSocketEvent('chat:new', ({ titleKey, channelName, message, dm }) => {
+  useSocketEvent(EVENTS.CHAT_NEW, ({ titleKey, channelName, message, dm }) => {
     if (!active || !message || String(message.author?.id) === String(user.id)) return;
     if (!settingsRef.current.chat) return;
-    const focused = !document.hidden && document.hasFocus();
     // Already reading that chat: the message lands in it, nothing more.
-    if (focused && viewing.current.has(titleKey)) return;
+    if (windowFocused() && viewing.current.has(titleKey)) return;
 
     // A message with no text is a picture: the popup says so.
     const text = message.content || (message.images?.length > 1 ? `📷 ${message.images.length} images` : '📷 Image');
@@ -52,14 +57,19 @@ export function ChatAlertsProvider({ children }) {
     setPopups((list) => (list.some((p) => p.id === popup.id) ? list : [...list.slice(-(MAX_POPUPS - 1)), popup]));
     if (settingsRef.current.sound) playMessage();
 
-    if (settingsRef.current.desktop && desktopSupported() && Notification.permission === 'granted' && !focused) {
-      const n = new Notification(dm ? `${message.author?.name ?? 'Someone'} · direct message` : `${message.author?.name ?? 'Someone'} in #${channelName}`, {
-        body: text,
-        tag: `chat-${titleKey}`,
-      });
-      n.onclick = () => { window.focus(); open(popup); n.close(); };
+    if (settingsRef.current.desktop) {
+      const who = message.author?.name ?? 'Someone';
+      notify(dm ? `${who} · direct message` : `${who} in #${channelName}`, { body: text, tag: `chat-${titleKey}` }, () => open(popup));
     }
   });
+
+  // Back in the window with that chat open: its popups have served.
+  useEffect(() => {
+    const onFocus = () => { if (windowFocused()) dismissViewed(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+  }, [dismissViewed]);
 
   // The unread count in the tab title, like a messenger.
   const unread = counts.channels + counts.dms;
@@ -68,8 +78,15 @@ export function ChatAlertsProvider({ children }) {
     return () => { document.title = APP_TITLE; };
   }, [unread]);
 
-  // A chat screen says while it is on screen, so it raises no popup.
-  const watch = useCallback((titleKey) => { viewing.current.add(titleKey); return () => viewing.current.delete(titleKey); }, []);
+  // A chat screen says while it is on screen, so it raises no popup, and
+  // the popups it already raised go.
+  const watch = useCallback((titleKey) => {
+    viewing.current.add(titleKey);
+    setPopups((list) => (list.some((p) => p.titleKey === titleKey) ? list.filter((p) => p.titleKey !== titleKey) : list));
+    return () => viewing.current.delete(titleKey);
+  }, []);
+  // Whether the reader has this chat open and is looking at it.
+  const isViewing = useCallback((titleKey) => viewing.current.has(titleKey) && windowFocused(), []);
   // Same numbers again leave the state alone, so the screens that report
   // them do not re-render each other in a loop.
   const updateCounts = useCallback((patch) => setCounts((c) => {
@@ -79,8 +96,8 @@ export function ChatAlertsProvider({ children }) {
 
   const value = useMemo(() => ({
     popups, open, dismiss, unread, dmUnread: counts.dms, channelUnread: counts.channels,
-    watch, setCounts: updateCounts,
-  }), [popups, open, dismiss, unread, counts, watch, updateCounts]);
+    watch, isViewing, setCounts: updateCounts,
+  }), [popups, open, dismiss, unread, counts, watch, isViewing, updateCounts]);
 
   return (
     <ChatAlertsContext.Provider value={value}>
