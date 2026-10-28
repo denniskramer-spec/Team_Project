@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { formatAmount, formatClock, timeAgo, nameOf } from '../../format.js';
 import { stateOf } from './reportState.js';
 import DateTag from '../../components/DateTag.jsx';
@@ -122,8 +123,18 @@ function ReportCard({ row }) {
   );
 }
 
+// Group by group (A–Z, members without a group last), then by name, so a
+// group's members sit next to each other.
+const byGroup = (a, b) => {
+  const ga = a.member.group?.name;
+  const gb = b.member.group?.name;
+  if (ga !== gb) return !ga ? 1 : !gb ? -1 : ga.localeCompare(gb, undefined, { numeric: true });
+  return nameOf(a.member).localeCompare(nameOf(b.member));
+};
+
 // Member reports for one day, one card each, with the day's totals.
 export default function TeamReports({ rows, totals }) {
+  const sorted = useMemo(() => [...rows].sort(byGroup), [rows]);
   if (!rows.length) return null;
 
   return (
@@ -135,7 +146,7 @@ export default function TeamReports({ rows, totals }) {
         </span>
       </div>
       <div className="report-cards">
-        {rows.map((row) => <ReportCard key={row.member.id} row={row} />)}
+        {sorted.map((row) => <ReportCard key={row.member.id} row={row} />)}
       </div>
     </section>
   );
