@@ -14,6 +14,10 @@ import { NOTE_MAX } from './constants.js';
 const CURRENCY_KEY = 'bm.incomeCurrency';
 // The server rounds each step of the split to cents; the preview does too.
 const cents = (n) => Math.round(n * 100) / 100;
+// The same rule as the server (utils/incomeVariance.js): the member's share
+// of what was received (after the resident's share, before the fee) more than
+// this far from what the reported work expected needs a reason.
+const VARIANCE_LIMIT = 5;
 
 // Income record: who earned it, how much (in whatever currency it arrived
 // in), when and where it came from, with the task it belongs to if there is
@@ -32,7 +36,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const [upcoming, setUpcoming] = useState(null);
   const [form, setForm] = useState({
     member: '', amount: '', currency: load(CURRENCY_KEY, 'USD'), date: todayInput(), task: '', note: '',
-    resident: '', residentPercent: '', method: 'paypal', feePercent: '', feeFixed: '',
+    resident: '', residentPercent: '', method: 'paypal', feePercent: '', feeFixed: '', varianceReason: '',
   });
   // Screenshots already uploaded (kept across a failed save) and new files.
   const [kept, setKept] = useState([]);
@@ -117,6 +121,17 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const residentAmount = cents(afterFee * ((Number(form.residentPercent) || 0) / 100));
   const net = cents(afterFee - residentAmount);
 
+  // How far this is from what the project's reported work expected.
+  const keep = 1 - (Number(form.residentPercent) || 0) / 100;
+  const expected = form.task && upcoming?.amount > 0 ? upcoming.amount : 0;
+  const variance = expected && typed > 0 && hasRate ? Math.round(((cents(gross * keep) - expected) / expected) * 1000) / 10 : null;
+  const needsReason = variance !== null && Math.abs(variance) > VARIANCE_LIMIT;
+  // "Use amount": the full payment whose member's share is the expected amount.
+  const useExpected = () => setForm((f) => {
+    const k = 1 - (Number(f.residentPercent) || 0) / 100;
+    return { ...f, amount: cents(k > 0 ? expected / k : expected), currency: upcoming.currency ?? rates.base };
+  });
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
@@ -132,7 +147,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
       const images = attached.map(({ file, name, type, size }) => ({ file, name, type, size }));
       const result = await api('/incomes', {
         method: 'POST',
-        body: { ...form, currency, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
+        body: { ...form, varianceReason: needsReason ? form.varianceReason : undefined, currency, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
       });
       toast(result.settled ? `Income recorded · ${result.settled} upcoming ${result.settled === 1 ? 'day' : 'days'} settled` : 'Income recorded');
       onSaved();
@@ -215,9 +230,21 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
             <Icon name="coins" size={16} />
             <span className="note-grow">
               <strong>Upcoming on this project: {upcoming.currency ?? rates.base} {formatAmount(upcoming.amount)}</strong>
-              <span className="muted small"> · {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles them.</span>
+              <span className="muted small"> · your share of {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles them.</span>
             </span>
-            <button type="button" className="btn small-btn" onClick={() => setForm((f) => ({ ...f, amount: upcoming.amount, currency: upcoming.currency ?? rates.base }))}>Use amount</button>
+            <button type="button" className="btn small-btn" onClick={useExpected}>Use amount</button>
+          </div>
+        )}
+        {needsReason && (
+          <div className="variance-check">
+            <p className="small alert-text">
+              Your share of this ({rates.base} {formatAmount(cents(gross * keep))}) is <strong>{Math.abs(variance)}% {variance > 0 ? 'more' : 'less'}</strong> than
+              the {rates.base} {formatAmount(expected)} your reported work expected. Say why: the team leader and your boss will see it.
+            </p>
+            <label>
+              Reason
+              <textarea rows={2} maxLength={500} value={form.varianceReason} onChange={set('varianceReason')} required placeholder="Paid for fewer hours, a bonus, a partial payment, the rate changed..." />
+            </label>
           </div>
         )}
         {upcoming && upcoming.amount === 0 && form.task && (

@@ -1,7 +1,7 @@
 // Words for the security pages: what each log entry means, in plain English.
 
 export const KIND_LABELS = {
-  all: 'Everything', view: 'Views', change: 'Changes', delete: 'Deletions', restore: 'Restores', login: 'Logins', failed: 'Failed & refused', admin: 'Admin actions', flagged: 'Flagged',
+  all: 'Everything', outside: 'Outside the app', change: 'Changes', delete: 'Deletions', restore: 'Restores', login: 'Logins', failed: 'Failed & refused', admin: 'Admin actions', flagged: 'Flagged',
 };
 const VERBS = {
   create: 'Added', update: 'Edited', delete: 'Deleted', approve: 'Approved', reject: 'Rejected', upload: 'Uploaded to',
@@ -13,7 +13,13 @@ const FIXED = {
   'auth.login': 'Logged in', 'auth.login.failed': 'Login failed', 'auth.logout': 'Logged out', 'auth.password': 'Changed password',
   'auth.signup': 'Signed up', 'auth.profile': 'Edited profile', 'security.export': 'Exported the security log',
   'security.deleted.view': 'Opened a deleted record', 'security.sign-out': 'Ended sessions of', 'finance.rates.refresh': 'Refreshed exchange rates',
-  'security.restore': 'Restored a deleted record', 'security.view': 'Viewed the security log', 'checkout.view': 'Viewed checkout', 'finance.view': 'Viewed finance totals',
+  'security.restore': 'Restored a deleted record',
+  // Work on the database from outside the app (a GUI tool, a shell).
+  'database.read': 'Read the database directly', 'database.browse': 'Browsed the database directly',
+  'database.insert': 'Added records directly in the database', 'database.update': 'Edited records directly in the database',
+  'database.delete': 'Deleted records directly in the database', 'database.drop': 'Dropped or renamed a collection',
+  'database.schema': 'Changed collections or indexes', 'database.profiling': 'Database access recording was turned off',
+  'database.delete.kept': 'Kept a copy of a record deleted outside the app', 'security.view': 'Viewed the security log', 'checkout.view': 'Viewed checkout', 'finance.view': 'Viewed finance totals',
 };
 const RESOURCES = {
   incomes: 'income', outcomes: 'outcome', tasks: 'project', residents: 'resident', 'chat-accounts': 'chat account', members: 'member',
@@ -34,8 +40,10 @@ export function actionLabel(action = '') {
   return failed ? `${label} (refused)` : label;
 }
 
-// "Chrome · Linux" from a browser's user-agent string.
-export function device(ua = '') {
+// "Chrome · Linux" from a browser's user-agent string. Database clients
+// outside the app have no browser: their program's name is shown.
+export function device(ua = '', method = '') {
+  if (method === 'DB') return ua || 'database client';
   const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
     : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : ua ? 'Other' : '—';
   const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS'

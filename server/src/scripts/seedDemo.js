@@ -12,7 +12,7 @@
 
 import mongoose from 'mongoose';
 import { env } from '../config/env.js';
-import { connectDB } from '../config/db.js';
+import { connectDB, SCRIPT_APP_NAME } from '../config/db.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import Instruction from '../models/Instruction.js';
@@ -409,7 +409,7 @@ async function createResidentsAndAccounts(people) {
 }
 
 async function main() {
-  await connectDB(env.mongoUri);
+  await connectDB(env.mongoUri, { appName: SCRIPT_APP_NAME });
 
   const existing = await User.countDocuments({ role: { $ne: 'admin' } });
   const database = mongoose.connection.db.databaseName;

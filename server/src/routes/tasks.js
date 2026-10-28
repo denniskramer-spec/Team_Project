@@ -108,6 +108,22 @@ const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, r
 // How many projects one page lists; the totals always count every project.
 const LIST_LIMIT = 500;
 
+// Up to LIST_LIMIT projects: active first, then paused, then done (the
+// order of TASK_STATES), newest first within each. Sorting on the status
+// field itself would be alphabetical and put paused last, so with many
+// finished projects the paused ones would be the ones cut off. One query
+// per status, each taking what is left of the limit.
+async function listInStatusOrder(filter) {
+  const states = filter.status ? [filter.status] : TASK_STATES;
+  const list = [];
+  for (const status of states) {
+    const left = LIST_LIMIT - list.length;
+    if (left <= 0) break;
+    list.push(...await populate(Task.find({ ...filter, status }).sort({ startDate: -1, createdAt: -1 }).limit(left)));
+  }
+  return list;
+}
+
 // GET /api/tasks?status=&q=  — projects this role may see.
 router.get('/', async (req, res) => {
   const filter = scopeFilter(req.user, 'owner');
@@ -118,9 +134,9 @@ router.get('/', async (req, res) => {
   const q = searchRegex(req.query.q);
   if (q) filter.name = q;
 
-  // Active projects first, newest first; the counts per status cover them all.
+  // The counts per status cover every project; the list does not.
   const [tasks, byStatus] = await Promise.all([
-    populate(Task.find(filter).sort({ status: 1, startDate: -1, createdAt: -1 }).limit(LIST_LIMIT)),
+    listInStatusOrder(filter),
     Task.aggregate([{ $match: filter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
   ]);
   const counts = Object.fromEntries(byStatus.map((s) => [s._id, s.count]));

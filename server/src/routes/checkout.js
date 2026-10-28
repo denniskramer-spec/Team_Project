@@ -8,6 +8,7 @@ import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { teamNow } from '../utils/teamTime.js';
+import { achievedFor, planStatus } from '../utils/planStatus.js';
 import mongoose from 'mongoose';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
@@ -22,7 +23,7 @@ router.use(requireAuth);
 // Checkout periods are weekly, monthly and yearly ("annual" internally).
 const TYPES = { weekly: 'weekly', monthly: 'monthly', yearly: 'annual' };
 
-const PLAN_FIELDS = 'owner type period periodStart status statusUpdatedAt note income jobBid bid aiBid';
+const PLAN_FIELDS = 'owner group scope type period periodStart periodEnd status statusUpdatedAt note income jobBid bid aiBid resumes forms';
 const REPORT_FIELDS = 'author period periodStart sentAt income jobBid bid aiBid work.task work.text work.hours work.count work.amount work.paidBy';
 const INCOME_FIELDS = 'member date amount method task from note';
 
@@ -128,6 +129,20 @@ router.get('/', async (req, res) => {
     price: sum(tasks, 'price'),
   };
 
+  // A plan whose period is over shows as settled, as on the Plan page: its
+  // own period may reach past this one, so its reports are read for it.
+  const now = teamNow();
+  const ended = allPlans.filter((p) => new Date(p.periodEnd) <= now && p.status !== 'done');
+  if (ended.length) {
+    const from = new Date(Math.min(...ended.map((p) => new Date(p.periodStart).getTime())));
+    const to = new Date(Math.max(...ended.map((p) => new Date(p.periodEnd).getTime())));
+    const owners = [...new Set(ended.map((p) => String(p.owner)))];
+    const [planReports, planIncomes] = await Promise.all([
+      Report.find({ scope: 'personal', type: 'daily', author: { $in: owners }, periodStart: { $gte: from, $lt: to } }, 'author group periodStart jobBid bid aiBid resumes forms').lean(),
+      Income.find({ member: { $in: owners }, date: { $gte: from, $lt: to } }, 'member group date amount').lean(),
+    ]);
+    for (const p of ended) p.status = planStatus(p, achievedFor(p, planReports, planIncomes), now);
+  }
   const planStates = PLAN_STATES.reduce((acc, state) => ({ ...acc, [state]: allPlans.filter((p) => p.status === state).length }), {});
 
   // Per-member breakdown, so a leader can see who is behind.

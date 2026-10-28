@@ -6,10 +6,8 @@ import { MAX_RANGE_DAYS } from './constants.js';
 // The Finance toolbar: the period's name, optional page actions, and
 // Week / Month / Year / Duration. Duration opens a picker for a start and
 // an end day; the other three show the current week, month or year.
-// `currency` (from useCurrency) adds a picker: amounts are recorded in the
-// base currency and shown in the chosen one at the day's rate.
 // `maxRangeDays` is the longest duration the server accepts.
-export default function FinanceToolbar({ period, type, from, to, onType, onRange, scope, actions, currency, maxRangeDays = MAX_RANGE_DAYS }) {
+export default function FinanceToolbar({ period, type, from, to, onType, onRange, scope, actions, maxRangeDays = MAX_RANGE_DAYS }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({ from: '', to: '' });
   const ref = useRef(null);
@@ -51,17 +49,6 @@ export default function FinanceToolbar({ period, type, from, to, onType, onRange
         <span className="muted small">{scope}</span>
       </div>
       {actions}
-      {currency && (
-        <label className="currency-pick" title={currency.code === currency.base
-          ? `Amounts are recorded in ${currency.base}`
-          : `1 ${currency.base} = ${currency.rate} ${currency.code}${currency.rateDate ? ` · rate of ${currency.rateDate}` : ''}`}
-        >
-          <span className="muted small">Show in</span>
-          <select value={currency.code} onChange={(e) => currency.setCode(e.target.value)} aria-label="Currency">
-            {currency.currencies.map((c) => <option key={c} value={c} disabled={c !== currency.base && !Number.isFinite(currency.rates?.[c])}>{c}</option>)}
-          </select>
-        </label>
-      )}
       <div className="finance-range" ref={ref}>
         <div className="segmented" role="radiogroup" aria-label="Period">
           {TYPES.map(([value, label]) => (

@@ -120,20 +120,22 @@ export const NO_GROUP = 'none';
 // chosen group or member, so the group tiles always compare side by side.
 // For those who see every group, records outside all of them are summed
 // under NO_GROUP, so the tiles add up to the total.
-export async function perGroupSums(Model, user, allowed, period) {
+//   net  also add up income records' net (what is left after the fee and
+//        the resident's share; older records without one count in full)
+export async function perGroupSums(Model, user, allowed, period, { net = false } = {}) {
   if (!allowed.length) return new Map();
   const known = new Set(allowed.map((g) => String(g._id)));
   const match = { ...scopeFilter(user, 'member'), date: inPeriod(period) };
   if (!seesAllGroups(user)) match.group = { $in: allowed.map((g) => g._id) };
   const sums = await Model.aggregate([
     { $match: match },
-    { $group: { _id: '$group', amount: { $sum: '$amount' }, count: { $sum: 1 } } },
+    { $group: { _id: '$group', amount: { $sum: '$amount' }, count: { $sum: 1 }, ...(net ? { net: { $sum: { $ifNull: ['$net', '$amount'] } } } : {}) } },
   ]);
   const out = new Map();
   for (const g of sums) {
     const key = known.has(String(g._id)) ? String(g._id) : NO_GROUP;
-    const sum = out.get(key) ?? { amount: 0, count: 0 };
-    out.set(key, { amount: sum.amount + g.amount, count: sum.count + g.count });
+    const sum = out.get(key) ?? { amount: 0, count: 0, net: 0 };
+    out.set(key, { amount: sum.amount + g.amount, count: sum.count + g.count, net: sum.net + (g.net ?? 0) });
   }
   return out;
 }

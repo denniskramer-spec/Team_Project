@@ -9,6 +9,7 @@ import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js
 import { actorOf } from '../utils/audit.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { searchRegex } from '../utils/validate.js';
+import { outsideWatchStatus } from '../utils/outsideWatch.js';
 import {
   sessionChanged, directoryChanged, navChanged, approvalsChanged, taskChanged, residentChanged, chatAccountChanged,
   incomeChanged, outcomeChanged, reportChanged, planChanged, instructionEvent,
@@ -37,8 +38,8 @@ function olderOn(query, field) {
 
 // What each "kind" of the filter means.
 const KINDS = {
+  outside: { flags: 'outside-app' },
   login: { action: 'auth.login' },
-  view: { action: /\.view$/ },
   failed: { $or: [{ action: 'auth.login.failed' }, { flags: 'rate-limited' }, { flags: 'denied' }] },
   delete: { action: /\.delete$/ },
   change: { method: { $in: ['POST', 'PATCH', 'PUT'] }, status: { $lt: 400 }, action: { $not: /^(auth\.|security\.)/ } },
@@ -47,8 +48,13 @@ const KINDS = {
   flagged: { flags: { $ne: [] } },
 };
 
+// Plain reads are no longer logged; the ones from before stay in the log
+// (it is append-only) but are not listed. A refused read still is, and
+// reads of the database from outside the app are a kind of their own.
+const NOT_A_VIEW = { $nor: [{ action: /\.view$/, status: { $lt: 400 } }] };
+
 function logFilter(query) {
-  const and = [];
+  const and = [NOT_A_VIEW];
   if (query.kind && query.kind !== 'all') {
     if (!Object.hasOwn(KINDS, query.kind)) throw badRequest('Unknown kind');
     and.push(KINDS[query.kind]);
@@ -63,7 +69,7 @@ function logFilter(query) {
   }
   const older = olderOn(query, 'at');
   if (older) and.push(older);
-  return and.length ? { $and: and } : {};
+  return { $and: and };
 }
 
 const serializeEntry = (e) => ({
@@ -87,8 +93,8 @@ const serializeEntry = (e) => ({
 router.get('/overview', async (req, res) => {
   const now = Date.now();
   const since = (ms) => ({ at: { $gte: new Date(now - ms) } });
-  const [today, logins, failed, newIps, flagged, deleted, ips, lastFailed] = await Promise.all([
-    AuditLog.countDocuments(since(DAY)),
+  const [today, logins, failed, newIps, flagged, deleted, ips, lastFailed, outside, outsideWrites] = await Promise.all([
+    AuditLog.countDocuments({ ...since(DAY), ...NOT_A_VIEW }),
     AuditLog.countDocuments({ ...since(DAY), action: 'auth.login' }),
     AuditLog.countDocuments({ ...since(DAY), action: 'auth.login.failed' }),
     AuditLog.countDocuments({ ...since(7 * DAY), flags: 'new-ip' }),
@@ -96,10 +102,14 @@ router.get('/overview', async (req, res) => {
     DeletedRecord.countDocuments({}),
     AuditLog.distinct('ip', { ...since(7 * DAY), action: 'auth.login' }),
     AuditLog.find({ action: 'auth.login.failed' }).sort(NEWEST_FIRST).limit(5).lean(),
+    AuditLog.countDocuments({ ...since(7 * DAY), flags: 'outside-app' }),
+    AuditLog.countDocuments({ ...since(7 * DAY), flags: 'outside-write' }),
   ]);
   res.json({
     last24h: { events: today, logins, failedLogins: failed },
-    last7d: { newIpLogins: newIps, flagged, loginIps: ips.filter(Boolean).length },
+    last7d: { newIpLogins: newIps, flagged, loginIps: ips.filter(Boolean).length, outside, outsideWrites },
+    // Whether work done on the database outside the app is being recorded.
+    outsideWatch: outsideWatchStatus(),
     deletedRecords: deleted,
     recentFailures: lastFailed.map(serializeEntry),
   });

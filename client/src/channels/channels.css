@@ -733,12 +733,6 @@ code {
 /* ---------- Finance channel ---------- */
 .finance-stats .stat.is-selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .finance-bar .finance-range { position: relative; margin-left: auto; }
-.finance-bar .currency-pick { display: inline-flex; align-items: center; gap: 6px; }
-.finance-bar .currency-pick select { width: auto; padding: 4px 28px 4px 10px; min-height: 32px; }
-.rate-note { display: flex; align-items: center; gap: 8px; margin: -4px 0 0; }
-.rate-note > svg { flex-shrink: 0; }
-.rate-note > span { flex: 1; min-width: 0; }
-.rate-note .link { margin-left: 4px; }
 .finance-bar .segmented button { padding: 4px 14px; }
 .finance-bar .finance-add { padding: 0 14px; }
 /* The Duration picker drops down under the segmented control. */
@@ -1068,3 +1062,18 @@ code {
 /* Admin -> Team settings */
 .team-zone-stats { margin: 4px 0 16px; }
 .team-zone-form { max-width: 520px; }
+
+/* Income far from what the reported work expected (Finance -> Income, the income form) */
+.variance-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px;
+  padding: 6px 10px; border-radius: 8px; font-size: 13px;
+  background: var(--warn-soft); color: var(--text-warn);
+}
+.variance-note.is-open { box-shadow: inset 3px 0 0 var(--warn); }
+.variance-reason { color: var(--text); font-style: italic; }
+.variance-check { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); }
+.variance-check p { margin: 0; }
+
+/* Plan page: one block per group, the group's plan first */
+.plan-group + .plan-group { margin-top: 18px; }
+.plan-group-title { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }

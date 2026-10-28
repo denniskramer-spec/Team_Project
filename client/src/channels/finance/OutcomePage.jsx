@@ -131,9 +131,9 @@ export default function OutcomePage() {
 }
 
 function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages }) {
-  const { money, convert } = currency;
+  const { money } = currency;
   const p = data.period;
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: convert(c.amount) }, items: c.items.map((o) => ({ ...o, amount: convert(o.amount) })), count: c.count }));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count }));
   const rank = rankOf(rows.map((r) => r.values.outcome));
 
   return (

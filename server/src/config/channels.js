@@ -108,7 +108,7 @@ function instructionTitles(user, groups, members) {
 }
 
 export function buildNav(user, groups, {
-  pendingCount = 0, instructionUnread = {}, chatUnread = {}, tasks = [], members = [], dms = [],
+  pendingCount = 0, instructionUnread = {}, chatUnread = {}, tasks = [], members = [], dms = [], incomeChecks = 0,
 } = {}) {
   const allGroups = groupTitles(groups);
   const scoped = groupTitles(visibleGroups(user, groups));
@@ -213,8 +213,10 @@ export function buildNav(user, groups, {
       icon: 'coins',
       // Income, outcome (leader and bosses record it) and the total of both.
       // The period is picked in the page toolbar, not here.
+      // The badge counts income far from what the work expected, unchecked.
+      ...(incomeChecks ? { badge: incomeChecks } : {}),
       titles: [
-        { key: 'income', name: 'Income', section: 'Finance' },
+        { key: 'income', name: 'Income', section: 'Finance', ...(incomeChecks ? { badge: incomeChecks } : {}) },
         { key: 'outcome', name: 'Outcome', section: 'Finance' },
         { key: 'total', name: 'Total', section: 'Finance' },
         ...level(),

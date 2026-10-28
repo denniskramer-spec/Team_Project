@@ -39,5 +39,5 @@ test("today's goals come from the plan and the reports so far", () => {
   assert.equal(goalsOf({ ...plan, jobBid: 0, resumes: 0 }, new Date('2026-10-27T00:00:00Z'), []), null);
   // Older plans counted bids in one field.
   assert.equal(goalsOf({ ...plan, jobBid: 0, bid: 700 }, plan.periodStart, []).items.jobBid.base, 100);
-  assert.deepEqual(GOAL_ITEMS, ['jobBid', 'aiBid', 'resumes', 'forms', 'biddingHours']);
+  assert.deepEqual(GOAL_ITEMS, ['jobBid', 'aiBid', 'resumes', 'forms']); // time bidding is not a plan target
 });

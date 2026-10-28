@@ -3,6 +3,8 @@ import Group from '../models/Group.js';
 import User from '../models/User.js';
 import Instruction from '../models/Instruction.js';
 import Task from '../models/Task.js';
+import Income from '../models/Income.js';
+import { canCheckVariance } from '../utils/incomeVariance.js';
 import { pendingFilter } from '../utils/memberPolicy.js';
 import { unreadFilter } from '../utils/instructionPolicy.js';
 import { scopeFilter } from '../utils/visibility.js';
@@ -41,7 +43,13 @@ router.get('/', requireAuth, async (req, res) => {
   const tasks = await Task.find(scopeFilter(req.user, 'owner'), 'name status')
     .sort({ startDate: -1, createdAt: -1 }).limit(40).lean();
 
-  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members, dms }) });
+  // Income far from what the reported work expected, not yet checked by
+  // this team leader or boss.
+  const incomeChecks = canCheckVariance(req.user)
+    ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' }, 'varianceCheckedBy.user': { $ne: req.user._id } })
+    : 0;
+
+  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members, dms, incomeChecks }) });
 });
 
 export default router;

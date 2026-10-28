@@ -36,6 +36,17 @@ const incomeSchema = new mongoose.Schema(
     residentPercent: { type: Number, default: 0, min: 0, max: 100 },
     residentAmount: { type: Number, default: 0, min: 0 },
     net: { type: Number, default: 0, min: 0 },
+    // Income for a project whose reported work expected a noticeably
+    // different amount (utils/incomeVariance.js): what was expected, how far
+    // off the member's share was (percent, signed), the member's reason, and
+    // which managers have checked it.
+    expected: { type: Number, default: null },
+    variancePercent: { type: Number, default: null },
+    varianceReason: { type: String, default: '', trim: true, maxlength: 500 },
+    varianceCheckedBy: {
+      type: [{ _id: false, user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, at: Date }],
+      default: [],
+    },
   },
   { timestamps: true },
 );
@@ -43,5 +54,6 @@ const incomeSchema = new mongoose.Schema(
 incomeSchema.index({ member: 1, date: -1 });
 incomeSchema.index({ group: 1, date: -1 });
 incomeSchema.index({ date: 1 });
+incomeSchema.index({ variancePercent: 1, group: 1 }, { partialFilterExpression: { variancePercent: { $type: 'number' } } });
 
 export default mongoose.model('Income', incomeSchema);

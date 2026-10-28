@@ -10,6 +10,9 @@ export const directoryChanged = () => getIO()?.emit('directory:changed');
 export const navChanged = () => getIO()?.emit('nav:changed');
 export const navChangedFor = (userId) => getIO()?.to(`user:${userId}`).emit('nav:changed');
 // Only the people who approve sign-ups show a pending count.
+// An income far from what the reported work expected: the badge of the team
+// leader and of the boss of the member's group changes.
+export const varianceRaised = (groupId) => getIO()?.to(['role:leader', ...(groupId ? [`group:${groupId}`] : [])]).emit('nav:changed');
 export const approvalsChanged = () => getIO()?.to(['role:admin', 'role:leader', 'role:boss']).emit('nav:changed');
 // A payment fee changed, by hand or by the daily refresh: fee tables reload.
 export const feesChanged = () => getIO()?.emit('fees:changed');

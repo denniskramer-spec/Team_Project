@@ -1,6 +1,5 @@
 import { nameOf } from '../../format.js';
 import FinanceToolbar from './FinanceToolbar.jsx';
-import RateNote from './RateNote.jsx';
 import { scopeLabel } from './useFinancePeriod.js';
 
 // Before the first load, or when it failed, the toolbar still needs a period.
@@ -25,11 +24,9 @@ export default function FinancePage({ page, noun, actions, body, children }) {
         type={period.type} from={period.from} to={period.to}
         onType={period.setType} onRange={period.setRange}
         scope={data && !error ? scopeLabel(data, period, data.chart?.[0]?.member?.name, noun) : ''}
-        currency={currency}
         maxRangeDays={currency.limits?.maxRangeDays}
         actions={data && !error ? actions : null}
       />
-      <RateNote currency={currency} />
       {error && <div className="alert error">{error}</div>}
       {!data && !error && <p className="muted">Loading...</p>}
       {data && !error && body(data)}
