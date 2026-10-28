@@ -21,8 +21,17 @@ async function readResponse(res, path, failure) {
     data = {};
   }
   if (res.status === 401 && path !== '/auth/login') unauthorizedHandler?.();
-  if (!res.ok) throw new ApiError(res.status, data.message || `${failure} (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, data.message || defaultMessage(res.status, failure));
   return data;
+}
+
+// A gateway in front of the API (the dev proxy, nginx) answers on its behalf
+// while it is down or restarting; say that instead of a bare status code.
+const GATEWAY_DOWN = new Set([502, 503, 504]);
+function defaultMessage(status, failure) {
+  if (GATEWAY_DOWN.has(status)) return 'The server is not responding, try again in a moment';
+  if (status === 429) return 'Too many requests, wait a moment and try again';
+  return `${failure} (${status})`;
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
@@ -38,6 +47,14 @@ export async function api(path, { method = 'GET', body } = {}) {
     throw new ApiError(0, 'Cannot reach the server');
   }
   return readResponse(res, path, 'Request failed');
+}
+
+// Uploads image files to one of the `/upload` routes. The answer's images
+// carry `file` and `url`, ready to be stored on a record or shown as-is.
+export function uploadImages(path, files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('images', f);
+  return upload(path, fd);
 }
 
 // Multipart upload (files in a FormData); same cookies and error handling as api().

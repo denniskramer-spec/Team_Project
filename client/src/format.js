@@ -52,6 +52,10 @@ export function shownOf(shown, total, what = 'records') {
 // 1234.5 -> "1,234.5"
 export const formatAmount = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(n) || 0);
 
+// "09:05" / "9:05 AM" in the browser's own convention, for message times,
+// report timestamps and the footer clock.
+export const formatClock = (value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
 export function timeAgo(value) {
   if (!value) return 'never';
   const seconds = Math.round((Date.now() - new Date(value).getTime()) / 1000);

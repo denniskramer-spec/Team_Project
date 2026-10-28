@@ -17,13 +17,17 @@ export default function EmojiPicker({ onPick, onClose, anchor }) {
   const sections = useRef({});
 
   useEffect(() => { input.current?.focus(); }, []);
+  // The parent usually passes a new onClose on every render; it is read through
+  // a ref so the document listeners are attached once, not on every render.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    const away = (e) => { if (!ref.current?.contains(e.target) && !anchor?.current?.contains(e.target)) onClose(); };
-    const keys = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    const away = (e) => { if (!ref.current?.contains(e.target) && !anchor?.current?.contains(e.target)) onCloseRef.current(); };
+    const keys = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); } };
     document.addEventListener('mousedown', away);
     document.addEventListener('keydown', keys, true);
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', keys, true); };
-  }, [onClose, anchor]);
+  }, [anchor]);
 
   const results = useMemo(() => searchEmoji(query), [query]);
   const pick = (char) => {

@@ -180,11 +180,63 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .strong { font-weight: 600; }
 
 /* ---------- Auth screens ---------- */
+/* The login, sign-up and password screens (and the full-screen loading and
+   error states) sit on the app's own colours: soft glows in the accent and
+   the role colours over the page background, and a faint grid that fades
+   out towards the edges, a nod to the channel/title/content layout inside.
+   Everything comes from the tokens above, so the light theme and a change
+   of accent carry through. */
 .center-screen {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 24px 16px;
+  background: var(--bg);
+  --glow: 0.55;
+  --grid: 0.06;
+}
+:root[data-theme='light'] .center-screen { --glow: 0.38; --grid: 0.08; }
+.center-screen::before,
+.center-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+/* Colour glows: accent top-left, boss purple bottom-right, a touch of green
+   and leader amber so no single role colour owns the page. */
+.center-screen::before {
+  inset: -20%;
+  opacity: var(--glow);
+  background:
+    radial-gradient(42% 38% at 18% 22%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%),
+    radial-gradient(38% 36% at 84% 78%, color-mix(in srgb, var(--role-boss) 42%, transparent), transparent 70%),
+    radial-gradient(30% 28% at 78% 14%, color-mix(in srgb, var(--good) 28%, transparent), transparent 70%),
+    radial-gradient(26% 26% at 14% 86%, color-mix(in srgb, var(--role-leader) 24%, transparent), transparent 70%);
+  filter: blur(40px);
+  animation: auth-drift 28s ease-in-out infinite alternate;
+}
+/* The grid, masked so it is only visible around the card. */
+.center-screen::after {
+  opacity: var(--grid);
+  background-image:
+    linear-gradient(var(--text-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--text-strong) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 20%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 20%, transparent 100%);
+}
+@keyframes auth-drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to { transform: translate3d(2%, 2%, 0) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .center-screen::before { animation: none; }
 }
 .auth-card {
   width: 100%;
@@ -192,10 +244,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   padding: 32px;
   display: grid;
   gap: 16px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 .auth-card h1 { margin: 0; font-size: 22px; }
 .auth-card > p { margin: 0; }

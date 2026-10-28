@@ -1,8 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 
-const ACCEPT = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-const MAX_BYTES = 5 * 1024 * 1024;
+// The images a record may carry: the same limits as the server's upload route.
+export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const EMPTY = [];
+
+// Why a file cannot be attached, or '' when it can.
+export function imageProblem(file) {
+  if (!IMAGE_TYPES.includes(file.type)) return 'Only PNG, JPEG, GIF or WebP images';
+  if (file.size > MAX_IMAGE_BYTES) return 'Each image can be at most 5 MB';
+  return '';
+}
+
+// Preview URLs for new files, released once the list changes again. They
+// are made in the effect that releases them: React may run an effect's
+// cleanup and the effect again (StrictMode), and URLs made while rendering
+// would then be revoked for good. Each URL is kept with its file, so a
+// render never points at another file's.
+export function useObjectUrls(files) {
+  const [previews, setPreviews] = useState(EMPTY);
+  useEffect(() => {
+    const made = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
+    setPreviews(made);
+    return () => made.forEach((p) => URL.revokeObjectURL(p.url));
+  }, [files]);
+  return previews;
+}
+
+// The same for one optional file.
+export function useObjectUrl(file) {
+  const files = useMemo(() => (file ? [file] : EMPTY), [file]);
+  return useObjectUrls(files)[0]?.url ?? '';
+}
 
 // Image attachments for a form: drop files on the box, click it to pick
 // them, or paste a screenshot anywhere in the modal. `existing` are images
@@ -11,29 +41,25 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
   const input = useRef(null);
   const [over, setOver] = useState(false);
   const [error, setError] = useState('');
-  const [previews, setPreviews] = useState([]);
-
-  // Object URLs for the new files, released when they change. Each URL is
-  // kept with its file, so the render right after a change never points at a
-  // revoked URL (or another file's).
-  useEffect(() => {
-    const made = files.map((file) => ({ file, url: URL.createObjectURL(file) }));
-    setPreviews(made);
-    return () => made.forEach((p) => URL.revokeObjectURL(p.url));
-  }, [files]);
+  const previews = useObjectUrls(files);
   const previewOf = (file) => previews.find((p) => p.file === file)?.url;
 
   const add = (list) => {
-    const incoming = Array.from(list ?? []);
-    const room = max - existing.length - files.length;
     const good = [];
     let problem = '';
-    for (const f of incoming) {
-      if (!ACCEPT.includes(f.type)) { problem = 'Only PNG, JPEG, GIF or WebP images'; continue; }
-      if (f.size > MAX_BYTES) { problem = 'Each image can be at most 5 MB'; continue; }
-      good.push(f);
+    for (const f of Array.from(list ?? [])) {
+      const why = imageProblem(f);
+      if (why) problem = why;
+      else good.push(f);
     }
-    if (good.length > room) { problem = `At most ${max} images per record`; good.length = Math.max(room, 0); }
+    // A single-image field takes the new image in place of the old one.
+    if (max === 1 && good.length) {
+      setError(problem);
+      onFiles([good[good.length - 1]]);
+      return;
+    }
+    const room = max - existing.length - files.length;
+    if (good.length > room) { problem = `At most ${max} ${max === 1 ? 'image' : 'images'} per record`; good.length = Math.max(room, 0); }
     setError(problem);
     if (good.length) onFiles([...files, ...good]);
   };
@@ -72,7 +98,7 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
         <Icon name="plus" size={18} />
         <span>{max === 1 ? 'Drop a screenshot here, click to choose, or paste' : 'Drop screenshots here, click to choose, or paste'}</span>
         <span className="muted small">PNG, JPEG, GIF or WebP · {max === 1 ? 'one image' : `up to ${max} images`} · 5 MB each</span>
-        <input ref={input} type="file" accept={ACCEPT.join(',')} multiple={max > 1} hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+        <input ref={input} type="file" accept={IMAGE_TYPES.join(',')} multiple={max > 1} hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
       </div>
       {error && <div className="alert error">{error}</div>}
       {(existing.length > 0 || files.length > 0) && (
