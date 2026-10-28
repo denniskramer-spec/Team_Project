@@ -3,12 +3,11 @@ import { formatAmount, toDateInput, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
-import FinanceToolbar from './FinanceToolbar.jsx';
-import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
-import { useLiveData } from '../../useLiveData.js';
+import FinancePage, { GroupTiles } from './FinancePage.jsx';
+import { useFinancePage } from './useFinancePage.js';
+import { rankOf } from './chartMath.js';
 import DateTag from '../../components/DateTag.jsx';
-import { useCurrency } from './useCurrency.js';
-import RateNote from './RateNote.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
 
 const SERIES = [
   { key: 'income', label: 'Income', color: 'var(--series-3)' },
@@ -18,37 +17,46 @@ const SERIES = [
 // "+1,234" or "−567", with the class that colours it.
 const signed = (n) => ({ text: `${n < 0 ? '−' : '+'}${formatAmount(Math.abs(n))}`, cls: n < 0 ? 'net-bad' : 'net-good' });
 
-// Net above each member's pair of columns. The best and worst net this
-// period get the Top / Lowest highlight, like the Income chart: everyone
-// tied is tagged, nothing is tagged with one person or when all are equal.
+// Net above each member's pair of columns. The best and worst net among
+// the people with something recorded get the Top / Lowest highlight, like
+// the Income chart (see rankOf); someone with nothing recorded gets no tag.
 const netOf = (row) => row.values.income - row.values.outcome;
-function netTag(row, rows) {
-  const net = netOf(row);
-  const nets = rows.map(netOf);
-  const best = Math.max(...nets);
-  const worst = Math.min(...nets);
-  const ranked = rows.length > 1 && best !== worst;
-  if (ranked && net === best) return { text: `★ Top ${signed(net).text}`, cls: 'top', color: 'var(--series-3)' };
-  if (ranked && net === worst) return { text: `▼ Lowest ${signed(net).text}`, cls: 'low', color: 'var(--status-warning)' };
-  if (!row.values.income && !row.values.outcome) return null;
-  return { text: signed(net).text, cls: 'net', color: net < 0 ? 'var(--series-2)' : 'var(--series-3)' };
+const hasActivity = (row) => Boolean(row.values.income || row.values.outcome);
+function netTags(rows) {
+  const rank = rankOf(rows.map(netOf), rows.map(hasActivity));
+  return (row, all, i) => {
+    if (!hasActivity(row)) return null;
+    const net = netOf(row);
+    if (rank(i) === 'top') return { text: `★ Top ${signed(net).text}`, cls: 'top', color: 'var(--series-3)' };
+    if (rank(i) === 'low') return { text: `▼ Lowest ${signed(net).text}`, cls: 'low', color: 'var(--status-warning)' };
+    return { text: signed(net).text, cls: 'net', color: net < 0 ? 'var(--series-2)' : 'var(--series-3)' };
+  };
 }
 
 // Income and outcome rows in one table. `by` decides the first column:
 // the date when grouped by person, the member when grouped by date.
+const HISTORY_COLUMNS = {
+  date: { by: (r) => r.date, desc: true },
+  member: (r) => nameOf(r.member, ''),
+  type: (r) => r.kind,
+  detail: (r) => r.label,
+  amount: { by: (r) => r.amount, desc: true },
+};
+
 function HistoryTable({ rows, by }) {
+  const sorter = useSort(rows, HISTORY_COLUMNS);
   return (
     <table className="table finance-table history-table">
       <thead>
         <tr>
-          <th>{by === 'person' ? 'Date' : 'For'}</th>
-          <th>Type</th>
-          <th>Detail</th>
-          <th className="num">Amount</th>
+          <Th sort={sorter} col={by === 'person' ? 'date' : 'member'}>{by === 'person' ? 'Date' : 'For'}</Th>
+          <Th sort={sorter} col="type">Type</Th>
+          <Th sort={sorter} col="detail">Detail</Th>
+          <Th sort={sorter} col="amount" className="num">Amount</Th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
+        {sorter.rows.map((r) => (
           <tr key={`${r.kind}-${r.id}`}>
             <td data-label={by === 'person' ? 'Date' : 'Member'}>
               {by === 'person' ? <DateTag value={r.date} utc /> : (
@@ -104,14 +112,19 @@ function groupHistory(history, by) {
 // Total: income and outcome side by side for one period, and the history
 // behind them by person or by date.
 export default function TotalPage() {
-  const period = useFinancePeriod();
-  const currency = useCurrency();
-  const { money, convert } = currency;
-  const { data, error } = useLiveData(`/finance/total?${period.query}`, ['income:changed', 'outcome:changed']);
+  const page = useFinancePage('/finance/total', ['income:changed', 'outcome:changed']);
   const [by, setBy] = useState('person');
+  return (
+    <FinancePage
+      page={page}
+      noun="total"
+      body={(data) => <TotalBody data={data} group={page.period.group} currency={page.currency} by={by} setBy={setBy} />}
+    />
+  );
+}
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
-  if (!data) return <div className="page muted">Loading...</div>;
+function TotalBody({ data, group, currency, by, setBy }) {
+  const { money, convert } = currency;
   const p = data.period;
   const net = signed(convert(data.net));
   // The chart and the history in the chosen currency.
@@ -121,16 +134,7 @@ export default function TotalPage() {
   const groups = groupHistory(history, by);
 
   return (
-    <div className="page finance-page">
-      <FinanceToolbar
-        period={p}
-        type={period.type} from={period.from} to={period.to}
-        onType={period.setType} onRange={period.setRange}
-        scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'total')}
-        currency={currency}
-      />
-
-      <RateNote currency={currency} />
+    <>
       <div className="stat-row finance-stats">
         <div className="stat stat-good">
           <span className="stat-value">{money(data.income)}</span>
@@ -144,12 +148,11 @@ export default function TotalPage() {
           <span className={`stat-value ${net.cls}`}>{net.text.replace(/^([+−])/, `$1${currency.symbol}`)}</span>
           <span className="muted small">Total · income − outcome</span>
         </div>
-        {data.perGroup?.map((g) => (
-          <div key={g.id} className={`stat role-border-boss${period.group === g.slug ? ' is-selected' : ''}`}>
-            <span className={`stat-value ${signed(g.net).cls}`}>{signed(convert(g.net)).text}</span>
-            <span className="muted small">{g.name} · +{money(g.income)} / −{money(g.outcome)}</span>
-          </div>
-        ))}
+        <GroupTiles
+          tiles={data.perGroup} selected={group}
+          value={(g) => <span className={signed(g.net).cls}>{signed(convert(g.net)).text}</span>}
+          caption={(g) => `${g.name} · +${money(g.income)} / −${money(g.outcome)}`}
+        />
       </div>
 
       {rows.length > 0 && (
@@ -158,7 +161,7 @@ export default function TotalPage() {
           periodLabel={`${p.label} · ${currency.code}`}
           rows={rows}
           series={SERIES}
-          tag={netTag}
+          tag={netTags(rows)}
           emptyNote={`No income or outcome recorded for ${p.label}.`}
           tooltip={(row) => {
             const n = signed(row.values.income - row.values.outcome);
@@ -178,7 +181,8 @@ export default function TotalPage() {
                   <div className="stat stat-bad"><span className="stat-value">{formatAmount(row.values.outcome)}</span><span className="muted small">Outcome</span></div>
                   <div className="stat"><span className={`stat-value ${signed(row.values.income - row.values.outcome).cls}`}>{signed(row.values.income - row.values.outcome).text}</span><span className="muted small">Total</span></div>
                 </div>
-                {mine.length ? <HistoryTable rows={mine} by="person" /> : <p className="muted small">Nothing recorded.</p>}
+                {/* The history is capped at the newest records, so an older member's may be cut. */}
+                {mine.length ? <HistoryTable rows={mine} by="person" /> : <p className="muted small">{shownOf(history.length, recordCount) ? 'Their records are older than the ones listed here; choose a shorter period.' : 'Nothing recorded.'}</p>}
               </div>
             );
           }}
@@ -220,6 +224,6 @@ export default function TotalPage() {
           ))}
         </section>
       )}
-    </div>
+    </>
   );
 }

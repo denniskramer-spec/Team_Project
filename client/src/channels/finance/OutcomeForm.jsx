@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api, upload } from '../../api.js';
+import { api, uploadImages } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount, toDateInput, todayInput } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
 import TargetFields, { targetFrom, targetBody } from './OutcomeTarget.jsx';
+import { NOTE_MAX, REASON_MAX } from './constants.js';
 
 // Outcome record: who it is for, how much, when, the reason, a comment and
 // screenshots. Only the team leader and bosses open this form. Editing a
@@ -27,10 +28,10 @@ export default function OutcomeForm({ outcome, groups, wholeTeam, onClose, onSav
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api('/outcomes/members').then((d) => setMembers(d.members)).catch(() => setMembers([]));
+    api('/outcomes/members').then((d) => setMembers(d.members)).catch((err) => setError(err.message));
   }, []);
 
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const set = (key) => (e) => { const { value } = e.target; setForm((f) => ({ ...f, [key]: value })); };
 
   const hasImage = kept.length + files.length > 0;
 
@@ -42,12 +43,10 @@ export default function OutcomeForm({ outcome, groups, wholeTeam, onClose, onSav
     try {
       let attached = kept;
       if (files.length) {
-        const fd = new FormData();
-        files.forEach((f) => fd.append('images', f));
-        const uploaded = await upload('/outcomes/upload', fd);
+        const uploaded = await uploadImages('/outcomes/upload', files);
         // Treat them as already attached from now on, so a retry after a
         // failed save does not upload the same images again.
-        attached = [...kept, ...uploaded.images.map((i) => ({ ...i, url: `/api/files/${i.file}` }))];
+        attached = [...kept, ...uploaded.images];
         setKept(attached);
         setFiles([]);
       }
@@ -62,6 +61,7 @@ export default function OutcomeForm({ outcome, groups, wholeTeam, onClose, onSav
       onSaved();
     } catch (err) {
       setError(err.message);
+    } finally {
       setBusy(false);
     }
   };
@@ -102,11 +102,11 @@ export default function OutcomeForm({ outcome, groups, wholeTeam, onClose, onSav
         </div>
         <label>
           Reason
-          <input value={form.reason} onChange={set('reason')} maxLength={120} placeholder="Equipment, travel, licence, ..." required />
+          <input value={form.reason} onChange={set('reason')} maxLength={REASON_MAX} placeholder="Equipment, travel, licence, ..." required />
         </label>
         <label>
           Comment
-          <textarea rows={3} maxLength={2000} value={form.comment} onChange={set('comment')} />
+          <textarea rows={3} maxLength={NOTE_MAX} value={form.comment} onChange={set('comment')} />
         </label>
         <div className="target-pick">
           <span className="field-label">Images <span className="required-mark" aria-hidden="true">*</span> <span className="muted">required</span></span>

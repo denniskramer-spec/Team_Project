@@ -5,39 +5,50 @@ import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
-import Modal, { ConfirmDialog } from '../../components/Modal.jsx';
+import { ConfirmDialog } from '../../components/Modal.jsx';
+import Lightbox, { ImageThumbs } from '../../components/Lightbox.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
 import OutcomeForm from './OutcomeForm.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
-import FinanceToolbar from './FinanceToolbar.jsx';
-import { useFinancePeriod, scopeLabel } from './useFinancePeriod.js';
-import { useLiveData } from '../../useLiveData.js';
+import FinancePage, { GroupTiles, MemberBars } from './FinancePage.jsx';
+import { useFinancePage } from './useFinancePage.js';
+import { rankOf } from './chartMath.js';
 import DateTag from '../../components/DateTag.jsx';
-import { useCurrency } from './useCurrency.js';
-import RateNote from './RateNote.jsx';
+import { TOOLTIP_LIMIT } from './constants.js';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
-// More items than this and the hover card only summarises; a click opens the full list.
-const TOOLTIP_LIMIT = 8;
 
-// Who spent the most and the least this period. Everyone tied is tagged;
-// nothing is tagged with one person or when everyone is equal, and people
-// with nothing recorded are not "Lowest" — that would tag half the chart.
-function rankTag(row, rows) {
-  const amounts = rows.map((r) => r.values.outcome);
-  const best = Math.max(...amounts);
-  const worst = Math.min(...amounts);
-  if (rows.length < 2 || best === worst) return null;
-  if (row.values.outcome === best) return { text: '▲ Highest', cls: 'top', color: 'var(--series-2)' };
-  if (worst > 0 && row.values.outcome === worst) return { text: '▼ Lowest', cls: 'low', color: 'var(--status-neutral)' };
-  return null;
-}
+// Who spent the most and the least this period (see rankOf: people with
+// nothing recorded are never "Lowest").
+const RANK_TAGS = {
+  top: { text: '▲ Highest', cls: 'top', color: 'var(--series-2)' },
+  low: { text: '▼ Lowest', cls: 'low', color: 'var(--status-neutral)' },
+};
+
+const EMPTY = [];
+const ITEM_COLUMNS = {
+  date: { by: (o) => o.date, desc: true },
+  reason: (o) => o.reason,
+  amount: { by: (o) => o.amount, desc: true },
+};
+const COLUMNS = {
+  ...ITEM_COLUMNS,
+  who: (o) => nameOf(o.who),
+};
 
 function ItemsTable({ items, money = formatAmount }) {
+  const sorter = useSort(items, ITEM_COLUMNS);
   return (
     <table className="table">
-      <thead><tr><th>Date</th><th>Reason</th><th className="num">Amount</th></tr></thead>
+      <thead>
+        <tr>
+          <Th sort={sorter} col="date">Date</Th>
+          <Th sort={sorter} col="reason">Reason</Th>
+          <Th sort={sorter} col="amount" className="num">Amount</Th>
+        </tr>
+      </thead>
       <tbody>
-        {items.map((o) => (
+        {sorter.rows.map((o) => (
           <tr key={o.id}>
             <td><DateTag value={o.date} utc /></td>
             <td>{o.reason}{o.split && <span className="tag split-tag">{o.split}</span>}{o.comment && <div className="muted small">{o.comment}</div>}</td>
@@ -53,61 +64,90 @@ function ItemsTable({ items, money = formatAmount }) {
 // for the team leader and bosses.
 export default function OutcomePage() {
   const toast = useToast();
-  const period = useFinancePeriod();
-  const currency = useCurrency();
-  const { money, convert } = currency;
-  const { data, error, reload: load } = useLiveData(`/outcomes?${period.query}`, ['outcome:changed']);
+  const page = useFinancePage('/outcomes', ['outcome:changed']);
+  const { data, currency } = page;
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const sorter = useSort(data?.outcomes ?? EMPTY, COLUMNS);
 
+  // The page stays mounted between deletes, so `busy` must always come back
+  // down; the list itself refreshes through outcome:changed.
   const remove = async () => {
     setBusy(true);
     try {
       const { removed } = await api(`/outcomes/${confirm.id}`, { method: 'DELETE' });
       toast(removed > 1 ? `Shared outcome deleted for ${removed} members` : 'Outcome deleted');
       setConfirm(null);
-      load();
     } catch (err) {
       toast.error(err.message);
+    } finally {
       setBusy(false);
     }
   };
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
-  if (!data) return <div className="page muted">Loading...</div>;
+  return (
+    <FinancePage
+      page={page}
+      noun="outcome"
+      actions={data?.can.record && (
+        <button className="btn primary finance-add" onClick={() => setForm({})}>
+          <Icon name="plus" size={16} /> Record outcome
+        </button>
+      )}
+      body={(d) => (
+        <OutcomeBody
+          data={d} group={page.period.group} currency={currency} sorter={sorter}
+          onEdit={setForm} onDelete={setConfirm} onImages={setLightbox}
+        />
+      )}
+    >
+      {form && data && (
+        <OutcomeForm
+          outcome={form.id ? form : null}
+          groups={data.groups}
+          wholeTeam={data.can.wholeTeam}
+          onClose={() => setForm(null)}
+          onSaved={() => setForm(null)}
+        />
+      )}
+      {lightbox && <Lightbox {...lightbox} onClose={() => setLightbox(null)} />}
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.split ? 'Delete this shared outcome?' : 'Delete this outcome record?'}
+          message={confirm.split
+            ? `${confirm.reason} on ${formatDay(confirm.date)}: ${formatAmount(confirm.split.total)} shared by ${confirm.split.count} people. All ${confirm.split.count} records will be removed.`
+            : `${formatAmount(confirm.amount)} for ${confirm.reason} on ${formatDay(confirm.date)} will be removed.`}
+          confirmLabel="Delete"
+          danger
+          busy={busy}
+          onConfirm={remove}
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </FinancePage>
+  );
+}
+
+function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages }) {
+  const { money, convert } = currency;
   const p = data.period;
-  const top = data.perMember[0]?.amount ?? 0;
   const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: convert(c.amount) }, items: c.items.map((o) => ({ ...o, amount: convert(o.amount) })), count: c.count }));
+  const rank = rankOf(rows.map((r) => r.values.outcome));
 
   return (
-    <div className="page finance-page">
-      <FinanceToolbar
-        period={p}
-        type={period.type} from={period.from} to={period.to}
-        onType={period.setType} onRange={period.setRange}
-        scope={scopeLabel(data, period, data.chart[0]?.member?.name, 'outcome')}
-        currency={currency}
-        actions={data.can.record && (
-          <button className="btn primary finance-add" onClick={() => setForm({})}>
-            <Icon name="plus" size={16} /> Record outcome
-          </button>
-        )}
-      />
-
-      <RateNote currency={currency} />
+    <>
       <div className="stat-row finance-stats">
         <div className="stat stat-bad">
           <span className="stat-value">{money(data.total)}</span>
           <span className="muted small">Total outcome · {p.label}</span>
         </div>
-        {data.perGroup?.map((g) => (
-          <div key={g.id} className={`stat role-border-boss${period.group === g.slug ? ' is-selected' : ''}`}>
-            <span className="stat-value">{money(g.amount)}</span>
-            <span className="muted small">{g.name} · {g.count} {g.count === 1 ? 'record' : 'records'}</span>
-          </div>
-        ))}
+        <GroupTiles
+          tiles={data.perGroup} selected={group}
+          value={(g) => money(g.amount)}
+          caption={(g) => `${g.name} · ${g.count} ${g.count === 1 ? 'record' : 'records'}`}
+        />
         <div className="stat role-border-member">
           <span className="stat-value">{formatAmount(data.count)}</span>
           <span className="muted small">{data.count === 1 ? 'Record' : 'Records'}</span>
@@ -120,7 +160,7 @@ export default function OutcomePage() {
           periodLabel={`${p.label} · ${currency.code}`}
           rows={rows}
           series={SERIES}
-          tag={rankTag}
+          tag={(row, all, i) => RANK_TAGS[rank(i)] ?? null}
           emptyNote={`No outcome recorded for ${p.label}.`}
           tooltip={(row) => {
             if (!row.items.length) return null;
@@ -154,22 +194,7 @@ export default function OutcomePage() {
         />
       )}
 
-      {data.perMember.length > 1 && (
-        <section className="card">
-          <div className="report-section-head"><h3>Outcome per member</h3></div>
-          <ul className="bar-list">
-            {data.perMember.map((row) => (
-              <li key={row.member?.id ?? 'unknown'}>
-                <span className="bar-label">{nameOf(row.member)}</span>
-                <span className="bar-track">
-                  <span className="bar-fill out" style={{ width: `${top ? (row.amount / top) * 100 : 0}%` }} />
-                </span>
-                <span className="bar-value">{money(row.amount)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <MemberBars title="Outcome per member" rows={data.perMember} money={money} out />
 
       {!data.outcomes.length && (
         <div className="empty-inline muted"><Icon name="coins" size={20} /> No outcome recorded for {p.label}.</div>
@@ -181,10 +206,16 @@ export default function OutcomePage() {
           {shownOf(data.outcomes.length, data.count) && <p className="muted small list-note">{shownOf(data.outcomes.length, data.count)}</p>}
           <table className="table finance-table">
             <thead>
-              <tr><th>Date</th><th>For</th><th>Reason</th><th className="num">Amount</th><th aria-label="Actions" /></tr>
+              <tr>
+                <Th sort={sorter} col="date">Date</Th>
+                <Th sort={sorter} col="who">For</Th>
+                <Th sort={sorter} col="reason">Reason</Th>
+                <Th sort={sorter} col="amount" className="num">Amount</Th>
+                <th aria-label="Actions" />
+              </tr>
             </thead>
             <tbody>
-              {data.outcomes.map((o) => (
+              {sorter.rows.map((o) => (
                 <tr key={o.id}>
                   <td data-label="Date"><DateTag value={o.date} utc /></td>
                   <td data-label="For">
@@ -201,17 +232,7 @@ export default function OutcomePage() {
                       </span>
                     )}
                     {o.comment && <div className="muted small">{o.comment}</div>}
-                    {o.images.length > 0 && (
-                      <ul className="image-thumbs small-thumbs" aria-label="Attached images">
-                        {o.images.map((img) => (
-                          <li key={img.file}>
-                            <button type="button" className="thumb-open" onClick={() => setLightbox({ images: o.images, index: o.images.indexOf(img), title: o.reason })}>
-                              <img src={img.url} alt={img.name} title={img.name} loading="lazy" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <ImageThumbs images={o.images} label="Attached images" onOpen={(index) => onImages({ images: o.images, index, title: o.reason })} />
                   </td>
                   <td data-label="Amount" className="num strong">{money(o.amount)}</td>
                   <td className="cell-actions">
@@ -219,8 +240,8 @@ export default function OutcomePage() {
                       <Dropdown
                         label="Outcome actions"
                         items={[
-                          { label: o.split ? 'Edit shared outcome' : 'Edit', icon: 'edit', onClick: () => setForm(o) },
-                          { label: o.split ? `Delete for all ${o.split.count}` : 'Delete', icon: 'trash', danger: true, onClick: () => setConfirm(o) },
+                          { label: o.split ? 'Edit shared outcome' : 'Edit', icon: 'edit', onClick: () => onEdit(o) },
+                          { label: o.split ? `Delete for all ${o.split.count}` : 'Delete', icon: 'trash', danger: true, onClick: () => onDelete(o) },
                         ]}
                       />
                     )}
@@ -234,43 +255,6 @@ export default function OutcomePage() {
           </table>
         </section>
       )}
-
-      {form && (
-        <OutcomeForm
-          outcome={form.id ? form : null}
-          groups={data.groups}
-          wholeTeam={data.can.wholeTeam}
-          onClose={() => setForm(null)}
-          onSaved={() => { setForm(null); load(); }}
-        />
-      )}
-      {lightbox && (
-        <Modal title={`${lightbox.title} · ${lightbox.index + 1} / ${lightbox.images.length}`} onClose={() => setLightbox(null)} width={900}>
-          <div className="lightbox">
-            <img src={lightbox.images[lightbox.index].url} alt={lightbox.images[lightbox.index].name} />
-            {lightbox.images.length > 1 && (
-              <div className="lightbox-nav">
-                <button className="btn small-btn" type="button" disabled={lightbox.index === 0} onClick={() => setLightbox({ ...lightbox, index: lightbox.index - 1 })}>Previous</button>
-                <span className="muted small">{lightbox.images[lightbox.index].name}</span>
-                <button className="btn small-btn" type="button" disabled={lightbox.index === lightbox.images.length - 1} onClick={() => setLightbox({ ...lightbox, index: lightbox.index + 1 })}>Next</button>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-      {confirm && (
-        <ConfirmDialog
-          title={confirm.split ? 'Delete this shared outcome?' : 'Delete this outcome record?'}
-          message={confirm.split
-            ? `${confirm.reason} on ${formatDay(confirm.date)}: ${formatAmount(confirm.split.total)} shared by ${confirm.split.count} people. All ${confirm.split.count} records will be removed.`
-            : `${formatAmount(confirm.amount)} for ${confirm.reason} on ${formatDay(confirm.date)} will be removed.`}
-          confirmLabel="Delete"
-          danger
-          busy={busy}
-          onConfirm={remove}
-          onClose={() => setConfirm(null)}
-        />
-      )}
-    </div>
+    </>
   );
 }

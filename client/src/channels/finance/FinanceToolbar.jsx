@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { toDateInput } from '../../format.js';
+import { toDateInput, todayInput } from '../../format.js';
 import { RANGE, TYPES } from './useFinancePeriod.js';
+import { MAX_RANGE_DAYS } from './constants.js';
 
 // The Finance toolbar: the period's name, optional page actions, and
 // Week / Month / Year / Duration. Duration opens a picker for a start and
 // an end day; the other three show the current week, month or year.
 // `currency` (from useCurrency) adds a picker: amounts are recorded in the
 // base currency and shown in the chosen one at the day's rate.
-export default function FinanceToolbar({ period, type, from, to, onType, onRange, scope, actions, currency }) {
+// `maxRangeDays` is the longest duration the server accepts.
+export default function FinanceToolbar({ period, type, from, to, onType, onRange, scope, actions, currency, maxRangeDays = MAX_RANGE_DAYS }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({ from: '', to: '' });
   const ref = useRef(null);
@@ -26,10 +28,15 @@ export default function FinanceToolbar({ period, type, from, to, onType, onRange
 
   const openPicker = () => {
     // Start from the duration in use, or from the period on screen up to today.
-    setDraft({ from: from || toDateInput(period.start), to: to || toDateInput(new Date()) });
+    setDraft({ from: from || (period.start ? toDateInput(period.start) : todayInput()), to: to || todayInput() });
     setOpen((o) => !o);
   };
-  const valid = draft.from && draft.to && draft.from <= draft.to;
+  // The same checks as the server, so Apply never sends a duration it refuses.
+  const days = draft.from && draft.to ? (Date.parse(draft.to) - Date.parse(draft.from)) / 86400000 : 0;
+  const problem = !draft.from || !draft.to ? ''
+    : days < 0 ? 'The duration ends before it starts'
+      : days > maxRangeDays ? `A duration can be at most ${Math.floor(maxRangeDays / 366)} years` : '';
+  const valid = Boolean(draft.from && draft.to) && !problem;
   const apply = (e) => {
     e.preventDefault();
     if (!valid) return;
@@ -84,6 +91,7 @@ export default function FinanceToolbar({ period, type, from, to, onType, onRange
               To
               <input type="date" value={draft.to} min={draft.from || undefined} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </label>
+            {problem && <p className="small alert-text duration-note">{problem}</p>}
             <div className="duration-actions">
               <button className="btn small-btn" type="button" onClick={() => setOpen(false)}>Cancel</button>
               <button className="btn primary small-btn" type="submit" disabled={!valid}>Apply</button>

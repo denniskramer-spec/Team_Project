@@ -1,15 +1,23 @@
 import { formatAmount } from '../../format.js';
 
+// A card that opens a dialog behaves like a button: click, Enter or Space.
+export const linkProps = (onOpen, title) => (onOpen ? {
+  role: 'button', tabIndex: 0, title: `Show the records behind ${title}`,
+  onClick: onOpen,
+  onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } },
+} : {});
+
 // One measure, a few series, horizontal bars.
 // Each bar carries its own label and value, so identity never depends on colour.
 // Measures with different scales (money vs counts) get their own chart.
-export default function BarCompare({ title, unit, series, note }) {
+// `onOpen` makes the whole card a button that opens its details.
+export default function BarCompare({ title, unit, series, note, onOpen }) {
   const max = Math.max(...series.map((s) => s.value), 0);
   const target = series.find((s) => s.target)?.value ?? 0;
   const achieved = series.find((s) => s.achieved);
 
   return (
-    <figure className="chart">
+    <figure className={`chart ${onOpen ? 'chart-link' : ''}`} {...linkProps(onOpen, title)}>
       <figcaption>
         <h3>{title}</h3>
         {achieved && target > 0 && (

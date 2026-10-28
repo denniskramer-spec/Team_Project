@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
+import { todayInput } from '../../format.js';
 
 export const RANGE = 'range';
 export const TYPES = [['week', 'Week'], ['month', 'Month'], ['year', 'Year']];
@@ -24,7 +25,14 @@ export function useFinancePeriod() {
   };
 
   const query = new URLSearchParams({ type, group });
-  if (type === RANGE) { query.set('from', from); query.set('to', to); }
+  if (type === RANGE) {
+    query.set('from', from);
+    query.set('to', to);
+  } else {
+    // "This week / month / year" is the one around the user's own calendar
+    // day: in the evening west of Greenwich the server is already on tomorrow.
+    query.set('date', todayInput());
+  }
   if (member) query.set('member', member);
 
   return {

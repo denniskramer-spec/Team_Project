@@ -1,20 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
-import { formatAmount, nameOf } from '../../format.js';
+import { formatAmount, nameOf, todayInput } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import { STATUSES } from '../plan/StatusPicker.jsx';
-import BarCompare from './BarCompare.jsx';
-import { useLatestRequest } from '../../useLiveData.js';
+import BarCompare, { linkProps } from './BarCompare.jsx';
+import CheckoutDetail from './CheckoutDetail.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
+import { useLiveData } from '../../useLiveData.js';
+import { scopeLabel } from '../finance/useFinancePeriod.js';
 
 const TYPES = ['weekly', 'monthly', 'yearly'];
 
-function PlanResults({ states, total }) {
+function PlanResults({ states, total, onOpen }) {
   if (!total) return null;
   return (
-    <figure className="chart">
+    <figure className="chart chart-link" {...linkProps(onOpen, 'Plan results')}>
       <figcaption><h3>Plan results</h3><span className="chart-share">{states.done} of {total} done</span></figcaption>
       <div className="meter" role="img" aria-label={STATUSES.map((s) => `${s.label}: ${states[s.key] || 0}`).join(', ')}>
         {STATUSES.map((s) => (states[s.key] ? (
@@ -34,38 +35,35 @@ function PlanResults({ states, total }) {
   );
 }
 
+const EMPTY = [];
+const COLUMNS = {
+  member: (r) => nameOf(r.member),
+  planned: { by: (r) => r.planned.income, desc: true },
+  reported: { by: (r) => r.reported.income, desc: true },
+  upcoming: { by: (r) => r.upcoming, desc: true },
+  received: { by: (r) => r.actualIncome, desc: true },
+  jobBids: { by: (r) => r.reported.jobBid, desc: true },
+  aiBids: { by: (r) => r.reported.aiBid, desc: true },
+  projects: { by: (r) => r.tasks.done, desc: true },
+  plans: { by: (r) => Object.values(r.planStates).reduce((a, b) => a + b, 0), desc: true },
+};
+
 export default function CheckoutChannel({ title }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const type = TYPES.includes(title.key) ? title.key : 'weekly';
   const period = searchParams.get('p') || '';
   const group = searchParams.get('g') || 'all';
   const member = searchParams.get('m') || '';
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
+  const [detail, setDetail] = useState(null);
 
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const params = new URLSearchParams({ type, group });
-      if (period) params.set('period', period);
-      if (member) params.set('member', member);
-      const result = await api(`/checkout?${params}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, type, period, group, member]);
-
-  useEffect(() => { load(); }, [load]);
+  const params = new URLSearchParams({ type, group });
+  // Without a period, the current one around the user's own calendar day
+  // (in the evening west of Greenwich the server is already on tomorrow).
+  if (period) params.set('period', period); else params.set('date', todayInput());
+  if (member) params.set('member', member);
   // Checkout reads the other channels, so any of their changes refresh it.
-  useReconnect(load);
-  useSocketEvent('plan:changed', load);
-  useSocketEvent('report:changed', load);
-  useSocketEvent('task:changed', load);
-  useSocketEvent('income:changed', load);
+  const { data, error } = useLiveData(`/checkout?${params}`, ['plan:changed', 'report:changed', 'task:changed', 'income:changed']);
+  const sorter = useSort(data?.rows ?? EMPTY, COLUMNS);
 
   const setPeriod = (value) => {
     const next = new URLSearchParams(searchParams);
@@ -73,7 +71,15 @@ export default function CheckoutChannel({ title }) {
     setSearchParams(next, { replace: true });
   };
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
+  // A period or group the server refuses still leaves a way back.
+  if (error) {
+    return (
+      <div className="page">
+        <div className="alert error">{error}</div>
+        {period && <button className="btn small-btn" onClick={() => setPeriod('')}>Back to the current period</button>}
+      </div>
+    );
+  }
   if (!data) return <div className="page muted">Loading...</div>;
 
   const p = data.period;
@@ -86,12 +92,7 @@ export default function CheckoutChannel({ title }) {
         <button className="icon-btn" onClick={() => setPeriod(p.prev)} aria-label="Previous period"><Icon name="chevronLeft" /></button>
         <div className="period-label">
           <strong>{p.label}</strong>
-          <span className="muted small">
-            {member ? data.rows[0]?.member.name ?? 'Member'
-              : data.scope === 'self' ? 'Your results'
-                : data.scope === 'group' ? 'Your group'
-                  : group === 'all' ? 'All members' : data.groups.find((g) => g.slug === group)?.name ?? group}
-          </span>
+          <span className="muted small">{scopeLabel(data, { group, member }, data.rows[0]?.member.name, 'results')}</span>
         </div>
         <button className="icon-btn" onClick={() => setPeriod(p.next)} aria-label="Next period" disabled={!p.hasNext}><Icon name="chevronRight" /></button>
         {!p.isCurrent && <button className="btn small-btn" onClick={() => setPeriod('')}>Current</button>}
@@ -109,6 +110,7 @@ export default function CheckoutChannel({ title }) {
       <div className="chart-row">
         <BarCompare
           title="Income"
+          onOpen={() => setDetail('income')}
           series={[
             { label: 'Planned', value: data.income.planned, slot: 1, target: true },
             { label: 'Reported', value: data.income.reported, slot: 2 },
@@ -118,6 +120,7 @@ export default function CheckoutChannel({ title }) {
         />
         <BarCompare
           title="Job bids"
+          onOpen={() => setDetail('jobBid')}
           unit="bids"
           series={[
             { label: 'Planned', value: data.jobBid.planned, slot: 1, target: true },
@@ -127,6 +130,7 @@ export default function CheckoutChannel({ title }) {
         />
         <BarCompare
           title="AI training bids"
+          onOpen={() => setDetail('aiBid')}
           unit="bids"
           series={[
             { label: 'Planned', value: data.aiBid.planned, slot: 1, target: true },
@@ -136,8 +140,8 @@ export default function CheckoutChannel({ title }) {
         />
       </div>
       <div className="chart-pair">
-        <PlanResults states={data.planStates} total={planTotal} />
-        <figure className="chart">
+        <PlanResults states={data.planStates} total={planTotal} onOpen={() => setDetail('plans')} />
+        <figure className="chart chart-link" {...linkProps(() => setDetail('projects'), 'Projects')}>
           <figcaption><h3>Projects</h3><span className="chart-share">{data.task.done} of {data.task.total} done</span></figcaption>
           <div className="meter" role="img" aria-label={`${data.task.done} of ${data.task.total} projects done`}>
             {data.task.done > 0 && <span className="meter-part done" style={{ flexGrow: data.task.done }} />}
@@ -154,6 +158,8 @@ export default function CheckoutChannel({ title }) {
         </figure>
       </div>
 
+      {detail && <CheckoutDetail kind={detail} details={data.details} periodLabel={p.label} onClose={() => setDetail(null)} />}
+
       {data.rows.length > 0 && (
         <section className="card">
           <div className="report-section-head">
@@ -163,19 +169,19 @@ export default function CheckoutChannel({ title }) {
           <table className="table checkout-table">
             <thead>
               <tr>
-                <th>Member</th>
-                <th className="num">Income plan</th>
-                <th className="num">Reported</th>
-                <th className="num">Upcoming</th>
-                <th className="num">Received</th>
-                <th className="num">Job bids p/r</th>
-                <th className="num">AI bids p/r</th>
-                <th className="num">Projects done</th>
-                <th>Plans</th>
+                <Th sort={sorter} col="member">Member</Th>
+                <Th sort={sorter} col="planned" className="num">Income plan</Th>
+                <Th sort={sorter} col="reported" className="num">Reported</Th>
+                <Th sort={sorter} col="upcoming" className="num">Upcoming</Th>
+                <Th sort={sorter} col="received" className="num">Received</Th>
+                <Th sort={sorter} col="jobBids" className="num">Job bids p/r</Th>
+                <Th sort={sorter} col="aiBids" className="num">AI bids p/r</Th>
+                <Th sort={sorter} col="projects" className="num">Projects done</Th>
+                <Th sort={sorter} col="plans">Plans</Th>
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((row) => (
+              {sorter.rows.map((row) => (
                 <tr key={row.member.id}>
                   <td data-label="Member">
                     <div className="cell-user">

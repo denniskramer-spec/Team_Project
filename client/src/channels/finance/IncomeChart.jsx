@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
-import { compact, fitLabel, niceMax, topRounded } from './chartMath.js';
+import { useSort, Th } from '../../components/SortTable.jsx';
 import DateTag from '../../components/DateTag.jsx';
+import { GAP, MARGIN, columnLayout, compact, fitLabel, rankOf, tooltipLeft, topRounded, useElementWidth } from './chartMath.js';
+import { TOOLTIP_LIMIT } from './constants.js';
 
 // Planned vs real income per member, as grouped columns:
 //   blue          = planned income (from the member's plan)
@@ -15,16 +17,19 @@ const SERIES = [
   { key: 'upcoming', label: 'Upcoming', color: 'var(--series-2)' },
 ];
 
-const MARGIN = { top: 26, right: 8, bottom: 32, left: 56 };  // top leaves room for the Top/Lowest tags
-const GAP = 2;           // surface gap between stacked segments and adjacent columns
-const MAX_COLUMN = 48;
-// More items than this and the hover card only summarises; a click opens the full list.
-const TOOLTIP_LIMIT = 8;
-
 // Everything behind one member's column, in full.
+const EMPTY = [];
+const ITEM_COLUMNS = {
+  date: { by: (i) => i.date ?? null, desc: true },
+  project: (i) => (i.task ? i.task.name : i.from || null),
+  amount: { by: (i) => i.amount, desc: true },
+};
+
 function MemberDetail({ row, periodLabel, onClose }) {
-  const items = row.incomeItems ?? [];
-  const upcoming = row.upcomingItems ?? [];
+  const items = row.incomeItems ?? EMPTY;
+  const upcoming = row.upcomingItems ?? EMPTY;
+  const itemSort = useSort(items, ITEM_COLUMNS);
+  const upcomingSort = useSort(upcoming, ITEM_COLUMNS);
   return (
     <Modal title={`${nameOf(row.member)} · ${periodLabel}`} onClose={onClose} width={640}>
       <div className="income-detail">
@@ -42,9 +47,15 @@ function MemberDetail({ row, periodLabel, onClose }) {
           {shownOf(items.length, row.incomeCount) && <p className="muted small list-note">{shownOf(items.length, row.incomeCount)}</p>}
           {items.length ? (
             <table className="table">
-              <thead><tr><th>Date</th><th>Project</th><th className="num">Amount</th></tr></thead>
+              <thead>
+                <tr>
+                  <Th sort={itemSort} col="date">Date</Th>
+                  <Th sort={itemSort} col="project">Project</Th>
+                  <Th sort={itemSort} col="amount" className="num">Amount</Th>
+                </tr>
+              </thead>
               <tbody>
-                {items.map((i) => (
+                {itemSort.rows.map((i) => (
                   <tr key={i.id}>
                     <td><DateTag value={i.date} utc /></td>
                     <td>{i.task ? i.task.name : i.from || '—'}{i.note && <div className="muted small">{i.note}</div>}</td>
@@ -60,9 +71,15 @@ function MemberDetail({ row, periodLabel, onClose }) {
           <h4>Upcoming · {upcoming.length} {upcoming.length === 1 ? 'item' : 'items'}</h4>
           {upcoming.length ? (
             <table className="table">
-              <thead><tr><th>Expected</th><th>Task / note</th><th className="num">Amount</th></tr></thead>
+              <thead>
+                <tr>
+                  <Th sort={upcomingSort} col="date">Expected</Th>
+                  <Th sort={upcomingSort} col="project">Task / note</Th>
+                  <Th sort={upcomingSort} col="amount" className="num">Amount</Th>
+                </tr>
+              </thead>
               <tbody>
-                {upcoming.map((u, n) => (
+                {upcomingSort.rows.map((u, n) => (
                   <tr key={n}>
                     <td>{u.date ? <DateTag value={u.date} utc /> : <span className="muted">No date</span>}<div className="muted small">reported {formatDay(u.reportDay)}</div></td>
                     <td>{u.task ? u.task.name : <span className="muted">—</span>}{u.note && <div className="muted small">{u.note}</div>}</td>
@@ -78,46 +95,18 @@ function MemberDetail({ row, periodLabel, onClose }) {
   );
 }
 
-// The hover card is centred on its column but kept inside the plot, so the
-// last columns don't push it off the right edge (where it would be squeezed).
-const TOOLTIP_HALF = 150; // half of .chart-tooltip's max-width
-const tooltipLeft = (x, width) => Math.min(Math.max(x, TOOLTIP_HALF), Math.max(width - TOOLTIP_HALF, TOOLTIP_HALF));
-
 export default function IncomeChart({ rows, periodLabel }) {
-  const wrap = useRef(null);
-  const [width, setWidth] = useState(0);
+  const [wrap, width] = useElementWidth();
   const [hover, setHover] = useState(null);
   const [open, setOpen] = useState(null);
 
-  useEffect(() => {
-    const el = wrap.current;
-    if (!el) return undefined;
-    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Taller on wide screens so the chart fills the page instead of sitting in a strip.
-  const height = Math.round(Math.min(Math.max(width * 0.36, 240), 380));
-  const plotW = Math.max(width - MARGIN.left - MARGIN.right, 0);
-  const plotH = height - MARGIN.top - MARGIN.bottom;
-  const max = niceMax(Math.max(0, ...rows.map((r) => Math.max(r.planned, r.actual + r.upcoming))));
-  const y = (v) => MARGIN.top + plotH - (v / max) * plotH;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
-
-  const slot = rows.length ? plotW / rows.length : 0;
-  const column = Math.max(Math.min(MAX_COLUMN, (slot - 24) / 2 - GAP / 2), 4);
-  const pairW = column * 2 + GAP;
+  const { height, plotH, slot, column, groupW: pairW, y, barH, ticks } = columnLayout({
+    width, rows: rows.length, perGroup: 2,
+    maxValue: Math.max(0, ...rows.map((r) => Math.max(r.planned, r.actual + r.upcoming))),
+  });
   const hasData = rows.some((r) => r.planned || r.actual || r.upcoming);
-
-  // Who is highest and lowest this period, by recorded income only (the
-  // green segment). Everyone tied at the top or bottom is tagged; nothing
-  // is tagged when there is one person or everyone is equal.
-  const earned = rows.map((r) => r.actual);
-  const best = Math.max(...earned);
-  const worst = Math.min(...earned);
-  const ranked = rows.length > 1 && best !== worst;
-  const rank = (i) => (!ranked ? '' : earned[i] === best ? 'top' : earned[i] === worst ? 'low' : '');
+  // Who is highest and lowest this period, by recorded income only (the green segment).
+  const rank = rankOf(rows.map((r) => r.actual));
 
   return (
     <figure className="chart income-chart">
@@ -147,10 +136,8 @@ export default function IncomeChart({ rows, periodLabel }) {
 
             {rows.map((r, i) => {
               const x0 = MARGIN.left + slot * i + (slot - pairW) / 2;
-              const xPlanned = x0;
               const xReal = x0 + column + GAP;
-              const actualH = (r.actual / max) * plotH;
-              const upcomingH = (r.upcoming / max) * plotH;
+              const upcomingH = barH(r.upcoming);
               // The red segment sits on top of the green one with a 2px surface gap.
               const upcomingBottom = y(r.actual) - (r.actual > 0 && r.upcoming > 0 ? GAP : 0);
               const active = hover?.index === i;
@@ -165,8 +152,8 @@ export default function IncomeChart({ rows, periodLabel }) {
                 >
                   {/* Hit target covers the whole slot, wider than the marks. */}
                   <rect x={MARGIN.left + slot * i} y={MARGIN.top} width={slot} height={plotH} fill="transparent" />
-                  {r.planned > 0 && <path d={topRounded(xPlanned, y(r.planned), column, (r.planned / max) * plotH)} fill="var(--series-1)" />}
-                  {r.actual > 0 && <path d={topRounded(xReal, y(r.actual), column, actualH)} fill="var(--series-3)" />}
+                  {r.planned > 0 && <path d={topRounded(x0, y(r.planned), column, barH(r.planned))} fill="var(--series-1)" />}
+                  {r.actual > 0 && <path d={topRounded(xReal, y(r.actual), column, barH(r.actual))} fill="var(--series-3)" />}
                   {r.upcoming > 0 && (
                     <path d={topRounded(xReal, upcomingBottom - upcomingH, column, upcomingH)} fill="var(--series-2)" />
                   )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, upload } from '../../api.js';
+import { api, uploadImages } from '../../api.js';
+import { useLatestRequest } from '../../useLiveData.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { todayInput, formatAmount, timeAgo } from '../../format.js';
@@ -8,8 +9,11 @@ import { useCurrency } from './useCurrency.js';
 import Modal from '../../components/Modal.jsx';
 import Icon from '../../components/Icon.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
+import { NOTE_MAX } from './constants.js';
 
 const CURRENCY_KEY = 'bm.incomeCurrency';
+// The server rounds each step of the split to cents; the preview does too.
+const cents = (n) => Math.round(n * 100) / 100;
 
 // Income record: who earned it, how much (in whatever currency it arrived
 // in), when and where it came from, with the task it belongs to if there is
@@ -35,27 +39,39 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const trackUpcoming = useLatestRequest();
 
+  // A list that fails to load says so: otherwise a required select is
+  // simply empty and nothing explains why the form cannot be sent.
   useEffect(() => {
-    if (forOthers) api('/incomes/members').then((d) => setMembers(d.members)).catch(() => setMembers([]));
-    api('/tasks').then((d) => setTasks(d.tasks)).catch(() => setTasks([]));
-    api('/residents').then((d) => setResidents(d.residents)).catch(() => setResidents([]));
+    const failed = (err) => setError(err.message);
+    if (forOthers) api('/incomes/members').then((d) => setMembers(d.members)).catch(failed);
+    api('/tasks').then((d) => setTasks(d.tasks)).catch(failed);
+    api('/residents').then((d) => setResidents(d.residents)).catch(failed);
     api('/incomes/methods').then((d) => {
       setMethods(d.methods);
       const m = d.methods.find((x) => x.key === 'paypal') ?? d.methods[0];
       if (m) setForm((f) => ({ ...f, method: m.key, feePercent: m.feePercent, feeFixed: m.feeFixed }));
-    }).catch(() => setMethods([]));
+    }).catch(failed);
   }, [forOthers]);
 
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const set = (key) => (e) => { const { value } = e.target; setForm((f) => ({ ...f, [key]: value })); };
   // The currency last used on this device is offered first next time.
-  const pickCurrency = (e) => { save(CURRENCY_KEY, e.target.value); setForm({ ...form, currency: e.target.value }); };
+  const pickCurrency = (e) => { const { value } = e.target; save(CURRENCY_KEY, value); setForm((f) => ({ ...f, currency: value })); };
+  // A remembered currency that is not on offer (rates not loaded, or no
+  // rate for it yet) would show as the base while the request sends it.
+  const currency = rates.currencies.includes(form.currency) ? form.currency : rates.base;
 
   // Only the chosen person's projects and residents can be linked ('' = the person recording).
   const ownerId = String(form.member || user.id);
   const ownTasks = tasks.filter((t) => String(t.owner?.id) === ownerId);
   const ownResidents = residents.filter((r) => String(r.owner?.id) === ownerId);
-  const pickMember = (e) => setForm({ ...form, member: e.target.value, task: '', resident: '', residentPercent: '' });
+  const pickMember = (e) => {
+    const { value } = e.target;
+    trackUpcoming(); // a reply for the previous person's project is no longer wanted
+    setUpcoming(null);
+    setForm((f) => ({ ...f, member: value, task: '', resident: '', residentPercent: '' }));
+  };
   // Picking a resident brings their divide %; picking a project brings its resident.
   const pickResident = (id) => {
     const r = ownResidents.find((x) => String(x.id) === String(id));
@@ -65,10 +81,13 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   // method (with the usual fee).
   const pickTask = (e) => {
     const t = ownTasks.find((x) => String(x.id) === e.target.value);
-    const currency = t?.currency && rates.currencies.includes(t.currency) ? t.currency : null;
-    setForm((f) => ({ ...f, task: e.target.value, ...(currency ? { currency } : {}) }));
+    const taskCurrency = t?.currency && rates.currencies.includes(t.currency) ? t.currency : null;
+    setForm((f) => ({ ...f, task: e.target.value, ...(taskCurrency ? { currency: taskCurrency } : {}) }));
     setUpcoming(null);
-    if (t) api(`/incomes/upcoming?task=${t.id}`).then(setUpcoming).catch(() => setUpcoming(null));
+    // Only the reply for the project picked last may show (a slow one for
+    // the previous project would otherwise land on top of it).
+    const isLatest = trackUpcoming();
+    if (t) api(`/incomes/upcoming?task=${t.id}`).then((d) => { if (isLatest()) setUpcoming(d); }).catch(() => {});
     if (t?.resident?.id) pickResident(String(t.resident.id));
     const m = t?.method ? methods.find((x) => x.key === t.method) : null;
     if (m) setForm((f) => ({ ...f, method: m.key, feePercent: m.feePercent, feeFixed: m.feeFixed }));
@@ -85,17 +104,18 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
 
   // The amount in the base currency, as the server will record it: fees
   // (in the base) and the split come off that.
-  const inBase = form.currency === rates.base;
-  const rate = inBase ? 1 : rates.rates?.[form.currency];
+  const inBase = currency === rates.base;
+  const rate = inBase ? 1 : rates.rates?.[currency];
   const hasRate = inBase || Number.isFinite(rate);
   const typed = Number(form.amount) || 0;
-  const gross = hasRate ? typed / rate : 0;
+  const gross = hasRate ? cents(typed / rate) : 0;
   const baseMoney = (n) => `${rates.base} ${formatAmount(n)}`;
 
   // The split, as the server will work it out: fee first, then the resident's share.
-  const feeAmount = Math.min(gross, gross * ((Number(form.feePercent) || 0) / 100) + (Number(form.feeFixed) || 0));
-  const residentAmount = (gross - feeAmount) * ((Number(form.residentPercent) || 0) / 100);
-  const net = gross - feeAmount - residentAmount;
+  const feeAmount = cents(Math.min(gross, gross * ((Number(form.feePercent) || 0) / 100) + (Number(form.feeFixed) || 0)));
+  const afterFee = cents(gross - feeAmount);
+  const residentAmount = cents(afterFee * ((Number(form.residentPercent) || 0) / 100));
+  const net = cents(afterFee - residentAmount);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -104,22 +124,21 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
     try {
       let attached = kept;
       if (files.length) {
-        const fd = new FormData();
-        files.forEach((f) => fd.append('images', f));
-        const uploaded = await upload('/incomes/upload', fd);
-        attached = [...kept, ...uploaded.images.map((i) => ({ ...i, url: `/api/files/${i.file}` }))];
+        const uploaded = await uploadImages('/incomes/upload', files);
+        attached = [...kept, ...uploaded.images];
         setKept(attached);
         setFiles([]);
       }
       const images = attached.map(({ file, name, type, size }) => ({ file, name, type, size }));
       const result = await api('/incomes', {
         method: 'POST',
-        body: { ...form, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
+        body: { ...form, currency, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
       });
       toast(result.settled ? `Income recorded · ${result.settled} upcoming ${result.settled === 1 ? 'day' : 'days'} settled` : 'Income recorded');
       onSaved();
     } catch (err) {
       setError(err.message);
+    } finally {
       setBusy(false);
     }
   };
@@ -156,7 +175,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
             Money
             <span className="money-input">
               <input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} required autoFocus aria-label="Amount" />
-              <select value={form.currency} onChange={pickCurrency} aria-label="Currency">
+              <select value={currency} onChange={pickCurrency} aria-label="Currency">
                 {rates.currencies.map((c) => (
                   <option key={c} value={c} disabled={c !== rates.base && !Number.isFinite(rates.rates?.[c])}>{c}</option>
                 ))}
@@ -171,8 +190,8 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
         {!inBase && (
           <p className={`muted small form-note money-rate ${hasRate ? '' : 'alert-text'}`}>
             {hasRate
-              ? <>Recorded as <strong>{baseMoney(gross)}</strong> · 1 {rates.base} = {rate} {form.currency}{rates.rateDate ? ` · rate of ${rates.rateDate}` : ''}{rates.fetchedAt ? ` · checked ${timeAgo(rates.fetchedAt)}` : ''}, refreshed automatically.</>
-              : `No exchange rate for ${form.currency} yet. Record it in ${rates.base} or try again in a moment.`}
+              ? <>Recorded as <strong>{baseMoney(gross)}</strong> · 1 {rates.base} = {rate} {currency}{rates.rateDate ? ` · rate of ${rates.rateDate}` : ''}{rates.fetchedAt ? ` · checked ${timeAgo(rates.fetchedAt)}` : ''}, refreshed automatically.</>
+              : `No exchange rate for ${currency} yet. Record it in ${rates.base} or try again in a moment.`}
           </p>
         )}
         <div className="row">
@@ -191,14 +210,14 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
             </select>
           </label>
         </div>
-        {upcoming && upcoming.amount > 0 && (
+        {form.task && upcoming && upcoming.amount > 0 && (
           <div className="note upcoming-note">
             <Icon name="coins" size={16} />
             <span className="note-grow">
-              <strong>Upcoming on this project: {formatAmount(upcoming.amount)}</strong>
+              <strong>Upcoming on this project: {upcoming.currency ?? rates.base} {formatAmount(upcoming.amount)}</strong>
               <span className="muted small"> · {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles them.</span>
             </span>
-            <button type="button" className="btn small-btn" onClick={() => setForm((f) => ({ ...f, amount: upcoming.amount }))}>Use amount</button>
+            <button type="button" className="btn small-btn" onClick={() => setForm((f) => ({ ...f, amount: upcoming.amount, currency: upcoming.currency ?? rates.base }))}>Use amount</button>
           </div>
         )}
         {upcoming && upcoming.amount === 0 && form.task && (
@@ -233,7 +252,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
         </div>
         <label>
           Note
-          <textarea rows={2} maxLength={2000} value={form.note} onChange={set('note')} />
+          <textarea rows={2} maxLength={NOTE_MAX} value={form.note} onChange={set('note')} />
         </label>
         <div className="target-pick">
           <span className="field-label">Screenshots <span className="muted form-help">optional</span></span>
