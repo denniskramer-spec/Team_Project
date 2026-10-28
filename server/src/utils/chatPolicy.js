@@ -51,12 +51,15 @@ export const titleKeyFor = (channelKey, groupSlug, userId) => {
   return channelKey;
 };
 
-// Socket rooms that should receive events for a channel.
-export const roomsFor = (channel) => (channel.kind === 'group'
-  ? [`group:${channel.group._id}`, 'role:leader', 'role:admin']
-  : channel.kind === 'dm'
-    ? channel.peers.map((id) => `user:${id}`)
-    : ['all']);
+// Socket rooms that should receive events for a channel: the same people
+// resolveChannel lets in. Finance chat goes to bosses and the leader only,
+// never to the room every socket is in.
+export const roomsFor = (channel) => {
+  if (channel.kind === 'group') return [`group:${channel.group._id}`, 'role:leader', 'role:admin'];
+  if (channel.kind === 'dm') return channel.peers.map((id) => `user:${id}`);
+  if (channel.kind === 'finance') return ['role:boss', 'role:leader'];
+  return ['all'];
+};
 
 // Message authors can edit their own; the leader and admins can delete any.
 export const canEditMessage = (user, message) => String(message.author._id ?? message.author) === String(user._id);

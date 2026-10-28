@@ -9,6 +9,10 @@ import { unauthorized, forbidden } from '../utils/httpError.js';
 
 export const TOKEN_COOKIE = 'token';
 
+// Tokens are signed with one algorithm, and only that one is accepted back.
+const ALGORITHM = 'HS256';
+const VERIFY = { algorithms: [ALGORITHM] };
+
 export const cookieOptions = {
   httpOnly: true,
   sameSite: 'lax',
@@ -18,6 +22,7 @@ export const cookieOptions = {
 
 export function signToken(user) {
   return jwt.sign({ sub: String(user._id), role: user.role }, env.jwtSecret, {
+    algorithm: ALGORITHM,
     expiresIn: env.jwtExpiresIn,
     jwtid: randomUUID(),
   });
@@ -36,7 +41,7 @@ export function setSessionCookie(res, user) {
 export async function revokeToken(req) {
   let payload;
   try {
-    payload = jwt.verify(readToken(req) ?? '', env.jwtSecret);
+    payload = jwt.verify(readToken(req) ?? '', env.jwtSecret, VERIFY);
   } catch {
     return null; // no valid token: nothing to end
   }
@@ -62,7 +67,7 @@ export async function loadSession(token) {
   if (!token) throw unauthorized();
   let payload;
   try {
-    payload = jwt.verify(token, env.jwtSecret);
+    payload = jwt.verify(token, env.jwtSecret, VERIFY);
   } catch {
     throw unauthorized('Session expired, please log in again');
   }

@@ -1,4 +1,26 @@
+import net from 'node:net';
 import rateLimit from 'express-rate-limit';
+
+// The address a per-address limit counts by: an IPv4 address as it is, an
+// IPv6 address as its /56 network. One machine can use any address of the
+// /64 it is given (and often a few neighbouring ones), so counting each
+// address on its own would hand it a fresh allowance every time.
+export function ipBucket(ip, bits = 56) {
+  if (typeof ip !== 'string' || !net.isIPv6(ip)) return String(ip ?? '');
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const [head, tail = ''] = ip.split('%')[0].split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  const groups = [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t].map((g) => parseInt(g, 16) || 0);
+  let left = bits;
+  const kept = groups.map((g) => {
+    const take = Math.min(16, Math.max(0, left));
+    left -= 16;
+    return take ? (g >> (16 - take)) << (16 - take) : 0;
+  });
+  return `${kept.map((g) => g.toString(16)).join(':')}/${bits}`;
+}
 
 // Per-person limits on how fast things can be posted. They sit far above
 // what anyone does by hand and only stop a script (or a stuck client) from

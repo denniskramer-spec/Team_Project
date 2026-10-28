@@ -5,11 +5,9 @@ import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
 import Income from '../models/Income.js';
 import User from '../models/User.js';
-import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
-import { visibleGroups } from '../utils/scope.js';
-import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
+import { scopeFilter, narrowScope, scopeName } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkOptionalAmount, checkCount, checkText } from '../utils/validate.js';
 import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
@@ -67,35 +65,13 @@ const serialize = (p, user, achieved = null) => ({
   mine: p.scope === 'group' ? canChangeGroupRecord(user, p) : String(p.owner?._id ?? p.owner) === String(user._id),
 });
 
-// Plans this user may read: everything (leader, admin), their group (boss)
-// or only their own (member). An optional member filter narrows it further.
-async function readFilter(req, groups) {
-  const user = req.user;
-  const allowed = canReadTeam(user) ? visibleGroups(user, groups) : [];
-  const filter = scopeFilter(user, 'owner');
-
-  const groupSlug = req.query.group;
-  if (groupSlug && groupSlug !== 'all') {
-    const group = allowed.find((g) => g.slug === groupSlug);
-    if (!group) throw notFound('Group not found');
-    filter.group = group._id;
-  }
-  if (req.query.member) {
-    const member = await User.findById(
-      mongoose.isValidObjectId(req.query.member) ? req.query.member : null,
-    );
-    if (!member || !canSeeMember(user, member)) throw notFound('Member not found');
-    filter.owner = member._id;
-  }
-  return filter;
-}
-
 // GET /api/plans?type=weekly&period=2026-W39&group=all|<slug>
 router.get('/', async (req, res) => {
   const type = checkType(req.query.type);
   const period = parsePeriod(type, req.query.period || periodKey(type));
-  const groups = await Group.find({}, 'name slug').lean();
-  const readable = await readFilter(req, groups);
+  // Plans this user may read: everything (leader, admin), their group (boss)
+  // or only their own (member), narrowed to the group or member picked.
+  const { allowed, filter: readable } = await narrowScope(req, 'owner');
   const base = { type, period: period.key };
 
   const [mine, myGroupPlan, found] = await Promise.all([
@@ -149,8 +125,9 @@ router.get('/', async (req, res) => {
   const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: personal.filter((p) => p.status === s).length }), {});
   // Totals add up personal plans only: a boss's group plan repeats their
   // members' targets (Checkout leaves it out for the same reason).
-  const totals = personal.reduce((acc, p) => { const t = targetsOf(p); for (const i of PLAN_ITEMS) acc[i.key] += t[i.key]; return acc; }, zero());
-  const achievedTotals = personal.reduce((acc, p) => { const a = achievedOf(p); for (const i of PLAN_ITEMS) acc[i.key] += a[i.key]; return acc; }, zero());
+  const cents = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 100) / 100]));
+  const totals = cents(personal.reduce((acc, p) => { const t = targetsOf(p); for (const i of PLAN_ITEMS) acc[i.key] += t[i.key]; return acc; }, zero()));
+  const achievedTotals = cents(personal.reduce((acc, p) => { const a = achievedOf(p); for (const i of PLAN_ITEMS) acc[i.key] += a[i.key]; return acc; }, zero()));
 
   const nextKey = shiftPeriod(type, period.key, 1);
   res.json({
@@ -173,8 +150,8 @@ router.get('/', async (req, res) => {
     counts,
     totals,
     achievedTotals,
-    groups: (canReadTeam(req.user) ? visibleGroups(req.user, groups) : []).map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
-    scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
+    groups: allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
+    scope: scopeName(req.user),
   });
 });
 
@@ -208,7 +185,9 @@ router.put('/', async (req, res) => {
 
 async function findOwnPlan(req) {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Plan not found');
-  const plan = await Plan.findById(req.params.id).populate('owner', 'name role').populate('group', 'name slug');
+  // A plan outside this role's scope looks like it does not exist.
+  const plan = await Plan.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'owner') })
+    .populate('owner', 'name role').populate('group', 'name slug');
   if (!plan) throw notFound('Plan not found');
   const allowed = plan.scope === 'group'
     ? canChangeGroupRecord(req.user, plan)

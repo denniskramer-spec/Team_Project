@@ -3,8 +3,6 @@ import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Report, { CALL_RESULTS } from '../models/Report.js';
 import Task from '../models/Task.js';
-import Resident from '../models/Resident.js';
-import { formatPrice } from '../utils/project.js';
 import { workEarnings } from '../utils/payments.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
@@ -20,7 +18,9 @@ import { checkOptionalAmount, checkCount, checkDay, checkList, checkText } from 
 import { canChangeGroupRecord } from '../utils/groupRecords.js';
 import { person as personOf } from '../utils/finance.js';
 import { reportChanged, taskWorkChanged } from '../socket/events.js';
-import { earnedOf, upcomingOf } from '../utils/reportWork.js';
+import { earnedOf } from '../utils/reportWork.js';
+import { saveReport } from '../utils/reportDraft.js';
+import { groupSummary, planLines, sumOf, writerContext } from '../utils/reportSummary.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -141,33 +141,6 @@ const serialize = (r) => (r ? {
   updatedAt: r.updatedAt,
 } : null);
 
-const SUMMED = ['aiBid', 'resumes', 'forms', 'biddingHours', 'contacted', 'replies', 'agreed', 'income', 'upcomingAmount'];
-const sumOf = (rows) => rows.reduce((acc, r) => {
-  acc.jobBid += r.jobBid || r.bid || 0;
-  for (const key of SUMMED) acc[key] += r[key] || 0;
-  acc.earned = Math.round((acc.earned + earnedOf(r.work)) * 100) / 100;
-  return acc;
-}, Object.fromEntries(['jobBid', ...SUMMED, 'earned'].map((k) => [k, 0])));
-
-// What the report form needs besides the report: the author's active
-// projects (one box each), their residents (for #tags) and the previous
-// report's plan for tomorrow, which becomes today's plan.
-async function writerContext(user, type, periodKey_) {
-  const [projects, residents, previous] = await Promise.all([
-    Task.find({ owner: user._id, status: 'active' }, 'name source price currency priceUnit resident').populate('resident', 'name sharePercent').sort('name').lean(),
-    Resident.find({ owner: user._id }, 'name').sort('name').lean(),
-    Report.findOne({ author: user._id, scope: 'personal', type, periodStart: { $lt: parsePeriod(type, periodKey_).start } }, 'period planTomorrow').sort({ periodStart: -1 }).lean(),
-  ]);
-  return {
-    projects: projects.map((t) => ({
-      id: t._id, name: t.name, source: t.source, priceLabel: formatPrice(t), resident: t.resident?.name ?? null,
-      price: t.price, priceUnit: t.priceUnit, currency: t.currency, residentPercent: t.resident?.sharePercent ?? 0,
-    })),
-    residents: residents.map((r) => ({ id: r._id, name: r.name })),
-    previousPlan: previous ? { period: previous.period, items: String(previous.planTomorrow ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean) } : null,
-  };
-}
-
 // Reports are daily.
 function checkType(type) {
   if (type && type !== 'daily') throw badRequest('Reports are daily');
@@ -240,22 +213,7 @@ router.get('/', async (req, res) => {
   // of the day added up (and how many of them are in).
   const groupsShown = groupFilter ? allowed.filter((g) => String(g._id) === String(groupFilter)) : allowed;
   const groupSummaries = canReadGroupReports(req.user) && !authorFilter._id
-    ? groupsShown.map((g) => {
-      const inGroup = (doc) => String(doc.group?._id ?? doc.group) === String(g._id);
-      const reports = personalReports.filter(inGroup);
-      const sent = reports.filter((r) => r.sentAt);
-      return {
-        group: { id: g._id, name: g.name, slug: g.slug },
-        expected: current.filter(inGroup).length,
-        sent: sent.length,
-        drafts: reports.length - sent.length,
-        totals: sumOf(reports),
-        projectsWritten: reports.reduce((n, r) => n + (r.work ?? []).filter((w) => w.text?.trim()).length, 0),
-        hours: reports.reduce((n, r) => n + (r.work ?? []).reduce((h, w) => h + (w.hours || 0), 0), 0),
-        calls: reports.reduce((n, r) => n + (r.calls ?? []).length, 0),
-        issues: reports.filter((r) => r.issues).map((r) => ({ member: r.author?.name ?? '?', text: r.issues })),
-      };
-    })
+    ? groupsShown.map((g) => groupSummary(g, personalReports, current))
     : [];
 
   const nextKey = shiftPeriod(type, period.key, 1);
@@ -288,8 +246,20 @@ router.get('/', async (req, res) => {
 router.get('/status', async (req, res) => {
   if (!canWritePersonal(req.user)) return res.json({ canWrite: false, due: false });
   const period = periodKey('daily');
-  const mine = await Report.findOne({ author: req.user._id, scope: 'personal', type: 'daily', period }, 'sentAt updatedAt').lean();
-  res.json({ canWrite: true, period, due: !mine?.sentAt, draft: Boolean(mine && !mine.sentAt), sentAt: mine?.sentAt ?? null });
+  const { start, end } = parsePeriod('daily', period);
+  const [mine, previous] = await Promise.all([
+    Report.findOne({ author: req.user._id, scope: 'personal', type: 'daily', period }, 'sentAt updatedAt todayPlan').lean(),
+    Report.findOne({ author: req.user._id, scope: 'personal', type: 'daily', periodStart: { $lt: start } }, 'planTomorrow').sort({ periodStart: -1 }).lean(),
+  ]);
+  // Today's plan as the side panel ticks it: the report's own, or what the
+  // previous report planned for today (the same rule as the report form).
+  const todayPlan = mine?.todayPlan?.length
+    ? mine.todayPlan.map((p) => ({ text: p.text, done: Boolean(p.done) }))
+    : planLines(previous?.planTomorrow).map((text) => ({ text, done: false }));
+  res.json({
+    canWrite: true, period, start, end, // `end` lets the client re-check when the day turns
+    due: !mine?.sentAt, draft: Boolean(mine && !mine.sentAt), sentAt: mine?.sentAt ?? null, todayPlan,
+  });
 });
 
 // GET /api/reports/today — for bosses, the leader and admins: who in their
@@ -342,33 +312,22 @@ router.put('/', async (req, res) => {
   }
   if (period.start > new Date()) throw badRequest('That period has not started yet');
 
-  let work = await resolveWork(req, scope);
+  const work = await resolveWork(req, scope);
   // The hours (or tasks done) reported are what the member expects to be
   // paid for this day: the unpaid ones add up to the report's upcoming
   // amount, due on the report day. Income is only what Finance records; an
   // income record on the project settles these entries (see routes/incomes.js),
-  // and a re-saved report keeps that.
-  let upcoming;
-  if (work !== undefined) {
-    const existing = await Report.findOne({ author: req.user._id, type, period: period.key, scope }, 'work').lean();
-    const paid = new Map((existing?.work ?? []).filter((w) => w.paidBy).map((w) => [String(w.task), w.paidBy]));
-    work = work.map((w) => ({ ...w, paidBy: paid.get(String(w.task)) ?? null }));
-    upcoming = upcomingOf(work);
-  }
+  // and saveReport keeps those marks even when an income lands mid-save.
   const fields = {
     ...checkFields(req.body),
     ...(req.body.task !== undefined ? { task: await resolveTask(req, scope) } : {}),
-    ...(work !== undefined ? { work, upcomingAmount: upcoming, upcomingDate: upcoming > 0 ? period.start : null } : {}),
     // Saving without `send` keeps (or starts) a draft; `send` marks it sent.
     ...(req.body.send === true ? { sentAt: new Date() } : {}),
     periodStart: period.start,
     periodEnd: period.end,
+    group: req.user.group ?? null,
   };
-  const report = await Report.findOneAndUpdate(
-    { author: req.user._id, type, period: period.key, scope },
-    { ...fields, group: req.user.group ?? null },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
+  const report = await saveReport({ author: req.user._id, type, period: period.key, scope }, fields, work);
   await report.populate(POPULATE);
 
   reportChanged(req.user, report);

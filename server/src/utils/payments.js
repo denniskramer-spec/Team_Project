@@ -1,6 +1,7 @@
 import { badRequest } from './httpError.js';
 import { checkOptionalAmount } from './validate.js';
 import PaymentFee from '../models/PaymentFee.js';
+import { currentRates, toBase } from './exchange.js';
 
 // Ways income arrives. Each starts with a usual fee (percent of the amount +
 // a fixed part, in the amount's currency). The ones marked `auto` are
@@ -95,9 +96,19 @@ export function checkPayment(body, rateFor = rateOf) {
 // What a day's work on a project is worth to the member, after the
 // resident's share: price × hours on an hourly project, price × tasks done
 // on a per-task one, less the share. Other price units (per month, fixed...)
-// cannot be worked out from a day's work, so they give 0.
-export function workEarnings({ price = 0, priceUnit = 'hour', residentPercent = 0 }, { hours = 0, count = 0 } = {}) {
+// cannot be worked out from a day's work, so they give 0. A project priced
+// in another currency is converted to the base at today's rate, the same
+// way an income record is, so reports, Finance and Checkout add up in one
+// currency (no rate yet for that currency is an error, not a silent 1:1).
+//   { amount, currency, rate }   amount in the base; rate = currency per base unit
+export function priceWork({ price = 0, priceUnit = 'hour', residentPercent = 0, currency } = {}, { hours = 0, count = 0 } = {}, rates = currentRates()) {
   const units = priceUnit === 'hour' ? hours : priceUnit === 'task' ? count : 0;
-  if (!(units > 0) || !(price > 0)) return 0;
-  return money(price * units * (1 - (residentPercent || 0) / 100));
+  const code = currency || rates.base;
+  const rate = code === rates.base ? 1 : Number(rates.rates?.[code]) || null;
+  if (!(units > 0) || !(price > 0)) return { amount: 0, currency: code, rate };
+  const earned = money(price * units * (1 - (residentPercent || 0) / 100));
+  return { amount: toBase(earned, code, rates).amount, currency: code, rate };
 }
+
+// Just the base amount of priceWork().
+export const workEarnings = (task, work, rates) => priceWork(task, work, rates).amount;

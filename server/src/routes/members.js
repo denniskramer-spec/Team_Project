@@ -8,19 +8,18 @@ import { ROLES } from '../config/roles.js';
 import { permissionsFor, pendingFilter } from '../utils/memberPolicy.js';
 import { tempPassword } from '../utils/password.js';
 import {
-  requireFields, checkUsername, checkPassword, checkName, parseBirthday,
+  requireFields, checkUsername, checkPassword, checkName, parseBirthday, searchRegex,
 } from '../utils/validate.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js';
 import Resident from '../models/Resident.js';
 import { scopeFilter } from '../utils/visibility.js';
 import { moveRecordsToGroup } from '../utils/moveRecords.js';
-import { serialize as serializeResident } from './residents.js';
+import { serializeResident } from '../utils/residentView.js';
 import { approvalsChanged, directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function serialize(user, actor) {
   const g = user.group;
@@ -78,23 +77,22 @@ function broadcast(targetId, opts) {
 
 // ---------- Directory (Member channel) ----------
 
-// GET /api/members?group=all|<slug>&status=active|disabled&q=text
+// GET /api/members?group=all|<slug>&status=active|disabled|all&q=text|<slug>&status=active|disabled&q=text
 router.get('/', async (req, res) => {
   const filter = { status: 'active' };
 
-  if (req.query.status === 'disabled') {
+  // Disabled accounts, or every account (`status=all`): admins and the leader only.
+  if (req.query.status === 'disabled' || req.query.status === 'all') {
     if (!['admin', 'leader'].includes(req.user.role)) throw forbidden();
-    filter.status = 'disabled';
+    filter.status = req.query.status === 'all' ? { $in: ['active', 'disabled'] } : 'disabled';
   }
   if (req.query.group && req.query.group !== 'all') {
     const group = await Group.findOne({ slug: req.query.group });
     if (!group) throw notFound('Group not found');
     filter.group = group._id;
   }
-  if (req.query.q?.trim()) {
-    const rx = new RegExp(escapeRegex(req.query.q.trim()), 'i');
-    filter.$or = [{ name: rx }, { username: rx }, { memberId: rx }];
-  }
+  const rx = searchRegex(req.query.q);
+  if (rx) filter.$or = [{ name: rx }, { username: rx }, { memberId: rx }];
 
   const users = await User.find(filter).populate('group', 'name slug').sort('name');
 

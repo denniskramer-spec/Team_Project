@@ -24,9 +24,13 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, `${Date.now()}-${randomBytes(6).toString('hex')}.${TYPES[file.mimetype]}`),
 });
 
+// Only files are expected in an upload; text parts are not kept, so they
+// are capped hard (multer would otherwise buffer any number of them).
 const upload = multer({
   storage,
-  limits: { fileSize: MAX_IMAGE_BYTES, files: MAX_IMAGES },
+  limits: {
+    fileSize: MAX_IMAGE_BYTES, files: MAX_IMAGES, parts: MAX_IMAGES + 2, fields: 2, fieldSize: 1024, fieldNameSize: 64, headerPairs: 50,
+  },
   fileFilter: (req, file, cb) => (TYPES[file.mimetype] ? cb(null, true) : cb(badRequest('Only PNG, JPEG, GIF or WebP images can be attached'))),
 });
 
@@ -70,17 +74,29 @@ export function imageUpload(req, res, next) {
   });
 }
 
-// 30 upload requests per 15 minutes per user, for each upload route.
-export const uploadLimiter = () => rateLimit({
+// 30 upload requests per 15 minutes per user, for each upload route, and
+// no more than 200 a day: with 5 files of 5 MB each that is as much disk as
+// one person can take up before the orphan sweep catches up.
+const dailyUploadLimit = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 200,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'You have uploaded a lot today, please try again tomorrow' },
+});
+export const uploadLimiter = () => [dailyUploadLimit, rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
   keyGenerator: (req) => String(req.user._id),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { message: 'Too many uploads, please try again in a few minutes' },
-});
+})];
 
-export const describeUpload = (f) => ({ file: f.filename, name: f.originalname.slice(0, 120), type: f.mimetype, size: f.size });
+// The same shape a saved record sends back (see fileRefs.imageUrl), so the
+// client can keep an upload answer as-is and never builds a file URL itself.
+export const describeUpload = (f) => ({ file: f.filename, url: `/api/files/${f.filename}`, name: f.originalname.slice(0, 120), type: f.mimetype, size: f.size });
 
 const SAFE_NAME = /^[0-9]+-[0-9a-f]{12}\.(png|jpg|gif|webp)$/;
 
@@ -119,7 +135,7 @@ export async function removeUnusedFiles(files, stillUsed) {
 // Uploads happen before their record is saved, so a cancelled or failed form
 // leaves files nothing points to. Removes those once they are older than
 // `graceMs` (names start with their upload time), leaving time to finish a form.
-export async function sweepOrphans(stillUsed, graceMs = 24 * 60 * 60 * 1000) {
+export async function sweepOrphans(stillUsed, graceMs = 2 * 60 * 60 * 1000) {
   const cutoff = Date.now() - graceMs;
   const old = (await fs.readdir(uploadsDir)).filter((f) => SAFE_NAME.test(f) && Number(f.split('-')[0]) < cutoff);
   await removeUnusedFiles(old, stillUsed);

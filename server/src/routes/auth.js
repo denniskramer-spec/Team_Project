@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import {
   requireAuth, revokeToken, setSessionCookie, TOKEN_COOKIE, cookieOptions,
 } from '../middleware/auth.js';
+import { ipBucket } from '../middleware/limits.js';
 import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday,
 } from '../utils/validate.js';
@@ -18,23 +19,47 @@ import { clientIp } from '../utils/audit.js';
 
 const router = Router();
 
+const typedUsername = (req) => String(req.body?.username ?? '').trim().toLowerCase().slice(0, 30);
+
+// Has this address logged into this account before? The security log keeps
+// every login with its address.
+const knownDevice = async (username, ip) => Boolean(username && ip
+  && await AuditLog.exists({ action: 'auth.login', ip, $or: [{ 'user.username': username }, { 'details.username': username }] }));
+
 // Slows down password guessing: 10 failed attempts per 15 minutes for one
 // username from one IP, so a colleague's typos (or an attack on one account)
 // don't lock out everyone else behind the same office router.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  keyGenerator: (req) => `${req.ip}|${String(req.body?.username ?? '').trim().toLowerCase().slice(0, 30)}`,
+  keyGenerator: (req) => `${ipBucket(req.ip)}|${typedUsername(req)}`,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   message: { message: 'Too many attempts, please try again in a few minutes' },
 });
 
+// One account from many addresses: 30 failed attempts per 15 minutes in
+// all, wherever they come from. Twenty bad logins a day by hand would have
+// to all land in one quarter of an hour to notice it. A device that has
+// logged into the account before is not the one guessing: it keeps its own
+// tries while the account is locked, so a stranger cannot lock the owner out.
+const accountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  keyGenerator: (req) => `account|${typedUsername(req)}`,
+  skip: (req) => knownDevice(typedUsername(req), clientIp(req)),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { message: 'Too many attempts on this account, please try again in a few minutes' },
+});
+
 // Behind it, a wider limit per IP stops one machine trying many usernames.
 const ipLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 100,
+  keyGenerator: (req) => ipBucket(req.ip),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skipSuccessfulRequests: true,
@@ -54,6 +79,7 @@ async function publicUser(user) {
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
+  keyGenerator: (req) => ipBucket(req.ip),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { message: 'Too many sign-ups from this network, please try again later' },
@@ -87,7 +113,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   });
 });
 
-router.post('/login', ipLimiter, authLimiter, async (req, res) => {
+router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) => {
   requireFields(req.body, ['username', 'password']);
   const user = await User.findOne({ username: req.body.username.trim().toLowerCase() })
     .select('+passwordHash');
@@ -153,7 +179,18 @@ router.patch('/profile', requireAuth, async (req, res) => {
   res.json({ user: await publicUser(req.user) });
 });
 
-router.post('/change-password', requireAuth, async (req, res) => {
+// Each check costs a bcrypt hash: a handful of tries a quarter of an hour
+// is plenty for a person and nothing for a script to lean on.
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  keyGenerator: (req) => String(req.user._id),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many password attempts, please try again in a few minutes' },
+});
+
+router.post('/change-password', requireAuth, passwordLimiter, async (req, res) => {
   requireFields(req.body, ['currentPassword', 'newPassword']);
   const user = await User.findById(req.user._id).select('+passwordHash');
   if (!(await user.checkPassword(req.body.currentPassword))) {

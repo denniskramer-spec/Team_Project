@@ -8,6 +8,7 @@ import { canManage } from '../utils/memberPolicy.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { actorOf } from '../utils/audit.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
+import { searchRegex } from '../utils/validate.js';
 import {
   sessionChanged, directoryChanged, navChanged, approvalsChanged, taskChanged, residentChanged, chatAccountChanged,
   incomeChanged, outcomeChanged, reportChanged, planChanged, instructionEvent,
@@ -24,8 +25,6 @@ router.use(requireAuth, (req, res, next) => {
 const PAGE = 100;
 const EXPORT_MAX = 5000;
 const DAY = 24 * 60 * 60 * 1000;
-
-const escapeRx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // The "load older" cursor on the field each list is sorted by (`at` for the
 // log, `deletedAt` for deleted records) instead of createdAt.
@@ -51,16 +50,15 @@ const KINDS = {
 function logFilter(query) {
   const and = [];
   if (query.kind && query.kind !== 'all') {
-    if (!KINDS[query.kind]) throw badRequest('Unknown kind');
+    if (!Object.hasOwn(KINDS, query.kind)) throw badRequest('Unknown kind');
     and.push(KINDS[query.kind]);
   }
   if (query.user) {
     if (!mongoose.isValidObjectId(query.user)) throw badRequest('Unknown user');
     and.push({ 'user.id': query.user });
   }
-  const q = String(query.q ?? '').trim().slice(0, 60);
-  if (q) {
-    const rx = new RegExp(escapeRx(q), 'i');
+  const rx = searchRegex(query.q);
+  if (rx) {
     and.push({ $or: [{ 'user.name': rx }, { 'user.username': rx }, { username: rx }, { ip: rx }, { path: rx }, { action: rx }, { 'target.label': rx }] });
   }
   const older = olderOn(query, 'at');
@@ -167,9 +165,8 @@ router.get('/deleted', async (req, res) => {
   if (req.query.model) and.push({ model: String(req.query.model).slice(0, 40) });
   if (req.query.state === 'gone') and.push({ restoredAt: null });
   if (req.query.state === 'restored') and.push({ restoredAt: { $ne: null } });
-  const q = String(req.query.q ?? '').trim().slice(0, 60);
-  if (q) {
-    const rx = new RegExp(escapeRx(q), 'i');
+  const rx = searchRegex(req.query.q);
+  if (rx) {
     and.push({ $or: [{ label: rx }, { 'deletedBy.name': rx }, { 'deletedBy.username': rx }, { ip: rx }, { model: rx }] });
   }
   const older = olderOn(req.query, 'deletedAt');
@@ -229,6 +226,11 @@ router.post('/deleted/:id/restore', async (req, res) => {
   if (!Model) throw badRequest(`Records of type ${d.model} cannot be restored`);
   if (await Model.exists({ _id: d.recordId })) throw conflict('A record with this id exists again; nothing to restore');
   const snapshot = { ...d.snapshot, _id: d.recordId };
+  // A user's snapshot never holds the password hash, so the account comes
+  // back without a password: every session is ended and an admin has to
+  // set a temporary one (Members → Reset password) before they can log in.
+  const needsPassword = d.model === 'User';
+  if (needsPassword) Object.assign(snapshot, { passwordHash: undefined, mustChangePassword: true, sessionsEndedAt: new Date() });
   await Model.collection.insertOne(snapshot);
   await DeletedRecord.markRestored(d._id, actorOf(req.user));
   req.audit = {
@@ -237,7 +239,12 @@ router.post('/deleted/:id/restore', async (req, res) => {
     details: { archived: d._id, deletedBy: d.deletedBy?.username ?? null, deletedAt: d.deletedAt },
   };
   announceRestored(d.model, snapshot);
-  res.json({ ok: true, record: serializeDeleted({ ...d, restoredAt: new Date(), restoredBy: actorOf(req.user) }) });
+  res.json({
+    ok: true,
+    needsPassword,
+    message: needsPassword ? 'Account restored without a password: give it a temporary one with Reset password before they log in.' : 'Restored',
+    record: serializeDeleted({ ...d, restoredAt: new Date(), restoredBy: actorOf(req.user) }),
+  });
 });
 
 // POST /api/security/users/:id/sign-out — ends every session of one

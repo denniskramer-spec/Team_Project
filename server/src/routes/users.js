@@ -116,7 +116,7 @@ router.post('/:id/nudge', async (req, res) => {
     : "Reminder: today's daily report is still due. Please send it when you can.";
   const key = dmKey(req.user._id, member._id);
   const message = await new Message({ channelKey: key, author: req.user._id, peers: [req.user._id, member._id], content }).save();
-  await ChatRead.findOneAndUpdate({ user: req.user._id, channelKey: key }, { lastReadAt: message.createdAt }, { upsert: true });
+  await ChatRead.touch(req.user._id, key, message.createdAt);
   const payload = (titleKey, channelName) => ({
     titleKey, channelName, dm: true,
     message: { id: message._id, author: { id: req.user._id, name: req.user.name, role: req.user.role }, content, createdAt: message.createdAt, editedAt: null },

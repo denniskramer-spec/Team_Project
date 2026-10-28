@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import { env } from '../config/env.js';
+import { dbState } from '../config/db.js';
 import { loadSession, TOKEN_COOKIE } from '../middleware/auth.js';
 import { resolveChannel, roomsFor } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
@@ -36,10 +37,24 @@ function readCookie(header = '', name) {
 export function initSocket(httpServer) {
   io = new Server(httpServer, {
     cors: { origin: env.clientOrigin, credentials: true },
+    // The cors option only sets headers; a page on another origin could
+    // still open the WebSocket with the cookie. Refuse the handshake unless
+    // it comes from the app itself: the configured client origin, the same
+    // host the request was sent to (production serves the page itself), or
+    // no page at all (a script with a Bearer token).
+    allowRequest: (req, cb) => {
+      const origin = req.headers.origin;
+      let sameHost = false;
+      try { sameHost = Boolean(origin) && new URL(origin).host === req.headers.host; } catch { /* not a URL */ }
+      cb(null, !origin || origin === env.clientOrigin || sameHost);
+    },
   });
 
-  // Same login rules as the REST API: valid cookie, active account.
+  // Same login rules as the REST API: valid cookie, active account. While
+  // the database is unreachable the handshake fails at once, like the API's
+  // 503, instead of waiting on a lookup that cannot happen.
   io.use(async (socket, next) => {
+    if (dbState() !== 'connected') return next(new Error('Database is unavailable, please try again shortly'));
     try {
       const token = socket.handshake.auth?.token || readCookie(socket.handshake.headers.cookie, TOKEN_COOKIE);
       const session = await loadSession(token);
@@ -68,8 +83,16 @@ export function initSocket(httpServer) {
     socket.join([`user:${id}`, `role:${role}`, 'all']);
     if (group) socket.join(`group:${group}`);
 
+    // The cap was checked before this socket was accepted, and several
+    // handshakes at once can all pass it. Connections are handled one at a
+    // time here, so this is where it holds; a socket over it never counts.
+    const open = (connections.get(id) || 0) + 1;
+    if (open > MAX_SOCKETS_PER_USER) {
+      socket.disconnect(true);
+      return;
+    }
     const wasOnline = connections.has(id);
-    connections.set(id, (connections.get(id) || 0) + 1);
+    connections.set(id, open);
     const touch = () => User.updateOne({ _id: id }, { lastSeenAt: new Date() }).catch(() => {});
     touch();
     socket.emit('presence:list', onlineUserIds());

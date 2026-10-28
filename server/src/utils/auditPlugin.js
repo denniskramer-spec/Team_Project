@@ -102,7 +102,8 @@ export function auditPlugin(schema) {
   for (const op of ['deleteOne', 'deleteMany', 'findOneAndDelete']) {
     schema.pre(op, { document: false, query: true }, async function removing() {
       if (!currentAudit() || QUIET.has(this.model.modelName)) return;
-      const docs = await this.model.find(this.getFilter()).limit(MANY);
+      // No limit here: a record that leaves without its copy cannot be restored.
+      const docs = await this.model.find(this.getFilter());
       await keepCopies(this.model, docs);
     });
   }
@@ -111,11 +112,15 @@ export function auditPlugin(schema) {
     schema.pre(op, { document: false, query: true }, async function changing() {
       if (!currentAudit() || QUIET.has(this.model.modelName)) return;
       this._auditBefore = await this.model.find(this.getFilter()).limit(MANY).lean();
+      // Only the first MANY records are compared; the rest are counted, so
+      // the entry still says how much a big change touched.
+      this._auditBeyond = this._auditBefore.length < MANY ? 0 : Math.max(0, await this.model.countDocuments(this.getFilter()) - MANY);
     });
     schema.post(op, { document: false, query: true }, async function changed() {
       const before = this._auditBefore;
       const ctx = currentAudit();
       if (!before || !ctx) return;
+      if (this._auditBeyond) ctx.more = (ctx.more ?? 0) + this._auditBeyond;
       const model = this.model.modelName;
       if (!before.length) {
         if (!this.getOptions().upsert) return;

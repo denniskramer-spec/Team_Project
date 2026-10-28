@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Group, { slugify } from '../models/Group.js';
 import User from '../models/User.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
-import { requireFields, clean } from '../utils/validate.js';
+import { requireFields, clean, escapeRegex } from '../utils/validate.js';
 import { badRequest, notFound, conflict } from '../utils/httpError.js';
 import { clearGroupFromRecords } from '../utils/moveRecords.js';
 import { directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
@@ -56,7 +56,7 @@ function checkGroupName(body) {
 
 async function assertUnique(name, exceptId) {
   const clash = await Group.findOne({
-    $or: [{ name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, { slug: slugify(name) }],
+    $or: [{ name: new RegExp(`^${escapeRegex(name)}$`, 'i') }, { slug: slugify(name) }],
     ...(exceptId ? { _id: { $ne: exceptId } } : {}),
   });
   if (!clash) return;
@@ -94,10 +94,9 @@ router.patch('/:id', requireCapability('manageGroups'), async (req, res) => {
   res.json({ group: { id: group._id, name: group.name, slug: group.slug } });
 });
 
-// Only groups without active members can be deleted, so nobody is silently moved.
-// Pending sign-ups and disabled accounts in the group are left without a group.
 // Deleting a group leaves its members (and bosses) with no group. They keep
-// their accounts and records; an admin can put them in another group later.
+// their accounts and records, which show up under "No group"; an admin can
+// put them in another group later.
 router.delete('/:id', requireCapability('manageGroups'), async (req, res) => {
   const group = await findGroup(req.params.id);
   const members = await User.find({ group: group._id }, '_id').lean();

@@ -31,7 +31,7 @@ async function saveAndTell(report) {
 // is worth something else now, so the owner's reports are re-priced. Paid
 // days keep the amount they were paid for.
 export async function repriceTask(taskId) {
-  const t = await Task.findById(taskId, 'price priceUnit resident').populate('resident', 'sharePercent').lean();
+  const t = await Task.findById(taskId, 'price priceUnit currency resident').populate('resident', 'sharePercent').lean();
   if (!t) return 0;
   const reports = await Report.find({ scope: 'personal', type: 'daily', work: { $elemMatch: { task: t._id, paidBy: null } } });
   let changed = 0;
@@ -39,7 +39,7 @@ export async function repriceTask(taskId) {
     let touched = false;
     for (const w of r.work) {
       if (String(w.task) !== String(t._id) || w.paidBy) continue;
-      const amount = workEarnings({ price: t.price, priceUnit: t.priceUnit, residentPercent: t.resident?.sharePercent ?? 0 }, { hours: w.hours, count: w.count });
+      const amount = workEarnings({ price: t.price, priceUnit: t.priceUnit, currency: t.currency, residentPercent: t.resident?.sharePercent ?? 0 }, { hours: w.hours, count: w.count });
       if (amount !== (w.amount ?? 0)) { w.amount = amount; touched = true; }
     }
     if (!touched) continue;
