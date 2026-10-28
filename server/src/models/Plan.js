@@ -5,12 +5,13 @@ export const PLAN_STATES = ['not_done', 'progress', 'done'];
 
 // The targets a plan sets, one per measurable item of the daily report, so
 // the plan page can show achieved vs target from the reports of the period.
+// (Time bidding is still reported each day, but is no longer a plan target;
+// older plans keep the number they had.)
 export const PLAN_ITEMS = [
-  { key: 'jobBid', label: 'Applied', group: 'Bids' },
+  { key: 'jobBid', label: 'Job bid', group: 'Bids' },
   { key: 'aiBid', label: 'AI training bids', group: 'Bids' },
   { key: 'resumes', label: 'Résumés tailored', group: 'Bids' },
   { key: 'forms', label: 'Forms filled', group: 'Bids' },
-  { key: 'biddingHours', label: 'Time bidding (h)', group: 'Bids' },
   { key: 'income', label: 'Income', group: 'Income' },
 ];
 

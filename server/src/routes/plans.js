@@ -12,6 +12,8 @@ import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkOptionalAmount, checkCount, checkText } from '../utils/validate.js';
 import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
 import { planChanged } from '../socket/events.js';
+import { planStatus, targetsOf } from '../utils/planStatus.js';
+import { teamNow } from '../utils/teamTime.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -28,9 +30,9 @@ function checkType(type) {
 
 function checkFields(body) {
   const fields = { note: checkText(body.note, 'Note', 2000) };
-  // Bids, résumés and forms are counted; hours and income are amounts.
+  // Bids, résumés and forms are counted; income is an amount.
   for (const item of PLAN_ITEMS) {
-    fields[item.key] = ['income', 'biddingHours'].includes(item.key)
+    fields[item.key] = item.key === 'income'
       ? checkOptionalAmount(body[item.key], item.label)
       : checkCount(body[item.key], item.label);
   }
@@ -41,9 +43,6 @@ function checkFields(body) {
   }
   return fields;
 }
-
-// The targets of a plan; older plans counted bids in one field, shown as applied.
-const targetsOf = (p) => Object.fromEntries(PLAN_ITEMS.map((i) => [i.key, i.key === 'jobBid' ? (p.jobBid || p.bid || 0) : (p[i.key] || 0)]));
 
 const serialize = (p, user, achieved = null) => ({
   id: p._id,
@@ -58,7 +57,9 @@ const serialize = (p, user, achieved = null) => ({
   // the reports were not looked up).
   achieved,
   note: p.note,
-  status: p.status,
+  // Settled once the period is over (see planStatus); as stored when the
+  // reports were not looked up.
+  status: achieved ? planStatus(p, achieved, teamNow()) : p.status,
   statusUpdatedAt: p.statusUpdatedAt,
   updatedAt: p.updatedAt,
   // A group plan belongs to its group's bosses, whoever saved it last.
@@ -122,7 +123,8 @@ router.get('/', async (req, res) => {
   }
   const achievedOf = (p) => (p.scope === 'group' ? byGroup.get(String(p.group?._id ?? p.group)) : byAuthor.get(String(p.owner?._id ?? p.owner))) ?? zero();
   // Counts and totals cover the same plans: the personal ones.
-  const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: personal.filter((p) => p.status === s).length }), {});
+  const now = teamNow();
+  const counts = PLAN_STATES.reduce((acc, s) => ({ ...acc, [s]: personal.filter((p) => planStatus(p, achievedOf(p), now) === s).length }), {});
   // Totals add up personal plans only: a boss's group plan repeats their
   // members' targets (Checkout leaves it out for the same reason).
   const cents = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 100) / 100]));

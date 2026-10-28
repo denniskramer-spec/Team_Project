@@ -87,7 +87,7 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
               {items.filter((i) => i.group === g).map((i) => (
                 <label key={i.key}>
                   {i.label}
-                  <input type="number" min="0" step={i.key === 'income' ? '0.01' : i.key === 'biddingHours' ? '0.5' : '1'} value={form[i.key]} onChange={set(i.key)} placeholder="0" />
+                  <input type="number" min="0" step={i.key === 'income' ? '0.01' : '1'} value={form[i.key]} onChange={set(i.key)} placeholder="0" />
                 </label>
               ))}
             </div>

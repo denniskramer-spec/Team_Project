@@ -55,6 +55,21 @@ function Target({ item, target, achieved }) {
   );
 }
 
+// The plans group by group (A–Z, no group last): each group's own plan
+// first, then its members' plans by name.
+function byGroup(plans) {
+  const blocks = new Map();
+  for (const plan of plans) {
+    const key = plan.group?.id ? String(plan.group.id) : 'none';
+    if (!blocks.has(key)) blocks.set(key, { key, name: plan.group?.name ?? 'No group', plans: [] });
+    blocks.get(key).plans.push(plan);
+  }
+  const order = (a, b) => (b.scope === 'group') - (a.scope === 'group') || (a.owner?.name ?? '').localeCompare(b.owner?.name ?? '');
+  return [...blocks.values()]
+    .map((b) => ({ ...b, plans: [...b.plans].sort(order) }))
+    .sort((a, b) => (a.key === 'none') - (b.key === 'none') || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
 // One member's (or group's) plan for the period: targets and progress.
 function PlanCard({ plan, items, onStatus }) {
   const [open, setOpen] = useState(false);
@@ -163,6 +178,7 @@ export default function PlanChannel({ title }) {
   const scopeLabel = selected?.name
     ?? (data.scope === 'self' ? 'Your plans' : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All members') : data.groups.find((g) => g.slug === group)?.name ?? group);
   const others = data.plans.filter((pl) => !(pl.mine && pl.scope === 'personal'));
+  const blocks = byGroup(others);
 
   return (
     <div className="page plan-page">
@@ -213,12 +229,17 @@ export default function PlanChannel({ title }) {
           <div className="report-section-head">
             <h3>{data.scope === 'self' ? 'Group plan' : 'Plans'}</h3>
             <span className="muted small">
-              Team: {formatAmount(data.achievedTotals.jobBid)} / {formatAmount(data.totals.jobBid)} applied · {formatAmount(data.achievedTotals.income)} / {formatAmount(data.totals.income)} income
+              Team: {formatAmount(data.achievedTotals.jobBid)} / {formatAmount(data.totals.jobBid)} job bids · {formatAmount(data.achievedTotals.income)} / {formatAmount(data.totals.income)} income
             </span>
           </div>
-          <div className="plan-grid">
-            {others.map((plan) => <PlanCard key={plan.id} plan={plan} items={items} onStatus={setStatus} />)}
-          </div>
+          {blocks.map((block) => (
+            <div key={block.key} className="plan-group">
+              {blocks.length > 1 && <h4 className="plan-group-title">{block.name}</h4>}
+              <div className="plan-grid">
+                {block.plans.map((plan) => <PlanCard key={plan.id} plan={plan} items={items} onStatus={setStatus} />)}
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
