@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
+import { teamDayEnd, teamNow } from '../utils/teamTime.js';
 import {
   canWritePersonal, readableAuthorFilter, readableReportFilter, canReadGroupReports, canReadTeam,
 } from '../utils/reportPolicy.js';
@@ -226,7 +227,7 @@ router.get('/', async (req, res) => {
       type,
       prev: shiftPeriod(type, period.key, -1),
       next: nextKey,
-      hasNext: parsePeriod(type, nextKey).start <= new Date(),
+      hasNext: parsePeriod(type, nextKey).start <= teamNow(),
       isCurrent: period.key === periodKey(type),
     },
     can: { writePersonal: canWritePersonal(req.user) },
@@ -246,7 +247,7 @@ router.get('/', async (req, res) => {
 router.get('/status', async (req, res) => {
   if (!canWritePersonal(req.user)) return res.json({ canWrite: false, due: false });
   const period = periodKey('daily');
-  const { start, end } = parsePeriod('daily', period);
+  const { start } = parsePeriod('daily', period);
   const [mine, previous] = await Promise.all([
     Report.findOne({ author: req.user._id, scope: 'personal', type: 'daily', period }, 'sentAt updatedAt todayPlan').lean(),
     Report.findOne({ author: req.user._id, scope: 'personal', type: 'daily', periodStart: { $lt: start } }, 'planTomorrow').sort({ periodStart: -1 }).lean(),
@@ -257,7 +258,9 @@ router.get('/status', async (req, res) => {
     ? mine.todayPlan.map((p) => ({ text: p.text, done: Boolean(p.done) }))
     : planLines(previous?.planTomorrow).map((text) => ({ text, done: false }));
   res.json({
-    canWrite: true, period, start, end, // `end` lets the client re-check when the day turns
+    // `end` is the real moment the team's day turns over, so the client
+    // can check again then.
+    canWrite: true, period, start, end: teamDayEnd(),
     due: !mine?.sentAt, draft: Boolean(mine && !mine.sentAt), sentAt: mine?.sentAt ?? null, todayPlan,
   });
 });
@@ -310,7 +313,7 @@ router.put('/', async (req, res) => {
   if (!canWritePersonal(req.user)) {
     throw forbidden('The team leader and admins read reports but do not write them');
   }
-  if (period.start > new Date()) throw badRequest('That period has not started yet');
+  if (period.start > teamNow()) throw badRequest('That period has not started yet');
 
   const work = await resolveWork(req, scope);
   // The hours (or tasks done) reported are what the member expects to be

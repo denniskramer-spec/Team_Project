@@ -7,6 +7,7 @@ import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
+import { teamNow } from '../utils/teamTime.js';
 import mongoose from 'mongoose';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
@@ -42,7 +43,7 @@ router.get('/', async (req, res) => {
   const titleType = req.query.type || 'weekly';
   const type = TYPES[titleType];
   if (!type) throw badRequest('Checkout periods are weekly, monthly or yearly');
-  const period = parsePeriod(type, req.query.period || periodKey(type, req.query.date ? parseDay(req.query.date, 'date') : new Date()));
+  const period = parsePeriod(type, req.query.period || periodKey(type, req.query.date ? parseDay(req.query.date, 'date') : undefined));
 
   // Who the numbers cover: the same role rules as the other channels.
   const owners = scopeFilter(req.user, 'owner');
@@ -199,7 +200,7 @@ router.get('/', async (req, res) => {
       type: titleType,
       prev: shiftPeriod(type, period.key, -1),
       next: nextKey,
-      hasNext: parsePeriod(type, nextKey).start <= new Date(),
+      hasNext: parsePeriod(type, nextKey).start <= teamNow(),
       isCurrent: period.key === periodKey(type),
     },
     income,

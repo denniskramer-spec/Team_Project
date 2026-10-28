@@ -1064,3 +1064,7 @@ code {
 .finance-page.is-loading .chart,
 .finance-page.is-loading .card { opacity: 0.55; transition: opacity 0.15s; }
 .duration-note { margin: 0; }
+
+/* Admin -> Team settings */
+.team-zone-stats { margin: 4px 0 16px; }
+.team-zone-form { max-width: 520px; }

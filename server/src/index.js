@@ -10,6 +10,7 @@ import app from './app.js';
 import { sweepOrphans } from './utils/uploads.js';
 import { fileInUse } from './utils/fileRefs.js';
 import { loadFees } from './utils/payments.js';
+import { loadSettings } from './routes/settings.js';
 import { scheduleFeeRefresh } from './utils/feeRefresh.js';
 import { loadRates, scheduleRateRefresh } from './utils/exchange.js';
 
@@ -28,6 +29,7 @@ const sweep = () => sweepOrphans(fileInUse)
   .catch((err) => console.error('Upload clean-up failed:', err));
 
 connectDB(env.mongoUri)
+  .then(loadSettings) // before anything asks which day it is
   .then(seedAll)
   .then(loadFees)
   .then(loadRates)

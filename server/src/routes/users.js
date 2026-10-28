@@ -8,6 +8,7 @@ import ChatRead from '../models/ChatRead.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canSeeMember, canReadTeam, scopeFilter } from '../utils/visibility.js';
 import { periodKey } from '../utils/period.js';
+import { teamNow, teamToday } from '../utils/teamTime.js';
 import { dmKey } from '../utils/chatPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { dmEvent } from '../socket/events.js';
@@ -37,7 +38,7 @@ router.get('/directory', async (req, res) => {
 // Days from today to the next occurrence of a yearly date (0 = today).
 function daysUntil(date) {
   if (!date) return null;
-  const now = new Date();
+  const now = teamNow();
   const next = new Date(Date.UTC(now.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   if (next < today) next.setUTCFullYear(next.getUTCFullYear() + 1);
@@ -52,12 +53,14 @@ router.get('/upcoming', async (req, res) => {
     .map((u) => ({ id: u._id, name: u.name, role: u.role, inDays: daysUntil(u.birthday) }))
     .filter((b) => b.inDays !== null && b.inDays <= 14)
     .sort((a, b) => a.inDays - b.inDays);
-  const soon = new Date(); soon.setUTCDate(soon.getUTCDate() + 14);
+  // End dates are calendar days: counted from the team's today.
+  const today = teamToday();
+  const soon = new Date(today); soon.setUTCDate(soon.getUTCDate() + 14);
   const tasks = await Task.find({ ...scopeFilter(req.user, 'owner'), status: 'active', endDate: { $ne: null, $lte: soon } }, 'name endDate owner')
     .populate('owner', 'name').sort('endDate').lean();
   const expiries = tasks.map((t) => ({
     id: t._id, name: t.name, owner: t.owner?.name ?? null,
-    inDays: Math.ceil((new Date(t.endDate) - new Date()) / 86400000),
+    inDays: Math.round((new Date(t.endDate) - today) / 86400000),
   }));
   res.json({ birthdays, expiries });
 });

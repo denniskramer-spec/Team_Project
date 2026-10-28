@@ -20,11 +20,23 @@ export const formatDay = (value) => formatDate(value, { utc: true });
 // yyyy-mm-dd for <input type="date">.
 export const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
-// Today as yyyy-mm-dd on the user's own calendar. (toISOString gives the UTC
-// day, which is already tomorrow in the evening west of Greenwich and still
-// yesterday in the morning east of it.)
+// The team's time zone (Admin -> Team settings), once known; until then
+// the browser's own. Set by TeamSettingsProvider.
+let teamZone = null;
+let teamDay = null;
+export function setTeamTimeZone(zone) {
+  if (zone === teamZone) return;
+  teamZone = zone || null;
+  // en-CA writes dates as yyyy-mm-dd.
+  teamDay = teamZone ? new Intl.DateTimeFormat('en-CA', { timeZone: teamZone, year: 'numeric', month: '2-digit', day: '2-digit' }) : null;
+}
+
+// Today as yyyy-mm-dd on the team's calendar, the same day the server calls
+// today. (toISOString gives the UTC day, which is already tomorrow in the
+// evening west of Greenwich and still yesterday in the morning east of it.)
 export function todayInput() {
   const now = new Date();
+  if (teamDay) return teamDay.format(now);
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 

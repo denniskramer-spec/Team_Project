@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Group from '../models/Group.js';
 import User from '../models/User.js';
 import { parsePeriod, periodKey, shiftPeriod } from './period.js';
+import { teamNow } from './teamTime.js';
 import { scopeFilter, canReadTeam, canSeeMember } from './visibility.js';
 import { visibleGroups, seesAllGroups } from './scope.js';
 import { badRequest, notFound } from './httpError.js';
@@ -63,7 +64,7 @@ export function financePeriod(query) {
     type,
     prev: shiftPeriod(type, period.key, -1),
     next: nextKey,
-    hasNext: parsePeriod(type, nextKey).start <= new Date(),
+    hasNext: parsePeriod(type, nextKey).start <= teamNow(),
     isCurrent: period.key === periodKey(type),
   };
 }
