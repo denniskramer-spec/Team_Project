@@ -126,7 +126,12 @@ Channel titles come from `GET /api/nav`, built per user in
   plan, a **project report** box (text + hours) per active project, a **call report**
   (time, title, profile, caller, went well / mixed / didn't go well, note), the **bid
   report** (applied, AI training bids, résumés tailored, forms filled, time bidding),
-  **issues / blockers** and the **plan for tomorrow**. The hours written on an hourly
+  **issues / blockers** and the **plan for tomorrow**. The bid report shows **today's
+  goals**: the member's weekly plan (or monthly, if there is no weekly one) shared out
+  per day, rounded up, and whatever earlier days of that plan fell short by is added
+  to today's goal (a goal of 150 with 115 done makes tomorrow's 185; a day without a
+  report counts as 0). Doing more than the goal pays the shortfall back; it never
+  builds up a credit. The dashboard's day card shows the same goals with a bar each. The hours written on an hourly
   project (or the tasks done on a per-task one) are what the day is worth: price × hours
   or price × tasks, less the project's resident share,
   is what the day **earned**; the part no income record has paid yet is the report's
@@ -157,7 +162,11 @@ Channel titles come from `GET /api/nav`, built per user in
   says how much of it is still upcoming) and **received** (Finance). The per-member
   table adds an **Upcoming** column. Below them sit two panels: the plan-result meter and
   a Projects panel (done / open / price, from the Projects channel). On narrow screens they
-  stack. It counts personal plans and reports only (a group plan would
+  stack. **Every card opens on click** (or Enter) with the records behind its numbers:
+  Income lists the plans, the daily reports that earned something (with what is still
+  unpaid) and the income records; Job bids and AI training bids list the plans and the
+  reports; Plan results lists every plan with its status; Projects lists the projects in
+  the period. Each list sorts by any column. It counts personal plans and reports only (a group plan would
   double-count), projects that overlap the period (open-ended ones count until they are done), and income by its date. Refreshes
   live when any source channel changes. Chart colours were checked with the data-viz
   validator against this app's surface; every bar carries its own label and value.
