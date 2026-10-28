@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Modal from '../../components/Modal.jsx';
 import ChatAccountForm from './ChatAccountForm.jsx';
-import { useLatestRequest } from '../../useLiveData.js';
 
 // Section 3 for the Chat accounts channel: one card per Discord, Telegram or
 // WhatsApp account, with the residents it talks to.
+const EMPTY = [];
 const byOwnerThenName = (a, b) => (a.owner?.name ?? '').localeCompare(b.owner?.name ?? '') || a.name.localeCompare(b.name);
 
 export default function ChatAccountChannel({ title }) {
@@ -22,33 +21,14 @@ export default function ChatAccountChannel({ title }) {
   const [query, setQuery] = useState('');
   const [platform, setPlatform] = useState('');
   const [status, setStatus] = useState('');
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
   const [form, setForm] = useState(null);
   const [shot, setShot] = useState(null);
+  const q = useDebounced(query);
 
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const params = new URLSearchParams({ group });
-      if (member) params.set('member', member);
-      if (query.trim()) params.set('q', query.trim());
-      const result = await api(`/chat-accounts?${params}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, group, member, query]);
-
-  useEffect(() => {
-    const id = setTimeout(load, query ? 250 : 0);
-    return () => clearTimeout(id);
-  }, [load, query]);
-  useReconnect(load);
-  useSocketEvent('chatAccount:changed', load);
+  const params = new URLSearchParams({ group });
+  if (member) params.set('member', member);
+  if (q.trim()) params.set('q', q.trim());
+  const { data, error, loading, reload } = useLiveData(`/chat-accounts?${params}`, ['chatAccount:changed']);
 
   const copy = async (text) => {
     try {
@@ -59,23 +39,21 @@ export default function ChatAccountChannel({ title }) {
     }
   };
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
-  if (!data) return <div className="page muted">Loading...</div>;
-
-  const { accounts: all } = data;
+  const all = data?.accounts ?? EMPTY;
+  const platforms = data?.platforms ?? EMPTY;
   const active = all.filter((a) => a.status === 'active').length;
   const accounts = all.filter((a) => (!platform || a.platform === platform) && (!status || a.status === status));
   const countOn = (key) => all.filter((a) => a.platform === key).length;
   // One block per platform, each sorted by owner then account name, so a
   // long list reads as categories instead of a wall of cards.
-  const sections = data.platforms
+  const sections = platforms
     .map((p) => ({ ...p, accounts: accounts.filter((a) => a.platform === p.key).sort(byOwnerThenName) }))
     .filter((p) => p.accounts.length);
-  const scopeLabel = member
-    ? accounts[0]?.owner?.name ?? 'Member'
-    : data.scope === 'self' ? 'Your accounts'
-      : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All accounts')
-        : data.groups.find((g) => g.slug === group)?.name ?? group;
+  const scopeLabel = !data ? ''
+    : member ? all[0]?.owner?.name ?? 'Member'
+      : data.scope === 'self' ? 'Your accounts'
+        : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All accounts')
+          : data.groups.find((g) => g.slug === group)?.name ?? group;
 
   return (
     <div className="page account-page">
@@ -91,29 +69,34 @@ export default function ChatAccountChannel({ title }) {
           />
         </div>
         <span className="muted small toolbar-count">
-          {scopeLabel} · {all.length} {all.length === 1 ? 'account' : 'accounts'} · {active} active
+          {loading || !data ? 'Loading...' : `${scopeLabel} · ${all.length} ${all.length === 1 ? 'account' : 'accounts'} · ${active} active`}
         </span>
-        <button className="btn primary" onClick={() => setForm({})}>
+        <button className="btn primary" onClick={() => setForm({})} disabled={!data}>
           <Icon name="plus" size={16} /> New account
         </button>
       </div>
-      <div className="toolbar account-filters">
-        <div className="segmented" role="tablist" aria-label="Platform">
-          <button type="button" role="tab" className={platform === '' ? 'on' : ''} onClick={() => setPlatform('')}>All platforms</button>
-          {data.platforms.map((p) => (
-            <button type="button" role="tab" key={p.key} className={platform === p.key ? 'on' : ''} onClick={() => setPlatform(p.key)}>
-              <span className={`platform platform-${p.key}`}>{p.name}</span> <span className="muted">{countOn(p.key)}</span>
-            </button>
-          ))}
+      {data && (
+        <div className="toolbar account-filters">
+          <div className="segmented" role="tablist" aria-label="Platform">
+            <button type="button" role="tab" className={platform === '' ? 'on' : ''} onClick={() => setPlatform('')}>All platforms</button>
+            {platforms.map((p) => (
+              <button type="button" role="tab" key={p.key} className={platform === p.key ? 'on' : ''} onClick={() => setPlatform(p.key)}>
+                <span className={`platform platform-${p.key}`}>{p.name}</span> <span className="muted">{countOn(p.key)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="segmented" role="tablist" aria-label="Status">
+            <button type="button" role="tab" className={status === '' ? 'on' : ''} onClick={() => setStatus('')}>Any status</button>
+            <button type="button" role="tab" className={status === 'active' ? 'on' : ''} onClick={() => setStatus('active')}>Active</button>
+            <button type="button" role="tab" className={status === 'suspended' ? 'on' : ''} onClick={() => setStatus('suspended')}>Suspended</button>
+          </div>
         </div>
-        <div className="segmented" role="tablist" aria-label="Status">
-          <button type="button" role="tab" className={status === '' ? 'on' : ''} onClick={() => setStatus('')}>Any status</button>
-          <button type="button" role="tab" className={status === 'active' ? 'on' : ''} onClick={() => setStatus('active')}>Active</button>
-          <button type="button" role="tab" className={status === 'suspended' ? 'on' : ''} onClick={() => setStatus('suspended')}>Suspended</button>
-        </div>
-      </div>
+      )}
 
-      {!accounts.length && (
+      {/* A failed reload is said here; the last list stays on screen below it. */}
+      {error && <div className="alert error">{error}</div>}
+
+      {data && !loading && !accounts.length && (
         <div className="empty-inline muted">
           <Icon name="message" size={20} />
           {query || platform || status ? 'No accounts match this filter.' : 'No chat accounts here yet. Register one to get started.'}
@@ -177,10 +160,10 @@ export default function ChatAccountChannel({ title }) {
       {form && (
         <ChatAccountForm
           account={form.id ? form : null}
-          platforms={data.platforms}
+          platforms={platforms}
           defaultOwner={member || undefined}
           onClose={() => setForm(null)}
-          onSaved={() => { setForm(null); load(); }}
+          onSaved={() => { setForm(null); reload(); }}
         />
       )}
       {shot && (

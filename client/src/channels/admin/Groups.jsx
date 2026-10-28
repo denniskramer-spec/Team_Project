@@ -61,7 +61,8 @@ function GroupRow({ group, onChanged }) {
             </div>
           </div>
           <div className="group-actions">
-            <button className="btn small-btn" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> Rename</button>
+            {/* The field starts from the current name, which may have changed since the row was first drawn. */}
+            <button className="btn small-btn" onClick={() => { setName(group.name); setEditing(true); }}><Icon name="edit" size={14} /> Rename</button>
             <button className="btn small-btn danger-outline" onClick={() => setConfirmDelete(true)} title="Delete group">
               <Icon name="trash" size={14} /> Delete
             </button>

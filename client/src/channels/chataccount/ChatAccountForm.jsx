@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
-import { api, upload } from '../../api.js';
-import { useAuth } from '../../auth/AuthContext.jsx';
+import { useState } from 'react';
+import { api, uploadImages } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
+import { useOptions } from '../../options.js';
 import { toDateInput, todayInput } from '../../format.js';
 import Modal, { ConfirmDialog } from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import ImageDrop from '../../components/ImageDrop.jsx';
+import OwnerSelect from '../../components/OwnerSelect.jsx';
 
 // What the name field means on each platform.
 const NAME_HINT = {
@@ -20,12 +21,8 @@ const NAME_HINT = {
 // screenshot of the suspension screen).
 export default function ChatAccountForm({ account, platforms, defaultOwner, onClose, onSaved }) {
   const toast = useToast();
-  const { user } = useAuth();
-  // Accounts belong to members and bosses; the leader and admins pick one.
-  const canOwn = ['member', 'boss'].includes(user.role);
   const editing = Boolean(account);
-  const [members, setMembers] = useState([]);
-  const [residents, setResidents] = useState(null);
+  const { list: residents, error: residentsError, loading: residentsLoading } = useOptions('/chat-accounts/contacts', 'residents');
   const [form, setForm] = useState({
     platform: account?.platform ?? 'discord',
     name: account?.name ?? '',
@@ -42,13 +39,8 @@ export default function ChatAccountForm({ account, platforms, defaultOwner, onCl
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
 
-  useEffect(() => {
-    api('/chat-accounts/owners').then((d) => setMembers(d.members)).catch(() => setMembers([]));
-    api('/chat-accounts/contacts').then((d) => setResidents(d.residents)).catch(() => setResidents([]));
-  }, []);
-
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
-  const toggle = (id) => setContacts(contacts.includes(id) ? contacts.filter((c) => c !== id) : [...contacts, id]);
+  const toggle = (id) => setContacts((list) => (list.includes(id) ? list.filter((c) => c !== id) : [...list, id]));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -57,12 +49,9 @@ export default function ChatAccountForm({ account, platforms, defaultOwner, onCl
     try {
       let saved = shot;
       if (files.length) {
-        const fd = new FormData();
-        fd.append('images', files[0]);
-        const uploaded = await upload('/chat-accounts/upload', fd);
-        // Treat it as saved from now on, so a retry after a failed save does
-        // not upload the same screenshot again.
-        saved = { ...uploaded.screenshot, url: `/api/files/${uploaded.screenshot.file}` };
+        // Uploaded first and kept as saved from then on, so a retry after a
+        // failed save does not upload the same screenshot again.
+        ({ screenshot: saved } = await uploadImages('/chat-accounts/upload', [files[0]]));
         setShot(saved);
         setFiles([]);
       }
@@ -71,7 +60,7 @@ export default function ChatAccountForm({ account, platforms, defaultOwner, onCl
         owner: form.owner || undefined,
         joinedAt: form.joinedAt || null,
         contacts,
-        screenshot: saved ? { file: saved.file, name: saved.name, type: saved.type, size: saved.size } : null,
+        screenshot: saved,
       };
       if (editing) await api(`/chat-accounts/${account.id}`, { method: 'PATCH', body });
       else await api('/chat-accounts', { method: 'POST', body });
@@ -145,9 +134,10 @@ export default function ChatAccountForm({ account, platforms, defaultOwner, onCl
         </label>
         <div className="target-pick">
           <span className="field-label">Contacts</span>
-          {residents === null && <span className="muted small">Loading residents...</span>}
-          {residents?.length === 0 && <span className="muted small">No residents yet — register one in the Residents channel first.</span>}
-          {residents?.length > 0 && (
+          {residentsLoading && <span className="muted small">Loading residents...</span>}
+          {residentsError && <span className="form-help alert-text">Could not load the residents: {residentsError}</span>}
+          {!residentsLoading && !residentsError && residents.length === 0 && <span className="muted small">No residents yet — register one in the Residents channel first.</span>}
+          {residents.length > 0 && (
             <div className="chips" role="group" aria-label="Contacts">
               {residents.map((r) => {
                 const on = contacts.includes(String(r.id));
@@ -183,15 +173,7 @@ export default function ChatAccountForm({ account, platforms, defaultOwner, onCl
             <span className="form-help">Attach a screenshot of the suspension screen</span>
           </div>
         )}
-        {(!canOwn || members.length > 1) && (
-          <label>
-            Belongs to
-            <select value={form.owner} onChange={set('owner')} required={!canOwn}>
-              <option value="">{canOwn ? 'Me' : 'Choose a member'}</option>
-              {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.group ? ` · ${m.group}` : ''}</option>)}
-            </select>
-          </label>
-        )}
+        <OwnerSelect path="/chat-accounts/owners" value={form.owner} onChange={set('owner')} />
       </form>
       {confirm && (
         <ConfirmDialog

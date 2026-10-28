@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { toDateInput, todayInput } from '../../format.js';
 import { ROLE_LABELS } from '../../components/RoleBadge.jsx';
+import PasswordRules, { passwordValid } from '../../components/PasswordRules.jsx';
+import { useGroupOptions } from '../../options.js';
+import { isManager } from '../../roles.js';
 import Modal from '../../components/Modal.jsx';
 
 // Add a new member, or edit an existing one (`member` given).
@@ -10,7 +13,7 @@ import Modal from '../../components/Modal.jsx';
 export default function MemberForm({ member, defaultGroupId, onClose, onSaved }) {
   const { user } = useAuth();
   const editing = Boolean(member);
-  const [groups, setGroups] = useState([]);
+  const { list: groups, error: groupsError } = useGroupOptions();
   const [form, setForm] = useState({
     name: member?.name ?? '',
     username: member?.username ?? '',
@@ -22,12 +25,10 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    api('/groups/options').then((d) => setGroups(d.groups)).catch(() => {});
-  }, []);
-
-  const canPickGroup = editing ? member.permissions.changeGroup : ['admin', 'leader'].includes(user.role);
-  const canPickRole = !editing && ['admin', 'leader'].includes(user.role);
+  const canPickGroup = editing ? member.permissions.changeGroup : isManager(user);
+  const canPickRole = !editing && isManager(user);
+  // A typed temporary password follows the same rules as any password.
+  const passwordOk = !form.password || passwordValid(form.password);
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const submit = async (e) => {
@@ -63,7 +64,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
       footer={(
         <>
           <button className="btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn primary" type="submit" form="member-form" disabled={busy}>
+          <button className="btn primary" type="submit" form="member-form" disabled={busy || !passwordOk}>
             {busy ? 'Saving...' : editing ? 'Save changes' : 'Add member'}
           </button>
         </>
@@ -99,6 +100,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
               <option value="">{form.role === 'boss' ? 'Choose a group' : 'No group'}</option>
               {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
+            {groupsError && <span className="form-help alert-text">Could not load the groups: {groupsError}</span>}
           </label>
         </div>
         {canPickRole && (
@@ -116,11 +118,11 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
               type="text"
               value={form.password}
               onChange={set('password')}
-              minLength={8}
               maxLength={128}
               placeholder="Leave empty to generate one"
               autoComplete="off"
             />
+            {form.password && <PasswordRules password={form.password} />}
           </label>
         )}
         {!editing && (

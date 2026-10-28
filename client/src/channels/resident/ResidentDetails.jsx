@@ -1,42 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import Modal from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import RoleBadge from '../../components/RoleBadge.jsx';
 import Icon from '../../components/Icon.jsx';
 import DateTag from '../../components/DateTag.jsx';
-import ResidentForm, { LAPTOP_SOURCES, ACCESS_TYPES } from './ResidentForm.jsx';
+import ResidentForm, { LAPTOP_SOURCES, ACCESS_TYPES, labelOf, Yes } from './ResidentForm.jsx';
 import { countryLabel } from '../../countries.js';
 
-const labelOf = (list, value) => list.find(([v]) => v === value)?.[1] ?? '';
-
 const Empty = () => <span className="muted">—</span>;
-const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
 
 // One member's residents in a single dialog: the arrows (or the Left/Right
 // keys) step from one to the next. People who may edit the resident get an
 // Edit button that opens the usual form on top.
 export default function ResidentDetails({ member, residents, initialIndex = 0, onClose, onChanged }) {
   const { user } = useAuth();
-  const [index, setIndex] = useState(initialIndex);
+  // The shown resident is remembered by id, not by position: the list behind
+  // the dialog is live and sorted by name on the server, so a position would
+  // drift to someone else after a rename or a deletion elsewhere.
+  const [currentId, setCurrentId] = useState(() => residents[initialIndex]?.id);
   const [editing, setEditing] = useState(false);
   const count = residents.length;
-  // The list can shrink while the dialog is open (a resident was deleted elsewhere).
-  const current = Math.min(index, count - 1);
+  const found = residents.findIndex((r) => String(r.id) === String(currentId));
+  const current = found >= 0 ? found : 0;
   const resident = residents[current];
-  const prev = () => setIndex((i) => (i - 1 + count) % count);
-  const next = () => setIndex((i) => (i + 1) % count);
+  const step = (by) => setCurrentId(residents[(current + by + count) % count].id);
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
+  // The resident on screen was deleted elsewhere: the form on top (if any)
+  // was about them, so it closes rather than saving into whoever is next.
+  useEffect(() => { if (found < 0) setEditing(false); }, [found]);
 
   useEffect(() => {
     if (editing || count < 2) return undefined;
     const onKey = (e) => {
       if (e.target.closest?.('input, textarea, select')) return;
-      if (e.key === 'ArrowLeft') prev();
-      if (e.key === 'ArrowRight') next();
+      if (e.key === 'ArrowLeft') stepRef.current(-1);
+      if (e.key === 'ArrowRight') stepRef.current(1);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [editing, count]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editing, count]);
 
   if (!resident) return null;
   const owner = resident.owner ?? member;
@@ -52,9 +57,9 @@ export default function ResidentDetails({ member, residents, initialIndex = 0, o
           <>
             {count > 1 && (
               <div className="asset-nav">
-                <button className="icon-btn" onClick={prev} aria-label="Previous resident" title="Previous (←)"><Icon name="chevronLeft" size={18} /></button>
+                <button className="icon-btn" onClick={() => step(-1)} aria-label="Previous resident" title="Previous (←)"><Icon name="chevronLeft" size={18} /></button>
                 <span className="asset-nav-count">{current + 1} / {count}</span>
-                <button className="icon-btn" onClick={next} aria-label="Next resident" title="Next (→)"><Icon name="chevronRight" size={18} /></button>
+                <button className="icon-btn" onClick={() => step(1)} aria-label="Next resident" title="Next (→)"><Icon name="chevronRight" size={18} /></button>
               </div>
             )}
             <button className="btn" onClick={onClose}>Close</button>
@@ -75,7 +80,7 @@ export default function ResidentDetails({ member, residents, initialIndex = 0, o
           <ol className="asset-tabs" aria-label="Residents">
             {residents.map((r, i) => (
               <li key={r.id}>
-                <button className={`asset-tab ${i === current ? 'active' : ''}`} onClick={() => setIndex(i)} aria-current={i === current ? 'true' : undefined}>{r.name}</button>
+                <button className={`asset-tab ${i === current ? 'active' : ''}`} onClick={() => setCurrentId(r.id)} aria-current={i === current ? 'true' : undefined}>{r.name}</button>
               </li>
             ))}
           </ol>
@@ -105,8 +110,9 @@ export default function ResidentDetails({ member, residents, initialIndex = 0, o
           <dt>Added</dt><dd><DateTag value={resident.createdAt} muted={false} /></dd>
         </dl>
       </Modal>
+      {/* Keyed by the resident, so the form can never carry one resident's fields over to another. */}
       {editing && (
-        <ResidentForm resident={resident} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged?.(); }} />
+        <ResidentForm key={resident.id} resident={resident} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onChanged?.(); }} />
       )}
     </>
   );

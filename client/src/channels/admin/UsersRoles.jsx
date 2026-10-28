@@ -1,12 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../../api.js';
 import { useLiveData } from '../../useLiveData.js';
+import { useGroupOptions } from '../../options.js';
+import { ROLE_ORDER } from '../../roles.js';
 import { useToast } from '../../components/Toast.jsx';
 import { timeAgo } from '../../format.js';
 import { ROLE_LABELS, ROLE_PLURALS } from '../../components/RoleBadge.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Modal from '../../components/Modal.jsx';
 import MemberActions from '../member/MemberActions.jsx';
+
+const COLUMNS = {
+  user: (u) => u.name,
+  group: (u) => u.group?.name ?? null,
+  role: (u) => ROLE_ORDER.indexOf(u.role),
+  status: (u) => u.status,
+  lastLogin: { by: (u) => u.lastLoginAt ?? null, desc: true },
+};
+const EMPTY = [];
 
 const ROLE_HELP = {
   admin: 'Manages accounts, roles and groups',
@@ -18,12 +30,8 @@ const ROLE_HELP = {
 // A boss leads the group they belong to, so making someone a boss asks
 // which group — preset to their current one, if any.
 function BossGroupDialog({ member, onConfirm, onClose, busy }) {
-  const [groups, setGroups] = useState([]);
+  const { list: groups, error, loading } = useGroupOptions();
   const [group, setGroup] = useState(member.group?.id ?? '');
-
-  useEffect(() => {
-    api('/groups/options').then((d) => setGroups(d.groups)).catch(() => setGroups([]));
-  }, []);
 
   const submit = (e) => { e.preventDefault(); if (group) onConfirm(group); };
   const moving = member.group && group && group !== member.group.id;
@@ -43,10 +51,11 @@ function BossGroupDialog({ member, onConfirm, onClose, busy }) {
       )}
     >
       <form id="boss-group-form" className="form-grid" onSubmit={submit}>
+        {error && <div className="alert error">Could not load the groups: {error}</div>}
         <label>
           Group
           <select value={group} onChange={(e) => setGroup(e.target.value)} required autoFocus>
-            <option value="">Choose a group</option>
+            <option value="">{loading ? 'Loading groups...' : 'Choose a group'}</option>
             {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </label>
@@ -111,10 +120,11 @@ function RoleSelect({ member, onChanged }) {
 
 // Admins and the team leader: every account with its role and status.
 export default function UsersRoles() {
-  const active = useLiveData('/members?group=all', ['directory:changed']);
-  const disabled = useLiveData('/members?group=all&status=disabled', ['directory:changed']);
-  const reload = () => { active.reload(); disabled.reload(); };
-  const users = [...(active.data?.members ?? []), ...(disabled.data?.members ?? [])];
+  // Active and disabled accounts in one answer (admins and the leader see both).
+  const { data, error, loading, reload } = useLiveData('/members?group=all&status=all', ['directory:changed']);
+  // Active accounts first; the headers re-sort on demand.
+  const users = useMemo(() => [...(data?.members ?? EMPTY)].sort((a, b) => (a.status === 'disabled') - (b.status === 'disabled')), [data]);
+  const sorter = useSort(users, COLUMNS);
   const counts = Object.fromEntries(Object.keys(ROLE_LABELS).map((r) => [r, users.filter((u) => u.role === r && u.status === 'active').length]));
 
   return (
@@ -127,32 +137,43 @@ export default function UsersRoles() {
           </div>
         ))}
       </div>
-      {(active.error || disabled.error) && <div className="alert error">{active.error || disabled.error}</div>}
-      <table className="table">
-        <thead>
-          <tr><th>User</th><th>Group</th><th>Role</th><th>Status</th><th>Last login</th><th aria-label="Actions" /></tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id} className={u.status === 'disabled' ? 'is-disabled' : ''}>
-              <td data-label="User">
-                <div className="cell-user">
-                  <Avatar name={u.name} role={u.role} />
-                  <div>
-                    <div className="strong">{u.name}</div>
-                    <div className="muted small">@{u.username} · {u.memberId}</div>
-                  </div>
-                </div>
-              </td>
-              <td data-label="Group">{u.group?.name ?? <span className="muted">—</span>}</td>
-              <td data-label="Role"><RoleSelect member={u} onChanged={reload} /></td>
-              <td data-label="Status"><span className={`status-pill ${u.status}`}>{u.status}</span></td>
-              <td data-label="Last login" className="muted small">{timeAgo(u.lastLoginAt)}</td>
-              <td className="cell-actions"><MemberActions member={u} onChanged={reload} /></td>
+      {error && <div className="alert error">{error}</div>}
+      {loading && !data && <div className="muted">Loading...</div>}
+      {data && !users.length && <div className="empty-inline muted">No accounts yet.</div>}
+      {users.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <Th sort={sorter} col="user">User</Th>
+              <Th sort={sorter} col="group">Group</Th>
+              <Th sort={sorter} col="role">Role</Th>
+              <Th sort={sorter} col="status">Status</Th>
+              <Th sort={sorter} col="lastLogin">Last login</Th>
+              <th aria-label="Actions" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sorter.rows.map((u) => (
+              <tr key={u.id} className={u.status === 'disabled' ? 'is-disabled' : ''}>
+                <td data-label="User">
+                  <div className="cell-user">
+                    <Avatar name={u.name} role={u.role} />
+                    <div>
+                      <div className="strong">{u.name}</div>
+                      <div className="muted small">@{u.username} · {u.memberId}</div>
+                    </div>
+                  </div>
+                </td>
+                <td data-label="Group">{u.group?.name ?? <span className="muted">—</span>}</td>
+                <td data-label="Role"><RoleSelect member={u} onChanged={reload} /></td>
+                <td data-label="Status"><span className={`status-pill ${u.status}`}>{u.status}</span></td>
+                <td data-label="Last login" className="muted small">{timeAgo(u.lastLoginAt)}</td>
+                <td className="cell-actions"><MemberActions member={u} onChanged={reload} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

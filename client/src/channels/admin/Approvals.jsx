@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useLiveData } from '../../useLiveData.js';
+import { useGroupOptions } from '../../options.js';
+import { isManager } from '../../roles.js';
 import { useToast } from '../../components/Toast.jsx';
 import { timeAgo } from '../../format.js';
 import { ConfirmDialog } from '../../components/Modal.jsx';
@@ -14,6 +16,9 @@ function PendingCard({ member, groups, canAssign, onDone }) {
   const [group, setGroup] = useState(member.group?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [confirmReject, setConfirmReject] = useState(false);
+  // The requested group is listed even before the groups have loaded (or
+  // when they could not), so the select shows what Approve will assign.
+  const requested = member.group && !groups.some((g) => String(g.id) === String(member.group.id)) ? member.group : null;
 
   const act = async (action) => {
     setBusy(true);
@@ -39,13 +44,14 @@ function PendingCard({ member, groups, canAssign, onDone }) {
         </div>
       </div>
       <dl className="profile small">
-        <dt>Birthday</dt><dd><DateTag value={member.birthday} utc muted={false}  icon="cake" /></dd>
+        <dt>Birthday</dt><dd><DateTag value={member.birthday} utc muted={false} icon="cake" /></dd>
         <dt>Requested group</dt><dd>{member.group?.name ?? 'None'}</dd>
       </dl>
       <div className="pending-actions">
         {canAssign && (
           <select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Group to assign">
             <option value="">No group</option>
+            {requested && <option value={requested.id}>{requested.name}</option>}
             {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         )}
@@ -72,12 +78,8 @@ function PendingCard({ member, groups, canAssign, onDone }) {
 export default function Approvals() {
   const { user } = useAuth();
   const { data, error, loading, reload } = useLiveData('/members/pending', ['nav:changed']);
-  const [groups, setGroups] = useState([]);
-  const canAssign = ['admin', 'leader'].includes(user.role);
-
-  useEffect(() => {
-    if (canAssign) api('/groups/options').then((d) => setGroups(d.groups)).catch(() => {});
-  }, [canAssign]);
+  const canAssign = isManager(user);
+  const { list: groups, error: groupsError } = useGroupOptions(canAssign);
 
   const pending = data?.members ?? [];
 
@@ -89,6 +91,7 @@ export default function Approvals() {
           : 'People who signed up and are waiting for access. You can change their group before approving.'}
       </p>
       {error && <div className="alert error">{error}</div>}
+      {groupsError && <div className="alert error">Could not load the groups: {groupsError}</div>}
       {!loading && !pending.length && !error && (
         <div className="empty-inline muted"><Icon name="userCheck" size={20} /> No sign-ups waiting for approval.</div>
       )}
