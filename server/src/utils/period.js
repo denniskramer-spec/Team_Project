@@ -57,6 +57,10 @@ export function parsePeriod(type, key) {
   if (typeof key !== 'string') throw badRequest('Invalid period');
   const period = parseKey(type, key);
   if (periodKey(type, period.start) !== key) throw badRequest(`"${key}" is not a real ${type} period`);
+  // The same bounds as a date field: nothing before 2000 or more than ten
+  // years ahead, so a typo in the year cannot plant records in year 9999.
+  const year = period.start.getUTCFullYear();
+  if (year < 2000 || year > new Date().getUTCFullYear() + 10) throw badRequest(`"${key}" is outside the years this app covers`);
   return period;
 }
 

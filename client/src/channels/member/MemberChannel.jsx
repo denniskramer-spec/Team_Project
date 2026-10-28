@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useSocket } from '../../socket/SocketContext.jsx';
@@ -10,11 +10,22 @@ import ResidentDetails from '../resident/ResidentDetails.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import RoleBadge from '../../components/RoleBadge.jsx';
 import Icon from '../../components/Icon.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
+import { ROLE_ORDER, isManager } from '../../roles.js';
 import TempPassword from '../../components/TempPassword.jsx';
 import MemberForm from './MemberForm.jsx';
 import MemberActions from './MemberActions.jsx';
 
 // Section 3 for the Member channel: the directory for "All" or one group.
+const COLUMNS = {
+  member: (m) => m.name,
+  id: (m) => m.memberId,
+  birthday: (m) => m.birthday ?? null,
+  group: (m) => m.group?.name ?? null,
+  role: (m) => ROLE_ORDER.indexOf(m.role),
+  residents: { by: (m) => m.residents?.length ?? 0, desc: true },
+};
+
 export default function MemberChannel({ title }) {
   const { user } = useAuth();
   const { online } = useSocket();
@@ -29,16 +40,17 @@ export default function MemberChannel({ title }) {
   const [viewing, setViewing] = useState(null);
   const q = useDebounced(query);
 
-  const canAdd = ['admin', 'leader', 'boss'].includes(user.role);
-  const canSeeDisabled = ['admin', 'leader'].includes(user.role);
+  const canAdd = isManager(user) || user.role === 'boss';
+  const canSeeDisabled = isManager(user);
   const params = new URLSearchParams({ group: title.key });
   if (q.trim()) params.set('q', q.trim());
   if (showDisabled) params.set('status', 'disabled');
 
   const { data, error, loading, reload } = useLiveData(`/members?${params}`, ['directory:changed', 'resident:changed']);
-  const all = data?.members ?? [];
+  const all = useMemo(() => data?.members ?? [], [data]);
   // Picking a member in the tree narrows the list to that person.
-  const members = selectedMember ? all.filter((m) => String(m.id) === selectedMember) : all;
+  const members = useMemo(() => (selectedMember ? all.filter((m) => String(m.id) === selectedMember) : all), [all, selectedMember]);
+  const sorter = useSort(members, COLUMNS);
 
   // Bosses may only add to their own group, so hide the button on other groups.
   // The dialog reads the live list, so an edit shows up without reopening it.
@@ -87,17 +99,17 @@ export default function MemberChannel({ title }) {
         <table className="table member-table">
           <thead>
             <tr>
-              <th>Member</th>
-              <th>ID</th>
-              <th>Birthday</th>
-              <th>Group</th>
-              <th>Role</th>
-              <th>Residents</th>
+              <Th sort={sorter} col="member">Member</Th>
+              <Th sort={sorter} col="id">ID</Th>
+              <Th sort={sorter} col="birthday">Birthday</Th>
+              <Th sort={sorter} col="group">Group</Th>
+              <Th sort={sorter} col="role">Role</Th>
+              <Th sort={sorter} col="residents">Residents</Th>
               <th aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
-            {members.map((m) => (
+            {sorter.rows.map((m) => (
               <tr key={m.id} className={m.status === 'disabled' ? 'is-disabled' : ''}>
                 <td data-label="Member">
                   <div className="cell-user">

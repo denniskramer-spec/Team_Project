@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeSplit, checkPayment, workEarnings, PAYMENT_METHODS } from '../src/utils/payments.js';
+import { computeSplit, checkPayment, workEarnings, priceWork, PAYMENT_METHODS } from '../src/utils/payments.js';
 
 test('the fee comes off first, then the resident share, the rest is net', () => {
   assert.deepEqual(computeSplit({ amount: 150, feePercent: 0, feeFixed: 0, residentPercent: 20 }), { feeAmount: 0, residentAmount: 30, net: 120 });
@@ -30,4 +30,18 @@ test('a day\'s work earns price × hours or price × tasks, less the resident sh
   assert.equal(workEarnings({ price: 30, priceUnit: 'task', residentPercent: 20 }, { count: 10, hours: 4 }), 240);
   assert.equal(workEarnings({ price: 3000, priceUnit: 'fixed', residentPercent: 0 }, { hours: 5, count: 5 }), 0);
   assert.equal(workEarnings({ price: 30, priceUnit: 'hour' }, { hours: 0 }), 0);
+});
+
+test('work on a project priced in another currency is recorded in the base', () => {
+  const rates = { base: 'USD', rates: { USD: 1, EUR: 0.8, BRL: 5 }, rateDate: '2026-10-28' };
+  // €50/h × 10 h = €500, which is $625 at 0.8 EUR per USD.
+  assert.deepEqual(priceWork({ price: 50, priceUnit: 'hour', currency: 'EUR' }, { hours: 10 }, rates), { amount: 625, currency: 'EUR', rate: 0.8 });
+  assert.equal(workEarnings({ price: 50, priceUnit: 'hour', currency: 'EUR' }, { hours: 10 }, rates), 625);
+  // The resident's share comes off in the project's currency, before the conversion.
+  assert.equal(workEarnings({ price: 100, priceUnit: 'task', currency: 'BRL', residentPercent: 20 }, { count: 3 }, rates), 48);
+  // The base itself is untouched; a currency without a rate is refused, not taken as 1:1.
+  assert.equal(workEarnings({ price: 30, priceUnit: 'hour', currency: 'USD' }, { hours: 2 }, rates), 60);
+  assert.throws(() => workEarnings({ price: 30, priceUnit: 'hour', currency: 'GBP' }, { hours: 2 }, rates), /No exchange rate for GBP/);
+  // Nothing to price needs no rate (a text-only work entry on such a project).
+  assert.deepEqual(priceWork({ price: 30, priceUnit: 'hour', currency: 'GBP' }, { hours: 0 }, rates), { amount: 0, currency: 'GBP', rate: null });
 });

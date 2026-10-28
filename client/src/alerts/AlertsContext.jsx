@@ -2,17 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { useSocketEvent } from '../socket/SocketContext.jsx';
+import { useDebouncedSocketEvent, useReconnect, useSocketEvent } from '../socket/SocketContext.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { load, save } from '../storage.js';
+import { EVENTS } from '../constants.js';
 import { playAlert } from './sound.js';
+import { desktopSupported, notify } from './notify.js';
 import AlertPopup from './AlertPopup.jsx';
 import UrgentAlarm from './UrgentAlarm.jsx';
 
 const SETTINGS_KEY = 'bm.alertSettings';
 const AlertsContext = createContext(null);
-
-const desktopSupported = () => typeof Notification !== 'undefined';
 
 // Tracks unread instructions and raises the alarm when a new one arrives:
 // a sound, an in-window popup (a blocking alarm for urgent ones) and,
@@ -23,25 +23,56 @@ export function AlertsProvider({ children }) {
   const toast = useToast();
   const [unread, setUnread] = useState([]);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState('');
   const [popup, setPopup] = useState(null);
   const [urgentQueue, setUrgentQueue] = useState([]);
   // `chat` is the popup (and sound) for chat messages in chats not on screen.
   const [settings, setSettings] = useState(() => ({ sound: true, desktop: false, chat: true, ...load(SETTINGS_KEY, {}) }));
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const unreadRef = useRef(unread);
+  unreadRef.current = unread;
+  // Whether the first list of the session has been loaded: urgent ones that
+  // turn up in a later load (after a reconnect) were missed, so they alarm.
+  const seeded = useRef(false);
   const active = Boolean(user && !user.mustChangePassword);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!active) return;
-    api('/instructions/unread')
-      .then((d) => { setUnread(d.instructions); setTotal(d.total); })
-      .catch(() => {});
+    try {
+      const d = await api('/instructions/unread');
+      const known = new Set(unreadRef.current.map((a) => String(a.id)));
+      const missed = seeded.current ? d.instructions.filter((a) => a.priority === 'urgent' && !known.has(String(a.id))) : [];
+      setUnread(d.instructions);
+      setTotal(d.total);
+      setError('');
+      seeded.current = true;
+      if (missed.length) {
+        setUrgentQueue((q) => [...q, ...missed.filter((a) => !q.some((x) => String(x.id) === String(a.id)))]);
+        if (settingsRef.current.sound) playAlert('urgent');
+      }
+    } catch (err) {
+      setError(err.message);
+    }
   }, [active]);
 
   useEffect(() => {
     if (active) refresh();
-    else { setUnread([]); setTotal(0); setPopup(null); setUrgentQueue([]); }
+    else { seeded.current = false; setUnread([]); setTotal(0); setPopup(null); setUrgentQueue([]); }
   }, [active, refresh]);
+  // Events sent while the socket was down are lost: fetch what they said.
+  useReconnect(refresh);
+
+  // A setting kept from a day the browser still allowed notifications is
+  // switched off quietly once it no longer does.
+  useEffect(() => {
+    if (settings.desktop && desktopSupported() && Notification.permission !== 'granted') {
+      const next = { ...settings, desktop: false };
+      setSettings(next);
+      save(SETTINGS_KEY, next);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const open = useCallback((alert) => {
     navigate(`/instruction/${alert.titleKey}?focus=${alert.id}`);
@@ -52,28 +83,35 @@ export function AlertsProvider({ children }) {
     setUrgentQueue((q) => q.filter((a) => a.id !== id));
   }, []);
 
+  // One request per instruction at a time: a second click while the first
+  // is out would count it down twice.
+  const pending = useRef(new Set());
   const markRead = useCallback(async (id) => {
+    const key = String(id);
+    if (pending.current.has(key)) return;
+    pending.current.add(key);
     try {
       await api(`/instructions/${id}/read`, { method: 'POST' });
-      setUnread((list) => list.filter((a) => String(a.id) !== String(id)));
+      setUnread((list) => list.filter((a) => String(a.id) !== key));
       setTotal((t) => Math.max(0, t - 1));
       dismiss(id);
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      pending.current.delete(key);
     }
   }, [dismiss, toast]);
 
-  const markAllRead = useCallback(async () => {
+  // Everything, or only the instructions under one title ('all' or a group).
+  const markAllRead = useCallback(async (title) => {
     try {
-      await api('/instructions/read-all', { method: 'POST', body: {} });
-      setUnread([]);
-      setTotal(0);
-      setPopup(null);
-      setUrgentQueue([]);
+      await api('/instructions/read-all', { method: 'POST', body: title ? { title } : {} });
+      if (title) await refresh();
+      else { setUnread([]); setTotal(0); setPopup(null); setUrgentQueue([]); }
     } catch (err) {
       toast.error(err.message);
     }
-  }, [toast]);
+  }, [toast, refresh]);
 
   const isForMe = useCallback((a) => {
     if (!user || String(a.author.id) === String(user.id)) return false;
@@ -81,7 +119,7 @@ export function AlertsProvider({ children }) {
     return a.target === 'all' || String(a.groupId) === String(user.group?.id);
   }, [user]);
 
-  useSocketEvent('instruction:new', (alert) => {
+  useSocketEvent(EVENTS.INSTRUCTION_NEW, (alert) => {
     // A repeated event (e.g. after a reconnect) must not count twice.
     if (!isForMe(alert) || unread.some((a) => a.id === alert.id)) return;
     setUnread((list) => [alert, ...list.filter((a) => a.id !== alert.id)]);
@@ -91,19 +129,19 @@ export function AlertsProvider({ children }) {
     if (alert.priority === 'urgent') setUrgentQueue((q) => [...q, alert]);
     else setPopup(alert);
 
-    const s = settingsRef.current;
-    if (s.desktop && desktopSupported() && Notification.permission === 'granted' && (document.hidden || !document.hasFocus())) {
-      const n = new Notification(`${alert.priority === 'urgent' ? 'URGENT: ' : ''}New instruction from ${alert.author.name}`, {
+    if (settingsRef.current.desktop) {
+      notify(`${alert.priority === 'urgent' ? 'URGENT: ' : ''}New instruction from ${alert.author.name}`, {
         body: [alert.title, alert.preview].filter(Boolean).join('\n'),
         tag: `instruction-${alert.id}`,
         requireInteraction: alert.priority === 'urgent',
-      });
-      n.onclick = () => { window.focus(); open(alert); n.close(); };
+      }, () => open(alert));
     }
   });
-  useSocketEvent('instruction:deleted', ({ id }) => { dismiss(id); refresh(); });
-  // Reads from another tab or device update this one too.
-  useSocketEvent('nav:changed', refresh);
+  useSocketEvent(EVENTS.INSTRUCTION_DELETED, ({ id }) => { dismiss(id); refresh(); });
+  // Reads from another tab or device, and edits to an unread instruction,
+  // update this one too. Every client hears these: one reload per burst.
+  useDebouncedSocketEvent(EVENTS.NAV_CHANGED, refresh);
+  useDebouncedSocketEvent(EVENTS.INSTRUCTION_CHANGED, refresh);
 
   const updateSettings = useCallback(async (patch) => {
     const next = { ...settingsRef.current, ...patch };
@@ -119,9 +157,9 @@ export function AlertsProvider({ children }) {
   }, [toast]);
 
   const value = useMemo(() => ({
-    unread, total, settings, updateSettings, markRead, markAllRead, open, desktopSupported: desktopSupported(),
+    unread, total, error, settings, updateSettings, markRead, markAllRead, open, desktopSupported: desktopSupported(),
     testSound: () => playAlert('normal'),
-  }), [unread, total, settings, updateSettings, markRead, markAllRead, open]);
+  }), [unread, total, error, settings, updateSettings, markRead, markAllRead, open]);
 
   return (
     <AlertsContext.Provider value={value}>

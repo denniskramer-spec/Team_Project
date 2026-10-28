@@ -17,11 +17,11 @@ const TYPES = {
 };
 
 // A custom duration loads every record in it, so it is capped.
-const MAX_RANGE_DAYS = 5 * 366;
+export const MAX_RANGE_DAYS = 5 * 366;
 
 const DAY_LABEL = { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' };
 
-function parseDay(value, what) {
+export function parseDay(value, what) {
   const day = new Date(`${value}T00:00:00.000Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value)) || Number.isNaN(day.getTime())
     || day.toISOString().slice(0, 10) !== value) {
@@ -149,6 +149,10 @@ export function groupTiles(allowed, has, value) {
 // Totals and charts always count everything.
 export const LIST_LIMIT = 500;
 export const DETAIL_LIMIT = 100;
+
+// Sent with /finance/rates, so the client's pickers and notes can use the
+// same numbers instead of their own copies.
+export const LIMITS = { maxRangeDays: MAX_RANGE_DAYS, listLimit: LIST_LIMIT, detailLimit: DETAIL_LIMIT };
 
 export const groupList = (allowed) => allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug }));
 

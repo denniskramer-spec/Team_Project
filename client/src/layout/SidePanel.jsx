@@ -1,20 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { useSocket, useSocketEvent, useReconnect } from '../socket/SocketContext.jsx';
+import { useSocket, useSocketEvent } from '../socket/SocketContext.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ROLE_LABELS } from '../components/RoleBadge.jsx';
-import { formatAmount, formatBirthday, timeAgo } from '../format.js';
+import { formatAmount, formatBirthday, formatClock, timeAgo } from '../format.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import AlertsPanel from '../alerts/AlertsPanel.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
-import { dmPath } from './NewDm.jsx';
-
-const ROLE_ORDER = ['admin', 'leader', 'boss', 'member'];
-const clock = (v) => new Date(v).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-const STATE = { sent: ['active', 'Sent'], draft: ['pending', 'Draft'], missing: ['disabled', 'Missing'] };
+import { useOpenDm } from '../channels/chat/useOpenDm.js';
+import { useLiveData } from '../useLiveData.js';
+import { ROLE_ORDER } from '../roles.js';
+import { EVENTS, WRITE_REPORT_PATH } from '../constants.js';
+import { STATE_PILL as STATE, useTodayPlan } from '../channels/report/reportState.js';
+import { useReportStatus } from '../channels/report/ReportStatus.jsx';
 
 // One member at a glance: who they are, when they were around, and (for
 // the people this role may follow) today's report and projects.
@@ -41,7 +42,7 @@ function PeekCard({ id, onMessage, onClose }) {
         <div className="peek-today">
           <div className="peek-row">
             <span className="muted small">Today's report</span>
-            <span className={`status-pill ${STATE[t.state][0]}`}>{STATE[t.state][1]}{t.state === 'sent' ? ` ${clock(t.sentAt)}` : ''}</span>
+            <span className={`status-pill ${STATE[t.state][0]}`}>{STATE[t.state][1]}{t.state === 'sent' ? ` ${formatClock(t.sentAt)}` : ''}</span>
           </div>
           {t.state !== 'missing' && (
             <div className="muted small">Plan {t.planDone}/{t.planTotal} · applied {formatAmount(t.applied)} · {t.calls} calls · {formatAmount(t.hours)} h</div>
@@ -78,19 +79,11 @@ function MemberRow({ member, online, open, onPick }) {
 }
 
 // The writer's own day, pinned at the top of the panel.
+const NO_PLAN = [];
 function MyDay() {
-  const { data, reload } = useSocketData('/reports/status', ['report:changed']);
-  const { data: me } = useSocketData('/reports?type=daily&group=all', ['report:changed']);
-  const toast = useToast();
+  const { data } = useReportStatus();
+  const [plan, toggle] = useTodayPlan(data?.todayPlan ?? NO_PLAN, data?.period);
   if (!data?.canWrite) return null;
-  const plan = me?.mine?.todayPlan?.length ? me.mine.todayPlan : (me?.previousPlan?.items ?? []).map((text) => ({ text, done: false }));
-  const toggle = async (i) => {
-    try {
-      const todayPlan = plan.map((p, n) => (n === i ? { ...p, done: !p.done } : p));
-      await api('/reports', { method: 'PUT', body: { type: 'daily', scope: 'personal', todayPlan } });
-      reload();
-    } catch (err) { toast.error(err.message); }
-  };
   const state = data.sentAt ? 'sent' : data.draft ? 'draft' : 'missing';
   return (
     <section className="panel-block">
@@ -106,7 +99,7 @@ function MyDay() {
           ))}
         </ul>
       )}
-      <Link className={`btn small-btn${state === 'sent' ? '' : ' primary'}`} to="/report?write=1">
+      <Link className={`btn small-btn${state === 'sent' ? '' : ' primary'}`} to={WRITE_REPORT_PATH}>
         <Icon name="file" size={14} /> {state === 'sent' ? 'Open report' : state === 'draft' ? 'Finish report' : 'Write daily report'}
       </Link>
     </section>
@@ -115,10 +108,11 @@ function MyDay() {
 
 // For managers: who still owes today's report, with a one-click reminder.
 function TeamToday({ onMessage }) {
-  const { data, reload } = useSocketData('/reports/today', ['report:changed']);
+  const { data, error } = useLiveData('/reports/today', [EVENTS.REPORT_CHANGED]);
   const toast = useToast();
   const [nudged, setNudged] = useState(new Set());
   const rows = data?.rows ?? [];
+  if (error) return <div className="alert error small">{error}</div>;
   if (!rows.length) return null;
   const owing = rows.filter((r) => r.state !== 'sent');
   const nudge = async (r) => {
@@ -153,7 +147,7 @@ function TeamToday({ onMessage }) {
 
 // Birthdays and project expiries in the next two weeks.
 function Upcoming() {
-  const { data } = useSocketData('/users/upcoming', ['directory:changed', 'task:changed']);
+  const { data } = useLiveData('/users/upcoming', [EVENTS.DIRECTORY_CHANGED, EVENTS.TASK_CHANGED]);
   const items = [
     ...(data?.birthdays ?? []).map((b) => ({ key: `b-${b.id}`, icon: 'cake', text: `${b.name}'s birthday`, when: b.inDays })),
     ...(data?.expiries ?? []).map((e) => ({ key: `e-${e.id}`, icon: 'briefcase', text: `${e.name}${e.owner ? ` · ${e.owner}` : ''} expires`, when: e.inDays })),
@@ -170,36 +164,19 @@ function Upcoming() {
   );
 }
 
-// Loads a path and reloads it on socket events and reconnects.
-function useSocketData(path, events) {
-  const [data, setData] = useState(null);
-  const reload = useCallback(() => api(path).then(setData).catch(() => {}), [path]);
-  useEffect(() => { reload(); }, [reload]);
-  useReconnect(reload);
-  const key = events.join('|');
-  const { socket } = useSocket();
-  useEffect(() => {
-    if (!socket) return undefined;
-    const names = key.split('|');
-    names.forEach((e) => socket.on(e, reload));
-    return () => names.forEach((e) => socket.off(e, reload));
-  }, [socket, key, reload]);
-  return { data, reload };
-}
-
 function Members({ onMessage }) {
   const { online } = useSocket();
-  const [members, setMembers] = useState([]);
-  const [error, setError] = useState('');
   const [peek, setPeek] = useState(null);
 
-  const loadMembers = () => api('/users/directory')
-    .then((d) => { setMembers(d.users); setError(''); })
-    .catch((err) => setError(err.message));
-
-  useEffect(() => { loadMembers(); }, []);
-  useSocketEvent('directory:changed', loadMembers);
-  useSocketEvent('presence:offline', loadMembers);
+  const { data, error } = useLiveData('/users/directory', [EVENTS.DIRECTORY_CHANGED]);
+  // Someone's last tab closed: only their "seen" time changes, so it is set
+  // here instead of every client reloading the whole directory.
+  const [seen, setSeen] = useState({});
+  useSocketEvent(EVENTS.PRESENCE_OFFLINE, (id) => setSeen((s) => ({ ...s, [String(id)]: new Date().toISOString() })));
+  const members = useMemo(
+    () => (data?.users ?? []).map((m) => (seen[String(m.id)] ? { ...m, lastSeenAt: seen[String(m.id)] } : m)),
+    [data, seen],
+  );
 
   // Online members grouped by role (like Discord), then everyone offline.
   const sections = useMemo(() => {
@@ -242,9 +219,8 @@ function Members({ onMessage }) {
 // Section 4: hidden by default, slides in from the right when the arrow is clicked.
 export default function SidePanel({ open, onToggle, tab, setTab }) {
   const { total } = useAlerts();
-  const navigate = useNavigate();
   // "Message" opens the conversation under Chat -> Direct messages.
-  const message = (peer) => { const { to, state } = dmPath(peer); navigate(to, { state }); };
+  const message = useOpenDm();
 
   return (
     <>
@@ -259,7 +235,8 @@ export default function SidePanel({ open, onToggle, tab, setTab }) {
           </button>
         </div>
         <div className="panel-body">
-          {tab === 'members' && <Members onMessage={message} />}
+          {/* Nothing loads or live-reloads for a panel nobody has opened. */}
+          {open && tab === 'members' && <Members onMessage={message} />}
           {tab === 'alerts' && <AlertsPanel />}
         </div>
       </aside>

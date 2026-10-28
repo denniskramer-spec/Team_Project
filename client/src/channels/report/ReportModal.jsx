@@ -4,6 +4,8 @@ import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import Icon from '../../components/Icon.jsx';
+import { GoalHint } from './BidGoals.jsx';
+import { formatClock } from '../../format.js';
 
 const RESULTS = [{ key: 'well', label: 'Went well' }, { key: 'mixed', label: 'Mixed' }, { key: 'bad', label: "Didn't go well" }];
 const EMPTY_CALL = { time: '', title: '', profile: '', caller: '', result: '', note: '' };
@@ -30,8 +32,6 @@ const unitsOf = (p, w) => (p.priceUnit === 'hour' ? Number(w?.hours) : p.priceUn
 const earns = (p, w) => (p.price > 0 && unitsOf(p, w) > 0 ? p.price * unitsOf(p, w) * (1 - (p.residentPercent || 0) / 100) : 0);
 const money = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
 
-const clock = (value) => new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-
 function Section({ title, meta, children }) {
   return (
     <section className="rm-section">
@@ -54,57 +54,79 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
   const [savedAt, setSavedAt] = useState(report?.updatedAt ?? null);
   const [sentAt, setSentAt] = useState(report?.sentAt ?? null);
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [newItem, setNewItem] = useState('');
   const dirty = useRef(false);
   const timer = useRef(null);
 
-  // Another period: start from that period's report.
+  // Another period: start from that period's report. Only a period change
+  // resets the form: the first draft of a day gives the report an id, and
+  // resetting on that would drop what was typed while the save was on its way.
   useEffect(() => {
     setForm(toForm(report, context));
     setSavedAt(report?.updatedAt ?? null);
     setSentAt(report?.sentAt ?? null);
     dirty.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period.key, report?.id]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [period.key]);
 
   // The latest form, for the delayed draft save.
   const latest = useRef(form);
   latest.current = form;
 
-  const body = (f, send = false) => ({
+  const body = (f, send = false, key = period.key) => ({
     ...f,
     type: 'daily',
-    period: period.key,
+    period: key,
     scope: 'personal',
     send,
     work: Object.entries(f.work).map(([task, w]) => ({ task, text: w.text, hours: w.hours || 0, count: w.count || 0 })),
   });
 
-  const save = async (send = false) => {
-    setBusy(true);
-    setError('');
+  // Saves run one after another, each sending the form as it is when its
+  // turn comes: an older autosave can never land after a newer one, and
+  // "Send" waits for a draft save in flight instead of being refused.
+  // It may run after the modal closed (a flush on close), so it only
+  // touches state while mounted.
+  const chain = useRef(Promise.resolve());
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  //   pinned  { form, key } to save exactly that (a flush before leaving the
+  //           period); otherwise the form as it is when the turn comes.
+  const doSave = async (send, pinned) => {
+    if (mounted.current) { setBusy(true); setError(''); }
+    const sending = pinned?.form ?? latest.current;
     try {
-      const { report: saved } = await api('/reports', { method: 'PUT', body: body(latest.current, send) });
+      const { report: saved } = await api('/reports', { method: 'PUT', body: body(sending, send, pinned?.key) });
+      if (pinned) { onSaved(); return; }
+      if (latest.current === sending) dirty.current = false;
+      onSaved();
+      if (!mounted.current) return;
       setSavedAt(saved.updatedAt);
       setSentAt(saved.sentAt);
-      dirty.current = false;
-      onSaved();
       if (send) {
         toast('Report sent');
         onClose();
       }
     } catch (err) {
-      setError(err.message);
+      if (mounted.current) setError(err.message);
+      else toast.error(`Your last report changes were not saved: ${err.message}`);
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
+  };
+  const save = (send = false, pinned = null) => {
+    clearTimeout(timer.current);
+    if (send) setSending(true);
+    chain.current = chain.current.then(() => doSave(send, pinned)).finally(() => { if (send && mounted.current) setSending(false); });
+    return chain.current;
+  };
+  // Unsaved edits are sent for the period they were typed in.
+  const flush = () => {
+    clearTimeout(timer.current);
+    if (dirty.current) save(false, { form: latest.current, key: period.key });
+    dirty.current = false;
   };
 
   // Drafts save on their own, a moment after the last change.
@@ -115,6 +137,23 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
     timer.current = setTimeout(() => { if (dirty.current) save(false); }, 1500);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  // Closing within the autosave delay would lose the last edits: send them first.
+  const close = () => {
+    flush();
+    onClose();
+  };
+  const goPeriod = (key) => {
+    flush();
+    onPeriod(key);
+  };
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') closeRef.current(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const set = (key) => (e) => update({ [key]: e.target.value });
   const setWork = (id, key) => (e) => update((f) => ({ work: { ...f.work, [id]: { ...(f.work[id] ?? { text: '', hours: '' }), [key]: e.target.value } } }));
@@ -135,13 +174,14 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
   };
 
   const projects = context?.projects ?? [];
+  const goals = context?.goals ?? null;
   const written = projects.filter((p) => form.work[String(p.id)]?.text?.trim()).length;
   const upcoming = projects.reduce((sum, p) => sum + earns(p, form.work[String(p.id)]), 0);
   const planDone = form.todayPlan.filter((p) => p.done).length;
   const callsDone = form.calls.filter((c) => c.result).length;
 
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="modal report-modal" role="dialog" aria-modal="true" aria-label="Daily report">
         <div className="rm-head">
           <span className="rm-head-icon"><Icon name="file" size={16} /></span>
@@ -151,12 +191,12 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
           </div>
           {onPeriod && (
             <div className="rm-period">
-              <button className="icon-btn" onClick={() => onPeriod(period.prev)} aria-label="Previous day"><Icon name="chevronLeft" size={16} /></button>
-              <button className="link rm-today" onClick={() => onPeriod('')} disabled={period.isCurrent}>Today</button>
-              <button className="icon-btn" onClick={() => onPeriod(period.next)} aria-label="Next day" disabled={!period.hasNext}><Icon name="chevronRight" size={16} /></button>
+              <button className="icon-btn" onClick={() => goPeriod(period.prev)} aria-label="Previous day"><Icon name="chevronLeft" size={16} /></button>
+              <button className="link rm-today" onClick={() => goPeriod('')} disabled={period.isCurrent}>Today</button>
+              <button className="icon-btn" onClick={() => goPeriod(period.next)} aria-label="Next day" disabled={!period.hasNext}><Icon name="chevronRight" size={16} /></button>
             </div>
           )}
-          <button className="icon-btn modal-close" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
+          <button className="icon-btn modal-close" onClick={close} aria-label="Close"><Icon name="close" size={18} /></button>
         </div>
 
         <div className="modal-body rm-body">
@@ -242,13 +282,13 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
               <button type="button" className="btn small-btn rm-add-call" onClick={() => update((f) => ({ calls: [...f.calls, { ...EMPTY_CALL }] }))}><Icon name="plus" size={14} /> Add call</button>
             </Section>
 
-            <Section title="Bid report">
+            <Section title="Bid report" meta={goals ? `goals from your ${goals.plan.type} plan · what a day misses is added to the next day` : undefined}>
               <div className="rm-grid">
-                <label>Applied<input type="number" min="0" step="1" value={form.jobBid} onChange={set('jobBid')} placeholder="0" /></label>
-                <label>AI training bids<input type="number" min="0" step="1" value={form.aiBid} onChange={set('aiBid')} placeholder="0" /></label>
-                <label>Résumés tailored<input type="number" min="0" step="1" value={form.resumes} onChange={set('resumes')} placeholder="0" /></label>
-                <label>Forms filled<input type="number" min="0" step="1" value={form.forms} onChange={set('forms')} placeholder="0" /></label>
-                <label>Time bidding (h)<input type="number" min="0" max="24" step="0.5" value={form.biddingHours} onChange={set('biddingHours')} placeholder="0" /></label>
+                <label>Applied<input type="number" min="0" step="1" value={form.jobBid} onChange={set('jobBid')} placeholder="0" /><GoalHint goal={goals?.items.jobBid} value={form.jobBid} /></label>
+                <label>AI training bids<input type="number" min="0" step="1" value={form.aiBid} onChange={set('aiBid')} placeholder="0" /><GoalHint goal={goals?.items.aiBid} value={form.aiBid} /></label>
+                <label>Résumés tailored<input type="number" min="0" step="1" value={form.resumes} onChange={set('resumes')} placeholder="0" /><GoalHint goal={goals?.items.resumes} value={form.resumes} /></label>
+                <label>Forms filled<input type="number" min="0" step="1" value={form.forms} onChange={set('forms')} placeholder="0" /><GoalHint goal={goals?.items.forms} value={form.forms} /></label>
+                <label>Time bidding (h)<input type="number" min="0" max="24" step="0.5" value={form.biddingHours} onChange={set('biddingHours')} placeholder="0" /><GoalHint goal={goals?.items.biddingHours} value={form.biddingHours} /></label>
               </div>
               <textarea rows={2} maxLength={2000} value={form.bidNote} onChange={set('bidNote')} placeholder="Add a note on bids — optional" />
             </Section>
@@ -266,10 +306,10 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
 
         <div className="rm-foot">
           <div className="rm-status">
-            <strong>{sentAt ? `Sent ${clock(sentAt)}` : 'Not sent yet'}</strong>
-            <span className="muted small">{busy ? 'Saving...' : savedAt ? `Draft saved ${clock(savedAt)}` : 'Nothing saved yet'}</span>
+            <strong>{sentAt ? `Sent ${formatClock(sentAt)}` : 'Not sent yet'}</strong>
+            <span className="muted small">{busy ? 'Saving...' : savedAt ? `Draft saved ${formatClock(savedAt)}` : 'Nothing saved yet'}</span>
           </div>
-          <button className="btn primary" onClick={() => save(true)} disabled={busy}>
+          <button className="btn primary" onClick={() => save(true)} disabled={sending}>
             <Icon name="send" size={14} /> {sentAt ? 'Send again' : 'Send report'}
           </button>
         </div>

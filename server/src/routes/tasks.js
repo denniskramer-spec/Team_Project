@@ -3,20 +3,21 @@ import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Task, { TASK_STATES, PRICE_UNITS, CURRENCIES } from '../models/Task.js';
 import Report from '../models/Report.js';
-import Income from '../models/Income.js';
 import Resident from '../models/Resident.js';
-import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
-import { scopeFilter, canManageFor, canReadTeam, assignableFilter } from '../utils/visibility.js';
+import {
+  scopeFilter, canManageFor, canReadTeam, visibleRecord, assignableMembers, scopeName,
+} from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay, checkText } from '../utils/validate.js';
+import { checkDay, checkText, searchRegex } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
-import { periodKey, parsePeriod } from '../utils/period.js';
+import { parsePeriod } from '../utils/period.js';
 import { checkPrice, formatPrice, workLines } from '../utils/project.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf } from '../utils/payments.js';
 import { taskChanged } from '../socket/events.js';
 import { repriceTask, dropTaskWork } from '../utils/reportWork.js';
+import { workSummary } from '../utils/projectWork.js';
 
 // Projects (the model keeps its old name, Task): what a member works on,
 // with the day-by-day work log taken from their daily reports.
@@ -57,37 +58,6 @@ const serialize = (t, user, work = {}) => ({
   createdAt: t.createdAt,
   canEdit: canManageFor(user, { _id: t.owner?._id ?? t.owner, group: t.group?._id ?? t.group }),
 });
-
-// Work on these projects, counted from the daily reports, plus what income
-// records have paid: { [taskId]: { days, today, upcoming, paid, hours } }.
-async function workSummary(tasks) {
-  if (!tasks.length) return {};
-  const ids = tasks.map((t) => t._id);
-  const reports = await Report.find({ scope: 'personal', type: 'daily', 'work.task': { $in: ids } }, 'author period work').lean();
-  const today = periodKey('daily');
-  const owners = new Map(tasks.map((t) => [String(t._id), String(t.owner?._id ?? t.owner)]));
-  const out = {};
-  for (const r of reports) {
-    for (const w of r.work ?? []) {
-      const id = String(w.task);
-      // Only the owner's own reports count (a project moved between people
-      // keeps its log from the current owner).
-      if (!owners.has(id) || owners.get(id) !== String(r.author) || !(w.text?.trim() || w.hours || w.count)) continue;
-      out[id] ??= { days: 0, today: false, upcoming: 0, paid: 0, hours: 0 };
-      out[id].days += 1;
-      if (!w.paidBy) out[id].upcoming = Math.round((out[id].upcoming + (w.amount || 0)) * 100) / 100;
-      out[id].hours += w.hours || 0;
-      if (r.period === today) out[id].today = true;
-    }
-  }
-  const paid = await Income.aggregate([{ $match: { task: { $in: ids } } }, { $group: { _id: '$task', amount: { $sum: '$amount' } } }]);
-  for (const p of paid) {
-    const id = String(p._id);
-    out[id] ??= { days: 0, today: false, upcoming: 0, paid: 0, hours: 0 };
-    out[id].paid = Math.round(p.amount * 100) / 100;
-  }
-  return out;
-}
 
 function checkDates(body, current = {}) {
   const start = body.startDate !== undefined ? checkDay(body.startDate, 'a start date') : current.startDate;
@@ -133,9 +103,10 @@ async function checkFields(req) {
 
 // Members can only register projects for themselves. When a project is
 // edited, a cleared owner is refused rather than read as "give it to me".
-const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, {
-  orSelf, denied: 'You cannot register projects for that member',
-});
+const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, { orSelf });
+
+// How many projects one page lists; the totals always count every project.
+const LIST_LIMIT = 500;
 
 // GET /api/tasks?status=&q=  — projects this role may see.
 router.get('/', async (req, res) => {
@@ -144,34 +115,40 @@ router.get('/', async (req, res) => {
     if (!TASK_STATES.includes(req.query.status)) throw badRequest('Unknown status');
     filter.status = req.query.status;
   }
-  if (req.query.q?.trim()) {
-    filter.name = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  }
+  const q = searchRegex(req.query.q);
+  if (q) filter.name = q;
 
-  const tasks = await populate(Task.find(filter).sort({ status: 1, startDate: -1, createdAt: -1 }));
+  // Active projects first, newest first; the counts per status cover them all.
+  const [tasks, byStatus] = await Promise.all([
+    populate(Task.find(filter).sort({ status: 1, startDate: -1, createdAt: -1 }).limit(LIST_LIMIT)),
+    Task.aggregate([{ $match: filter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+  ]);
+  const counts = Object.fromEntries(byStatus.map((s) => [s._id, s.count]));
+  const total = Object.values(counts).reduce((n, c) => n + c, 0);
   const work = await workSummary(tasks);
   const projects = tasks.map((t) => serialize(t, req.user, work[String(t._id)]));
   const active = projects.filter((p) => p.status === 'active');
 
   res.json({
     tasks: projects,
+    hasMore: total > projects.length,
     totals: {
-      count: projects.length,
-      active: active.length,
+      count: total,
+      active: counts.active ?? 0,
+      // Active projects are listed first, so this is exact unless more than
+      // LIST_LIMIT of them are active.
       withoutToday: active.filter((p) => !p.writtenToday).length,
-      done: projects.filter((p) => p.status === 'done').length,
+      done: counts.done ?? 0,
     },
     options: { statuses: TASK_STATES, units: PRICE_UNITS, currencies: CURRENCIES, methods: currentMethods() },
     can: { assignOthers: canReadTeam(req.user), own: ownsRecords(req.user) },
-    scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
+    scope: scopeName(req.user),
   });
 });
 
 // Members this user can register a project for.
 router.get('/assignees', async (req, res) => {
-  const users = await User.find(assignableFilter(req.user), 'name role group')
-    .populate('group', 'name').sort('name').lean();
-  res.json({ members: users.map((u) => ({ id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null })) });
+  res.json({ members: await assignableMembers(req.user) });
 });
 
 // Residents a project can be for: the ones this user may see.
@@ -203,10 +180,7 @@ async function findTask(req) {
   const task = await populate(Task.findById(req.params.id));
   if (!task) throw notFound('Project not found');
   // Out of scope projects look like they do not exist.
-  const scope = scopeFilter(req.user, 'owner');
-  const visible = (!scope.group || String(scope.group) === String(task.group?._id ?? task.group))
-    && (!scope.owner || String(scope.owner) === String(task.owner?._id ?? task.owner));
-  if (!visible) throw notFound('Project not found');
+  if (!visibleRecord(req.user, task, 'owner')) throw notFound('Project not found');
   return task;
 }
 

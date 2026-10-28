@@ -4,6 +4,15 @@ import { useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount, timeAgo } from '../../format.js';
 import Icon from '../../components/Icon.jsx';
+import { useSort, Th } from '../../components/SortTable.jsx';
+
+const COLUMNS = {
+  method: (m) => m.label,
+  fee: { by: (m) => (Number(m.feePercent) || 0) * 100 + (Number(m.feeFixed) || 0), desc: true },
+  source: (m) => (m.auto ? 'auto' : 'published'),
+  updated: { by: (m) => m.checkedAt || m.updatedAt || null, desc: true },
+};
+const EMPTY = [];
 
 // The fee of one method: shown to everyone; the published-rate ones can be
 // edited by an admin or the leader, the automatic ones refresh daily.
@@ -12,6 +21,9 @@ function FeeRow({ method, canManage, onChanged }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ feePercent: method.feePercent, feeFixed: method.feeFixed });
   const [busy, setBusy] = useState(false);
+
+  // The fields start from the current fee, which may have changed since the row was first drawn.
+  const startEditing = () => { setForm({ feePercent: method.feePercent, feeFixed: method.feeFixed }); setEditing(true); };
 
   const save = async (e) => {
     e.preventDefault();
@@ -57,21 +69,23 @@ function FeeRow({ method, canManage, onChanged }) {
         {canManage && !method.auto && (editing ? (
           <span className="fee-actions">
             <button className="btn primary small-btn" type="submit" form={`fee-${method.key}`} disabled={busy}>Save</button>
-            <button className="btn small-btn" type="button" onClick={() => { setEditing(false); setForm({ feePercent: method.feePercent, feeFixed: method.feeFixed }); }}>Cancel</button>
+            <button className="btn small-btn" type="button" onClick={() => setEditing(false)}>Cancel</button>
           </span>
         ) : (
-          <button className="icon-btn" onClick={() => setEditing(true)} aria-label={`Edit ${method.label} fee`}><Icon name="edit" size={16} /></button>
+          <button className="icon-btn" onClick={startEditing} aria-label={`Edit ${method.label} fee`}><Icon name="edit" size={16} /></button>
         ))}
       </td>
     </tr>
   );
 }
 
-// Admin → Payment fees: every payment method with its current fee.
+// Admin → Payment fees: every payment method with its current fee. Reloads
+// when anyone sets a fee or the daily refresh runs.
 export default function PaymentFees() {
   const toast = useToast();
-  const { data, error, reload } = useLiveData('/payments/fees');
+  const { data, error, reload } = useLiveData('/payments/fees', ['fees:changed']);
   const [busy, setBusy] = useState(false);
+  const sorter = useSort(data?.methods ?? EMPTY, COLUMNS);
 
   const refresh = async () => {
     setBusy(true);
@@ -88,8 +102,9 @@ export default function PaymentFees() {
     }
   };
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
-  if (!data) return <div className="page muted">Loading...</div>;
+  // Before the first answer there is nothing else to show; afterwards a
+  // failed reload is said above the table, which keeps the last fees.
+  if (!data) return <div className="page">{error ? <div className="alert error">{error}</div> : <span className="muted">Loading...</span>}</div>;
 
   return (
     <div className="page">
@@ -102,6 +117,7 @@ export default function PaymentFees() {
           <button className="btn toolbar-right" onClick={refresh} disabled={busy}>{busy ? 'Refreshing...' : 'Refresh now'}</button>
         )}
       </div>
+      {error && <div className="alert error">{error}</div>}
       <div className="note">
         <Icon name="coins" size={16} />
         <span>
@@ -111,9 +127,17 @@ export default function PaymentFees() {
       </div>
       <section className="card">
         <table className="table fee-table">
-          <thead><tr><th>Method</th><th className="num">Fee</th><th>Source</th><th>Updated</th><th aria-label="Actions" /></tr></thead>
+          <thead>
+            <tr>
+              <Th sort={sorter} col="method">Method</Th>
+              <Th sort={sorter} col="fee" className="num">Fee</Th>
+              <Th sort={sorter} col="source">Source</Th>
+              <Th sort={sorter} col="updated">Updated</Th>
+              <th aria-label="Actions" />
+            </tr>
+          </thead>
           <tbody>
-            {data.methods.map((m) => <FeeRow key={m.key} method={m} canManage={data.canManage} onChanged={reload} />)}
+            {sorter.rows.map((m) => <FeeRow key={m.key} method={m} canManage={data.canManage} onChanged={reload} />)}
           </tbody>
         </table>
       </section>

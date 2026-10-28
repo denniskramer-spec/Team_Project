@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { formatDay, formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
+import { WRITE_REPORT_PATH } from '../../constants.js';
 import TaskForm from './TaskForm.jsx';
 import { StatusPill } from './ProjectStatus.jsx';
 
@@ -45,15 +45,12 @@ function ProjectItem({ project, selected, showOwner, onPick }) {
 }
 
 // The day-by-day work on the selected project, from the owner's daily reports.
-function WorkLog({ projectId, version }) {
-  const [log, setLog] = useState(null);
-  const [upcoming, setUpcoming] = useState(0);
-  useEffect(() => {
-    let live = true;
-    setLog(null);
-    api(`/tasks/${projectId}/log`).then((d) => { if (live) { setLog(d.log); setUpcoming(d.upcoming ?? 0); } }).catch(() => { if (live) setLog([]); });
-    return () => { live = false; };
-  }, [projectId, version]);
+// Reports carry the log's text, so any report or project change refreshes it.
+function WorkLog({ projectId }) {
+  const { data, error, loading } = useLiveData(`/tasks/${projectId}/log`, ['task:changed', 'report:changed']);
+  // While another project's log loads, the previous one's must not show.
+  const log = loading ? null : data?.log ?? null;
+  const upcoming = data?.upcoming ?? 0;
 
   return (
     <section className="card work-log">
@@ -61,7 +58,8 @@ function WorkLog({ projectId, version }) {
         <h3>Work log</h3>
         <span className="muted small">{log ? `${log.length} ${log.length === 1 ? 'day' : 'days'}${upcoming > 0 ? ` · upcoming ${formatAmount(upcoming)}` : ''}` : 'Loading...'}</span>
       </div>
-      {log?.length === 0 && <p className="muted small">No work written yet. It comes from the daily report.</p>}
+      {error && <div className="alert error">{error}</div>}
+      {!error && log?.length === 0 && <p className="muted small">No work written yet. It comes from the daily report.</p>}
       {log?.length > 0 && (
         <table className="table work-table">
           <tbody>
@@ -82,7 +80,7 @@ function WorkLog({ projectId, version }) {
   );
 }
 
-function Detail({ project, isOwner, showOwner, onEdit, version }) {
+function Detail({ project, isOwner, showOwner, onEdit }) {
   const needsWork = isOwner && project.status === 'active' && !project.writtenToday;
   return (
     <div className="project-detail">
@@ -134,11 +132,11 @@ function Detail({ project, isOwner, showOwner, onEdit, version }) {
             <strong>Write today's work in your daily report</strong>
             <div className="muted small">The daily report has a box for each active project — what you write there shows up here.</div>
           </div>
-          <Link className="btn primary" to="/report?write=1"><Icon name="file" size={14} /> Write daily report</Link>
+          <Link className="btn primary" to={WRITE_REPORT_PATH}><Icon name="file" size={14} /> Write daily report</Link>
         </div>
       )}
 
-      <WorkLog projectId={project.id} version={version} />
+      <WorkLog projectId={project.id} />
     </div>
   );
 }
@@ -215,7 +213,6 @@ export default function TaskChannel({ title }) {
               isOwner={String(selected.owner?.id) === String(user.id)}
               showOwner={showOwner}
               onEdit={() => setForm(selected)}
-              version={`${selected.daysWorked}-${selected.writtenToday}-${selected.upcoming}-${data.tasks.length}`}
             />
           )}
         </div>

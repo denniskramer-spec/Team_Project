@@ -14,8 +14,8 @@ let loading = null;
 const listeners = new Set();
 const tell = () => listeners.forEach((fn) => fn());
 
-async function fetchRates(force = false) {
-  if (cached && !force) return cached;
+function fetchRates() {
+  if (cached) return Promise.resolve(cached);
   if (!loading) {
     loading = api('/finance/rates').then((d) => { cached = d; return d; }).catch(() => cached ?? EMPTY).finally(() => { loading = null; tell(); });
   }
@@ -27,6 +27,7 @@ async function fetchRates(force = false) {
 //   rate      how many of it one base unit buys today
 //   convert   base amount -> chosen currency
 //   money     base amount -> "€1,234.5"
+//   limits    the server's sizes (longest duration, list caps), once loaded
 export function useCurrency() {
   const [code, setCodeState] = useState(() => load(KEY, 'USD'));
   const [rates, setRates] = useState(() => cached ?? EMPTY);
@@ -57,6 +58,6 @@ export function useCurrency() {
     code: shown, setCode, rate, symbol, convert, money, refresh,
     base: rates.base, rates: rates.rates, currencies: rates.currencies ?? ['USD'],
     rateDate: rates.rateDate, fetchedAt: rates.fetchedAt, source: rates.source, canRefresh: rates.canRefresh,
-    stale: !rates.fetchedAt,
+    limits: rates.limits,
   };
 }

@@ -571,3 +571,10 @@ select, input, textarea { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .menu, .side-panel, .nav-drawer, .rail-icon, .icon-btn, .user-chip, .footer-link { animation: none; transition: none; }
 }
+
+/* A failed refresh of the channel list, once it had loaded: the old list
+   stays usable, this says it may be out of date. */
+.nav-error {
+  position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%);
+  z-index: 40; max-width: calc(100vw - 32px); margin: 0;
+}

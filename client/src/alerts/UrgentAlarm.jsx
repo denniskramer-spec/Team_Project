@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
@@ -7,10 +7,14 @@ import { playAlert } from './sound.js';
 
 const REPEAT_MS = 5000;
 const MAX_REPEATS = 6;
+const FOCUSABLE = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 // Blocking alarm for urgent instructions: stays on screen and repeats the
-// alarm sound until the recipient acknowledges it.
+// alarm sound until the recipient acknowledges it. It is not a Modal because
+// it cannot be closed: no Escape, no backdrop click, and Tab stays inside.
 export default function UrgentAlarm({ alert, remaining, soundOn, onAck, onView }) {
+  const ref = useRef(null);
+
   useEffect(() => {
     if (!soundOn) return undefined;
     let count = 0;
@@ -22,9 +26,24 @@ export default function UrgentAlarm({ alert, remaining, soundOn, onAck, onView }
     return () => clearInterval(id);
   }, [alert.id, soundOn]);
 
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Tab' || !ref.current) return;
+      const items = [...ref.current.querySelectorAll(FOCUSABLE)];
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const inside = ref.current.contains(document.activeElement);
+      if (e.shiftKey && (document.activeElement === first || !inside)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !inside)) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   return createPortal(
     <div className="modal-backdrop urgent-backdrop">
-      <div className="modal urgent-alarm" role="alertdialog" aria-modal="true" aria-labelledby="urgent-title">
+      <div className="modal urgent-alarm" role="alertdialog" aria-modal="true" aria-labelledby="urgent-title" ref={ref}>
         <div className="urgent-head">
           <span className="urgent-icon"><Icon name="bell" size={22} /></span>
           <div>

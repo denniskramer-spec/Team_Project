@@ -3,13 +3,12 @@ import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import ChatAccount, { STATUSES } from '../models/ChatAccount.js';
 import Resident from '../models/Resident.js';
-import User from '../models/User.js';
-import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
-import { scopeFilter, canManageFor, canReadTeam, assignableFilter, canSeeMember } from '../utils/visibility.js';
-import { visibleGroups } from '../utils/scope.js';
+import {
+  scopeFilter, canManageFor, canReadTeam, visibleRecord, narrowScope, assignableMembers, scopeName,
+} from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay, checkList } from '../utils/validate.js';
+import { checkDay, checkList, searchRegex } from '../utils/validate.js';
 import { checkPlatform, checkAccountName, checkPhone, PLATFORM_NAMES } from '../utils/chatAccount.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
@@ -72,35 +71,17 @@ async function checkFields(req, current = null) {
   return fields;
 }
 
-const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, {
-  orSelf, denied: 'You cannot add chat accounts for that member',
-});
+const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, { orSelf });
 
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const populate = (q) => q.populate([
   { path: 'owner', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'contacts', select: 'name photo' },
 ]);
 
 // GET /api/chat-accounts?group=all|<slug>&member=<id>&q=text
 router.get('/', async (req, res) => {
-  const filter = scopeFilter(req.user, 'owner');
-
-  const groups = await Group.find({}, 'name slug').lean();
-  const allowed = canReadTeam(req.user) ? visibleGroups(req.user, groups) : [];
-  if (req.query.group && req.query.group !== 'all') {
-    const group = allowed.find((g) => g.slug === req.query.group);
-    if (!group) throw notFound('Group not found');
-    filter.group = group._id;
-  }
-  if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
-    if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
-    filter.owner = member._id;
-  }
-  if (req.query.q?.trim()) {
-    const rx = new RegExp(escapeRegex(req.query.q.trim()), 'i');
-    filter.$or = [{ name: rx }, { phone: rx }];
-  }
+  const { allowed, filter } = await narrowScope(req, 'owner');
+  const rx = searchRegex(req.query.q);
+  if (rx) filter.$or = [{ name: rx }, { phone: rx }];
 
   const accounts = await populate(ChatAccount.find(filter).sort({ platform: 1, name: 1 }));
 
@@ -109,15 +90,13 @@ router.get('/', async (req, res) => {
     platforms: Object.entries(PLATFORM_NAMES).map(([key, name]) => ({ key, name })),
     can: { addForOthers: canReadTeam(req.user), own: ownsRecords(req.user) },
     groups: allowed.map((g) => ({ id: g._id, name: g.name, slug: g.slug })),
-    scope: canReadTeam(req.user) ? (req.user.role === 'boss' ? 'group' : 'all') : 'self',
+    scope: scopeName(req.user),
   });
 });
 
 // Members this user may add an account for.
 router.get('/owners', async (req, res) => {
-  const users = await User.find(assignableFilter(req.user), 'name role group')
-    .populate('group', 'name').sort('name').lean();
-  res.json({ members: users.map((u) => ({ id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null })) });
+  res.json({ members: await assignableMembers(req.user) });
 });
 
 // Residents this user may link as contacts.
@@ -153,10 +132,7 @@ async function findAccount(req) {
   const account = await populate(ChatAccount.findById(req.params.id));
   if (!account) throw notFound('Chat account not found');
   // Accounts outside this role's scope look like they do not exist.
-  const scope = scopeFilter(req.user, 'owner');
-  const visible = (!scope.group || String(scope.group) === String(account.group?._id ?? account.group))
-    && (!scope.owner || String(scope.owner) === String(account.owner?._id ?? account.owner));
-  if (!visible) throw notFound('Chat account not found');
+  if (!visibleRecord(req.user, account, 'owner')) throw notFound('Chat account not found');
   return account;
 }
 

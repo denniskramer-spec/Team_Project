@@ -76,7 +76,7 @@ router.get('/', async (req, res) => {
   const people = await peopleInScope(req.user, { groupId, memberId }, outcomes.map((o) => ownerId(o, 'member')));
 
   const byMember = perMember(outcomes);
-  const total = outcomes.reduce((sum, o) => sum + o.amount, 0);
+  const total = Math.round(outcomes.reduce((sum, o) => sum + o.amount, 0) * 100) / 100;
 
   // One column per person in scope, with the records behind it.
   const chart = people.map((p) => {
@@ -141,7 +141,9 @@ async function createRecords(req, target, fields) {
   const docs = target.members.map((m, i) => ({
     ...fields, amount: parts[i], member: m._id, group: m.group ?? null, createdBy: req.user._id, split,
   }));
-  return Outcome.insertMany(docs);
+  // create, not insertMany: it saves each share, so the audit plugin
+  // records every one as a created record.
+  return Outcome.create(docs);
 }
 
 router.post('/', async (req, res) => {

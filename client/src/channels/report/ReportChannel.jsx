@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
-import { useToast } from '../../components/Toast.jsx';
-import { formatAmount, timeAgo } from '../../format.js';
+import { formatAmount, formatClock, timeAgo } from '../../format.js';
 import Icon from '../../components/Icon.jsx';
-import Avatar from '../../components/Avatar.jsx';
 import ReportModal from './ReportModal.jsx';
+import BidGoals from './BidGoals.jsx';
 import TeamReports from './TeamReports.jsx';
-import { useLatestRequest } from '../../useLiveData.js';
+import { useLiveData } from '../../useLiveData.js';
+import { EVENTS } from '../../constants.js';
+import { planOf, stateOf, useTodayPlan } from './reportState.js';
 
 // Reports are daily; the title says whose day to show.
 const TYPE = 'daily';
-
-const clock = (value) => new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 // One card per group: its members' reports of the day added up.
 function GroupReports({ groups }) {
@@ -77,12 +74,11 @@ function GroupReports({ groups }) {
   );
 }
 
-// `version` changes whenever a report is saved, so the strip stays current.
-function History({ type, period, version, onPick }) {
-  const [history, setHistory] = useState([]);
-  useEffect(() => {
-    api(`/reports/history?type=${type}`).then((d) => setHistory(d.history)).catch(() => setHistory([]));
-  }, [type, period, version]);
+// The writer's recent days, kept current as reports are saved.
+function History({ type, period, onPick }) {
+  const { data, error } = useLiveData(`/reports/history?type=${type}`, [EVENTS.REPORT_CHANGED]);
+  if (error) return <div className="alert error">{error}</div>;
+  const history = data?.history ?? [];
   if (!history.length) return null;
 
   return (
@@ -107,13 +103,16 @@ function History({ type, period, version, onPick }) {
 }
 
 // The writer's own day: report status, today's plan, projects written.
-function MyDay({ data, period, onWrite, onPlanToggle }) {
+function MyDay({ data, period, onWrite }) {
   const r = data.mine;
-  const plan = r?.todayPlan?.length ? r.todayPlan : (data.previousPlan?.items ?? []).map((text) => ({ text, done: false }));
+  // Memoised: the fallback builds a new list, and a new list each render
+  // would reset the ticks on screen.
+  const serverPlan = useMemo(() => planOf(r, data.previousPlan), [r, data.previousPlan]);
+  const [plan, togglePlan] = useTodayPlan(serverPlan, period.key);
   const planDone = plan.filter((p) => p.done).length;
   const projects = data.projects ?? [];
   const written = new Set((r?.work ?? []).filter((w) => w.text?.trim()).map((w) => String(w.task.id)));
-  const state = r?.sentAt ? 'sent' : r ? 'draft' : 'missing';
+  const state = stateOf(r);
 
   return (
     <section className={`card my-day ${state}`}>
@@ -121,8 +120,8 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
         <div>
           <h3>Daily report · {period.isCurrent ? 'today' : period.label}</h3>
           <span className="muted small">
-            {state === 'sent' && `Sent ${clock(r.sentAt)} · last change ${timeAgo(r.updatedAt)}`}
-            {state === 'draft' && `Draft saved ${clock(r.updatedAt)} · not sent yet`}
+            {state === 'sent' && `Sent ${formatClock(r.sentAt)} · last change ${timeAgo(r.updatedAt)}`}
+            {state === 'draft' && `Draft saved ${formatClock(r.updatedAt)} · not sent yet`}
             {state === 'missing' && 'Not written yet'}
           </span>
         </div>
@@ -139,7 +138,7 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
               // eslint-disable-next-line react/no-array-index-key
               <li key={i}>
                 <label className="check">
-                  <input type="checkbox" checked={p.done} onChange={() => onPlanToggle(plan, i)} />
+                  <input type="checkbox" checked={p.done} onChange={() => togglePlan(i)} />
                   <span className={p.done ? 'is-done' : ''}>{p.text}</span>
                 </label>
               </li>
@@ -158,6 +157,12 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
               </li>
             ))}
           </ul>
+          {data.goals && (
+            <>
+              <div className="field-label my-day-goals-title">Today's goals <span className="muted">· from your {data.goals.plan.type} plan</span></div>
+              <BidGoals goals={data.goals} report={r} />
+            </>
+          )}
           {r && (
             <dl className="mini-stats my-day-stats">
               <div><dt>Applied</dt><dd>{formatAmount(r.jobBid)}</dd></div>
@@ -177,36 +182,21 @@ function MyDay({ data, period, onWrite, onPlanToggle }) {
 // see the team's reports for the day.
 export default function ReportChannel({ title }) {
   const { user } = useAuth();
-  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const type = TYPE;
   const period = searchParams.get('p') || '';
   // "me" is a member's own day; otherwise the title is the group.
   const group = title.key === 'me' ? 'all' : title.key;
   const member = searchParams.get('m') || '';
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
   const [modal, setModal] = useState(searchParams.get('write') === '1' ? 'personal' : null);
+  // "Write daily report" links (?write=1) open the modal while already here, too.
+  const write = searchParams.get('write') === '1';
+  useEffect(() => { if (write) setModal('personal'); }, [write]);
 
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const params = new URLSearchParams({ type, group });
-      if (period) params.set('period', period);
-      if (member) params.set('member', member);
-      const d = await api(`/reports?${params}`);
-      if (!isLatest()) return;
-      setData(d);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, type, period, group, member]);
-
-  useEffect(() => { load(); }, [load]);
-  useReconnect(load);
-  useSocketEvent('report:changed', (e) => { if (e.type === type) load(); });
+  const params = new URLSearchParams({ type, group });
+  if (period) params.set('period', period);
+  if (member) params.set('member', member);
+  const { data, error, reload: load } = useLiveData(`/reports?${params}`, [EVENTS.REPORT_CHANGED]);
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(searchParams);
@@ -214,17 +204,6 @@ export default function ReportChannel({ title }) {
     setSearchParams(next, { replace: true });
   };
   const closeModal = () => { setModal(null); if (searchParams.get('write')) setParam('write', ''); };
-
-  // Ticking a plan item on the dashboard saves the draft straight away.
-  const togglePlan = async (plan, i) => {
-    try {
-      const todayPlan = plan.map((p, n) => (n === i ? { ...p, done: !p.done } : p));
-      await api('/reports', { method: 'PUT', body: { type, period: data.period.key, scope: 'personal', todayPlan } });
-      load();
-    } catch (err) {
-      toast.error(err.message);
-    }
-  };
 
   if (error) return <div className="page"><div className="alert error">{error}</div></div>;
   if (!data) return <div className="page muted">Loading...</div>;
@@ -254,7 +233,7 @@ export default function ReportChannel({ title }) {
         </span>
       </div>
 
-      {can.writePersonal && <MyDay data={data} period={p} onWrite={() => setModal('personal')} onPlanToggle={togglePlan} />}
+      {can.writePersonal && <MyDay data={data} period={p} onWrite={() => setModal('personal')} />}
 
       {!can.writePersonal && (
         <div className="note">
@@ -269,7 +248,7 @@ export default function ReportChannel({ title }) {
       <GroupReports groups={data.groupSummaries} />
       <TeamReports rows={data.rows} totals={data.totals} />
       {can.writePersonal && (
-        <History type={type} period={p.key} version={data.mine?.updatedAt ?? ''} onPick={(key) => setParam('p', key)} />
+        <History type={type} period={p.key} onPick={(key) => setParam('p', key)} />
       )}
 
       {modal && (

@@ -5,8 +5,8 @@ import Modal, { ConfirmDialog } from '../../components/Modal.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import MessageText from './MessageText.jsx';
-
-const time = (d) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+import { formatClock } from '../../format.js';
+import { MESSAGE_MAX_CHARS } from '../../constants.js';
 
 // One message. `grouped` hides the avatar and name for consecutive messages
 // from the same person, like Discord. The list is updated from the server's
@@ -52,13 +52,13 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
   return (
     <li className={`msg ${grouped ? 'grouped' : ''}`}>
       {grouped
-        ? <span className="msg-gutter-time">{time(m.createdAt)}</span>
+        ? <span className="msg-gutter-time">{formatClock(m.createdAt)}</span>
         : <Avatar name={m.author?.name ?? '?'} role={m.author?.role ?? 'member'} size={38} />}
       <div className="msg-body">
         {!grouped && (
           <div className="msg-head">
             <span className={`strong role-text-${m.author?.role}`}>{m.author?.name ?? 'Deleted user'}</span>
-            <span className="muted small" title={new Date(m.createdAt).toLocaleString()}>{time(m.createdAt)}</span>
+            <span className="muted small" title={new Date(m.createdAt).toLocaleString()}>{formatClock(m.createdAt)}</span>
           </div>
         )}
         {editing ? (
@@ -67,7 +67,7 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={2}
-              maxLength={2000}
+              maxLength={MESSAGE_MAX_CHARS}
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }

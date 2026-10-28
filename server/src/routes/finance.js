@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import Income from '../models/Income.js';
 import Outcome from '../models/Outcome.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -6,7 +7,7 @@ import { forbidden } from '../utils/httpError.js';
 import { currentRates, refreshRates, refreshIfStale } from '../utils/exchange.js';
 import {
   financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, who, whoKey,
-  ownerId, PERSON_FIELDS, LIST_LIMIT,
+  ownerId, PERSON_FIELDS, LIST_LIMIT, LIMITS,
 } from '../utils/finance.js';
 
 // Total: income and outcome side by side for one period, and the history
@@ -14,21 +15,27 @@ import {
 const router = Router();
 router.use(requireAuth);
 
-const sum = (rows) => rows.reduce((acc, r) => acc + r.amount, 0);
+const sum = (rows) => Math.round(rows.reduce((acc, r) => acc + r.amount, 0) * 100) / 100;
 
 // GET /api/finance/rates — the day's exchange rates from the base currency,
-// for showing the Finance pages in another currency.
+// for showing the Finance pages in another currency, with the limits the
+// Finance pages share with the server (longest duration, list sizes).
 router.get('/rates', (req, res) => {
   refreshIfStale();
-  res.json({ ...currentRates(), canRefresh: ['admin', 'leader'].includes(req.user.role) });
+  res.json({ ...currentRates(), canRefresh: ['admin', 'leader'].includes(req.user.role), limits: LIMITS });
 });
 
 // POST /api/finance/rates/refresh — fetch today's rates now (admins, leader).
-router.post('/rates/refresh', async (req, res) => {
+// Each call asks an outside service, so: twice a minute per person.
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000, limit: 2, keyGenerator: (req) => String(req.user._id), standardHeaders: 'draft-7', legacyHeaders: false,
+  message: { message: 'Rates were just refreshed, please wait a minute' },
+});
+router.post('/rates/refresh', refreshLimiter, async (req, res) => {
   if (!['admin', 'leader'].includes(req.user.role)) throw forbidden('Only admins and the team leader refresh exchange rates');
   await refreshRates();
   req.audit = { action: 'finance.rates.refresh', details: { rateDate: currentRates().rateDate, source: currentRates().source } };
-  res.json({ ...currentRates(), canRefresh: true });
+  res.json({ ...currentRates(), canRefresh: true, limits: LIMITS });
 });
 
 // GET /api/finance/total — same query as /api/incomes.

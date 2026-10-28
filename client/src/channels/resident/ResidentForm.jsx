@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { api, upload } from '../../api.js';
-import { useAuth } from '../../auth/AuthContext.jsx';
+import { useRef, useState } from 'react';
+import { api, uploadImages } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { toDateInput, todayInput } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
+import Icon from '../../components/Icon.jsx';
+import OwnerSelect from '../../components/OwnerSelect.jsx';
+import { IMAGE_TYPES, imageProblem, useObjectUrl } from '../../components/ImageDrop.jsx';
 import { COUNTRIES, countryOf } from '../../countries.js';
 
 export const LAPTOP_SOURCES = [['', 'Not set'], ['bought', 'Bought for them'], ['own', 'Already had one']];
 export const ACCESS_TYPES = [['', 'Not set'], ['laptop', 'Laptop'], ['vps', 'VPS'], ['proxy', 'Proxy']];
+
+// The label of a value in one of the lists above, for the table and the details.
+export const labelOf = (list, value) => list.find(([v]) => v === value)?.[1] ?? '';
+export const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
 
 // A country picker with flags. A value typed before the list existed is
 // kept as its own option, so nothing saved is lost.
@@ -21,9 +27,6 @@ function CountrySelect({ value, onChange, placeholder }) {
     </select>
   );
 }
-
-const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
-const MAX_BYTES = 5 * 1024 * 1024;
 
 // Yes / No for a boolean field, the same height as a text input.
 function YesNo({ label, title, value, onChange }) {
@@ -42,11 +45,7 @@ function YesNo({ label, title, value, onChange }) {
 // contact started, laptop and remote access, notes.
 export default function ResidentForm({ resident, defaultOwner, onClose, onSaved }) {
   const toast = useToast();
-  const { user } = useAuth();
-  // Residents belong to members and bosses; the leader and admins pick one.
-  const canOwn = ['member', 'boss'].includes(user.role);
   const editing = Boolean(resident);
-  const [members, setMembers] = useState([]);
   const [form, setForm] = useState({
     name: resident?.name ?? '',
     country: resident?.country ?? '',
@@ -66,21 +65,10 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
   // The saved photo (null once removed) and a newly chosen file, if any.
   const [photo, setPhoto] = useState(resident?.photo ?? null);
   const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState('');
+  const preview = useObjectUrl(file);
   const fileInput = useRef(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api('/residents/owners').then((d) => setMembers(d.members)).catch(() => setMembers([]));
-  }, []);
-
-  useEffect(() => {
-    if (!file) { setPreview(''); return undefined; }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
   const setFlag = (key) => (value) => setForm({ ...form, [key]: value });
@@ -89,8 +77,8 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
     const [f] = e.target.files ?? [];
     e.target.value = '';
     if (!f) return;
-    if (!ACCEPT.split(',').includes(f.type)) { setError('The photo must be a PNG, JPEG, GIF or WebP image'); return; }
-    if (f.size > MAX_BYTES) { setError('The photo can be at most 5 MB'); return; }
+    const problem = imageProblem(f);
+    if (problem) { setError(problem); return; }
     setError('');
     setFile(f);
   };
@@ -102,12 +90,9 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
     try {
       let saved = photo;
       if (file) {
-        const fd = new FormData();
-        fd.append('images', file);
-        const uploaded = await upload('/residents/upload', fd);
-        // Treat it as saved from now on, so a retry after a failed save does
-        // not upload the same photo again.
-        saved = { ...uploaded.photo, url: `/api/files/${uploaded.photo.file}` };
+        // Uploaded first and kept as saved from then on, so a retry after a
+        // failed save does not upload the same photo again.
+        ({ photo: saved } = await uploadImages('/residents/upload', [file]));
         setPhoto(saved);
         setFile(null);
       }
@@ -119,7 +104,7 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
         laptopSource: form.hasLaptop ? form.laptopSource : '',
         accessType: form.accessSetUp ? form.accessType : '',
         firstContact: form.firstContact || null,
-        photo: saved ? { file: saved.file, name: saved.name, type: saved.type, size: saved.size } : null,
+        photo: saved,
       };
       if (editing) await api(`/residents/${resident.id}`, { method: 'PATCH', body });
       else await api('/residents', { method: 'POST', body });
@@ -157,7 +142,7 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
             {shown
               ? <button type="button" className="link" onClick={() => { setFile(null); setPhoto(null); }}>Remove</button>
               : <button type="button" className="link" onClick={() => fileInput.current?.click()}>Add photo</button>}
-            <input ref={fileInput} type="file" accept={ACCEPT} hidden onChange={choose} />
+            <input ref={fileInput} type="file" accept={IMAGE_TYPES.join(',')} hidden onChange={choose} />
           </div>
           <label>
             Name
@@ -219,15 +204,7 @@ export default function ResidentForm({ resident, defaultOwner, onClose, onSaved 
             </div>
           </label>
         </div>
-        {(!canOwn || members.length > 1) && (
-          <label>
-            Belongs to
-            <select value={form.owner} onChange={set('owner')} required={!canOwn}>
-              <option value="">{canOwn ? 'Me' : 'Choose a member'}</option>
-              {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.group ? ` · ${m.group}` : ''}</option>)}
-            </select>
-          </label>
-        )}
+        <OwnerSelect path="/residents/owners" value={form.owner} onChange={set('owner')} />
         <label>
           Notes
           <textarea rows={3} maxLength={2000} value={form.notes} onChange={set('notes')} placeholder="Optional — anything else worth knowing" />

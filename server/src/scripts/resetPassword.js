@@ -14,7 +14,8 @@ const args = process.argv.slice(2);
 const [username, extra] = args.filter((a) => !a.startsWith('--'));
 
 if (!username || extra) {
-  console.error('Usage: node src/scripts/resetPassword.js <username> [--no-must-change]');
+  console.error('Usage: node src/scripts/resetPassword.js <username> [--no-must-change] [--activate]');
+  console.error('A pending or disabled account stays that way unless --activate is given.');
   console.error('The password comes from RESET_PASSWORD, or a temporary one is generated.');
   process.exit(1);
 }
@@ -48,7 +49,10 @@ if (!user) {
 
 await user.setPassword(password);
 user.mustChangePassword = mustChange;
-if (user.status !== 'active') user.status = 'active';
+if (user.status !== 'active') {
+  if (args.includes('--activate')) user.status = 'active';
+  else console.log(`Note: this account is ${user.status}; pass --activate to let it log in.`);
+}
 await user.save();
 
 console.log(`Password updated for "${user.username}" (${user.role}).`);

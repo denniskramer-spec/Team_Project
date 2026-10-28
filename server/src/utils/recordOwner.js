@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { canManageFor } from './visibility.js';
-import { badRequest, forbidden } from './httpError.js';
+import { badRequest, notFound } from './httpError.js';
 
 // Tasks, income, outcome, residents and chat accounts belong to the people who do the work:
 // members and bosses. The leader and admins record them for others, never
@@ -11,8 +11,8 @@ export const ownsRecords = (user) => ['member', 'boss'].includes(user.role);
 // Who a record is for, from a request body value.
 //   nothing given  -> the caller, when creating (`orSelf`) and they own records
 //   an id          -> that member, if the caller may manage their records
-// `denied` is the message for someone outside the caller's reach.
-export async function resolveRecordOwner(req, value, { orSelf = false, denied }) {
+// Someone outside the caller's reach is "not found", like any other record.
+export async function resolveRecordOwner(req, value, { orSelf = false } = {}) {
   const given = value !== undefined && value !== null && value !== '';
   if (!given && !orSelf) throw badRequest('Choose a member');
   if (given && typeof value !== 'string') throw badRequest('Unknown member');
@@ -23,7 +23,7 @@ export async function resolveRecordOwner(req, value, { orSelf = false, denied })
   }
   if (!mongoose.isValidObjectId(value)) throw badRequest('Unknown member');
   const owner = await User.findById(value);
-  if (!owner || owner.status !== 'active' || !ownsRecords(owner)) throw badRequest('Unknown member');
-  if (!canManageFor(req.user, owner)) throw forbidden(denied);
+  if (!owner || !canManageFor(req.user, owner)) throw notFound('Member not found');
+  if (owner.status !== 'active' || !ownsRecords(owner)) throw badRequest('Unknown member');
   return owner;
 }

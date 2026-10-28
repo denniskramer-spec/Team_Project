@@ -156,12 +156,14 @@ router.get('/', async (req, res) => {
 
   // Totals overall and per member, for the summary.
   const byMember = perMember(incomes);
-  const total = incomes.reduce((sum, i) => sum + i.amount, 0);
-  const sums = incomes.reduce((acc, i) => ({
+  const cents = (n) => Math.round(n * 100) / 100;
+  const total = cents(incomes.reduce((sum, i) => sum + i.amount, 0));
+  const raw = incomes.reduce((acc, i) => ({
     fees: acc.fees + (i.feeAmount || 0),
     residents: acc.residents + (i.residentAmount || 0),
     net: acc.net + (i.net ?? (i.feeAmount === undefined ? i.amount : 0)),
   }), { fees: 0, residents: 0, net: 0 });
+  const sums = { fees: cents(raw.fees), residents: cents(raw.residents), net: cents(raw.net) };
 
   const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, incomes);
 
@@ -205,12 +207,14 @@ async function upcomingFor(taskId, ownerId) {
 
 // GET /api/incomes/upcoming?task=<id> — what the project's reported hours
 // and tasks still expect to be paid, to check against a new income record.
+// Work is priced in the base currency, whatever the project is priced in,
+// so `amount` comes with `currency` and the form records it in that.
 router.get('/upcoming', async (req, res) => {
   if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
   // Only a project this role may see: a member their own, a boss their group's.
   const task = await Task.findOne({ ...scopeFilter(req.user, 'owner'), _id: req.query.task }, 'owner name').lean();
   if (!task) throw badRequest('Unknown project');
-  res.json({ project: { id: task._id, name: task.name }, ...(await upcomingFor(task._id, task.owner)) });
+  res.json({ project: { id: task._id, name: task.name }, currency: currentRates().base, ...(await upcomingFor(task._id, task.owner)) });
 });
 
 // Members this user can record income for.

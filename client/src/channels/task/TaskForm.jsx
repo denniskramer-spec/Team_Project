@@ -40,11 +40,13 @@ export default function TaskForm({ task, options, onClose, onSaved }) {
   const [confirm, setConfirm] = useState(false);
 
   useEffect(() => {
-    api('/tasks/assignees').then((d) => setMembers(d.members)).catch(() => setMembers([]));
-    api('/tasks/residents').then((d) => setResidents(d.residents)).catch(() => setResidents([]));
+    // A list that fails says so, instead of leaving a select silently empty.
+    const failed = (err) => setError(err.message);
+    api('/tasks/assignees').then((d) => setMembers(d.members)).catch(failed);
+    api('/tasks/residents').then((d) => setResidents(d.residents)).catch(failed);
   }, []);
 
-  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  const set = (key) => (e) => { const { value } = e.target; setForm((f) => ({ ...f, [key]: value })); };
 
   const submit = async (e) => {
     e.preventDefault();

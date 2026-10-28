@@ -1,57 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
 import { formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import Dropdown from '../../components/Dropdown.jsx';
 import { ConfirmDialog } from '../../components/Modal.jsx';
-import ResidentForm, { LAPTOP_SOURCES, ACCESS_TYPES } from './ResidentForm.jsx';
+import ResidentForm, { ACCESS_TYPES, labelOf, Yes } from './ResidentForm.jsx';
 import { countryLabel } from '../../countries.js';
+import { useSort, Th } from '../../components/SortTable.jsx';
 
-const labelOf = (list, value) => list.find(([v]) => v === value)?.[1] ?? '';
-import { useLatestRequest } from '../../useLiveData.js';
-
-const Yes = ({ label }) => <span className="yes"><Icon name="tick" size={14} /> {label}</span>;
+const EMPTY = [];
 
 // Section 3 for the Residents channel: a table of residents for All, one
 // group or one member — whatever the tree has selected, within this role's scope.
+const COLUMNS = {
+  resident: (r) => r.name,
+  age: (r) => r.age ?? null,
+  country: (r) => (r.country ? countryLabel(r.country) : null),
+  laptop: (r) => (r.hasLaptop ? r.laptopSource || 'yes' : null),
+  access: (r) => (r.accessSetUp ? labelOf(ACCESS_TYPES, r.accessType) || 'set up' : null),
+  divide: { by: (r) => r.sharePercent || null, desc: true },
+  firstContact: { by: (r) => r.firstContact ?? null, desc: true },
+  owner: (r) => r.owner?.name ?? null,
+};
+
 export default function ResidentChannel({ title }) {
   const toast = useToast();
   const [searchParams] = useSearchParams();
   const group = title.key === 'me' ? 'all' : title.key;
   const member = searchParams.get('m') || '';
   const [query, setQuery] = useState('');
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
   const [form, setForm] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
+  const q = useDebounced(query);
 
-  const track = useLatestRequest();
-  const load = useCallback(async () => {
-    const isLatest = track();
-    try {
-      const params = new URLSearchParams({ group });
-      if (member) params.set('member', member);
-      if (query.trim()) params.set('q', query.trim());
-      const result = await api(`/residents?${params}`);
-      if (!isLatest()) return;
-      setData(result);
-      setError('');
-    } catch (err) {
-      if (isLatest()) setError(err.message);
-    }
-  }, [track, group, member, query]);
-
-  useEffect(() => {
-    const id = setTimeout(load, query ? 250 : 0);
-    return () => clearTimeout(id);
-  }, [load, query]);
-  useReconnect(load);
-  useSocketEvent('resident:changed', load);
+  const params = new URLSearchParams({ group });
+  if (member) params.set('member', member);
+  if (q.trim()) params.set('q', q.trim());
+  const { data, error, loading, reload } = useLiveData(`/residents?${params}`, ['resident:changed']);
+  const residents = data?.residents ?? EMPTY;
+  const sorter = useSort(residents, COLUMNS);
 
   const remove = async () => {
     setBusy(true);
@@ -59,22 +51,19 @@ export default function ResidentChannel({ title }) {
       await api(`/residents/${confirm.id}`, { method: 'DELETE' });
       toast('Resident deleted');
       setConfirm(null);
-      load();
+      reload();
     } catch (err) {
       toast.error(err.message);
+    } finally {
       setBusy(false);
     }
   };
 
-  if (error) return <div className="page"><div className="alert error">{error}</div></div>;
-  if (!data) return <div className="page muted">Loading...</div>;
-
-  const { residents } = data;
-  const scopeLabel = member
-    ? residents[0]?.owner?.name ?? 'Member'
-    : data.scope === 'self' ? 'Your residents'
-      : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All residents')
-        : data.groups.find((g) => g.slug === group)?.name ?? group;
+  const scopeLabel = !data ? ''
+    : member ? residents[0]?.owner?.name ?? 'Member'
+      : data.scope === 'self' ? 'Your residents'
+        : group === 'all' ? (data.scope === 'group' ? 'Your group' : 'All residents')
+          : data.groups.find((g) => g.slug === group)?.name ?? group;
 
   return (
     <div className="page resident-page">
@@ -90,17 +79,20 @@ export default function ResidentChannel({ title }) {
           />
         </div>
         <span className="muted small toolbar-count">
-          {scopeLabel} · {residents.length} registered
+          {loading || !data ? 'Loading...' : `${scopeLabel} · ${residents.length} registered`}
         </span>
         <button className="btn primary" onClick={() => setForm({})}>
           <Icon name="plus" size={16} /> New resident
         </button>
       </div>
 
-      {!residents.length && (
+      {/* A failed reload is said here; the last list stays on screen below it. */}
+      {error && <div className="alert error">{error}</div>}
+
+      {data && !loading && !residents.length && (
         <div className="empty-inline muted">
           <Icon name="userPlus" size={20} />
-          {query ? `No residents match "${query}".` : 'No residents here yet. Register one to get started.'}
+          {q ? `No residents match "${q}".` : 'No residents here yet. Register one to get started.'}
         </div>
       )}
 
@@ -109,19 +101,19 @@ export default function ResidentChannel({ title }) {
           <table className="table resident-table">
             <thead>
               <tr>
-                <th>Resident</th>
-                <th className="num">Age</th>
-                <th>Country</th>
-                <th>Laptop</th>
-                <th>Access</th>
-                <th className="num">Divide</th>
-                <th>First contact</th>
-                <th>Belongs to</th>
+                <Th sort={sorter} col="resident">Resident</Th>
+                <Th sort={sorter} col="age" className="num">Age</Th>
+                <Th sort={sorter} col="country">Country</Th>
+                <Th sort={sorter} col="laptop">Laptop</Th>
+                <Th sort={sorter} col="access">Access</Th>
+                <Th sort={sorter} col="divide" className="num">Divide</Th>
+                <Th sort={sorter} col="firstContact">First contact</Th>
+                <Th sort={sorter} col="owner">Belongs to</Th>
                 <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
-              {residents.map((r) => (
+              {sorter.rows.map((r) => (
                 <tr key={r.id}>
                   <td data-label="Resident">
                     <div className="cell-user">
@@ -170,7 +162,7 @@ export default function ResidentChannel({ title }) {
           resident={form.id ? form : null}
           defaultOwner={member || undefined}
           onClose={() => setForm(null)}
-          onSaved={() => { setForm(null); load(); }}
+          onSaved={() => { setForm(null); reload(); }}
         />
       )}
       {confirm && (

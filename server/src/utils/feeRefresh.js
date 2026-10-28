@@ -1,4 +1,5 @@
 import { setFee } from './payments.js';
+import { feesChanged } from '../socket/events.js';
 
 // Refreshes the fees that public sources publish, once a day:
 //   wise  a live quote for sending 1,000 USD to EUR: the conversion part
@@ -61,6 +62,8 @@ export async function refreshFees() {
       results[key] = { error: err.message };
     }
   }
+  // Whoever has the fee table open sees the new numbers.
+  if (Object.values(results).some((r) => !r.error)) feesChanged();
   return results;
 }
 

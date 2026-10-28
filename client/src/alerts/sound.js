@@ -1,6 +1,7 @@
 // Alert sounds made with the Web Audio API, so no audio files are needed.
 // Browsers only allow audio after the user has interacted with the page,
-// so the audio context is unlocked on the first click or key press.
+// so the audio context is unlocked on a click or key press (every one: a
+// context the browser suspended again later gets unlocked again too).
 
 let ctx = null;
 
@@ -14,8 +15,17 @@ function context() {
 }
 
 const unlock = () => { context()?.resume().catch(() => {}); };
-window.addEventListener('pointerdown', unlock, { once: true });
-window.addEventListener('keydown', unlock, { once: true });
+window.addEventListener('pointerdown', unlock);
+window.addEventListener('keydown', unlock);
+
+// The context, if it can play right now. A suspended one is asked to resume
+// (allowed once the page has been interacted with), for the next sound.
+function ready() {
+  const ac = context();
+  if (!ac) return null;
+  if (ac.state === 'suspended') { ac.resume().catch(() => {}); return null; }
+  return ac;
+}
 
 function tone(ac, freq, start, duration, volume) {
   const osc = ac.createOscillator();
@@ -32,8 +42,8 @@ function tone(ac, freq, start, duration, volume) {
 
 // Normal: a soft two-note chime. Urgent: a sharper three-beep alarm.
 export function playAlert(priority = 'normal') {
-  const ac = context();
-  if (!ac || ac.state === 'suspended') return;
+  const ac = ready();
+  if (!ac) return;
   const t = ac.currentTime;
   if (priority === 'urgent') {
     [0, 0.22, 0.44].forEach((d) => tone(ac, 988, t + d, 0.16, 0.25));
@@ -45,8 +55,8 @@ export function playAlert(priority = 'normal') {
 
 // A chat message: one short, soft "pop", quieter than an instruction.
 export function playMessage() {
-  const ac = context();
-  if (!ac || ac.state === 'suspended') return;
+  const ac = ready();
+  if (!ac) return;
   const t = ac.currentTime;
   tone(ac, 880, t, 0.12, 0.12);
   tone(ac, 1320, t + 0.08, 0.18, 0.1);

@@ -31,11 +31,17 @@ export function SocketProvider({ children }) {
     // The server refused the connection (expired session, disabled account...).
     // socket.io does not retry that on its own: reload the session, which logs
     // the user out if it is gone, and otherwise try again shortly.
+    // A server still starting (database not connected yet) refuses too, and
+    // /auth/me answers 503 then: that is no reason to give up. A session that
+    // is really gone logs the user out, which closes this socket (cleanup).
     let retry = null;
+    let closed = false;
     s.on('connect_error', () => {
       if (s.active) return; // a network error: socket.io is already retrying
       refreshRef.current().then((u) => {
-        if (u && !u.mustChangePassword) retry = setTimeout(() => s.connect(), 5000);
+        if (closed || u?.mustChangePassword) return;
+        clearTimeout(retry);
+        retry = setTimeout(() => s.connect(), 3000 + Math.random() * 4000);
       });
     });
     s.on('session:changed', () => refreshRef.current());
@@ -49,6 +55,7 @@ export function SocketProvider({ children }) {
 
     setSocket(s);
     return () => {
+      closed = true;
       clearTimeout(retry);
       s.disconnect();
       setSocket(null);
@@ -78,6 +85,18 @@ export function useSocketEvent(event, handler) {
     socket.on(event, fn);
     return () => socket.off(event, fn);
   }, [socket, event]);
+}
+
+// Like useSocketEvent, but a burst of events becomes one call, delayed a
+// little at random so every open client does not hit the server in the same
+// instant. For events that mean "reload this list" rather than "here is data".
+export function useDebouncedSocketEvent(event, handler, { min = 300, jitter = 700 } = {}) {
+  const timer = useRef(null);
+  useSocketEvent(event, (...args) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => handler(...args), min + Math.random() * jitter);
+  });
+  useEffect(() => () => clearTimeout(timer.current), []);
 }
 
 // Runs handler after the socket reconnects (sleep, network blip). Events sent

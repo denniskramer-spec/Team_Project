@@ -56,13 +56,46 @@ export function useLiveData(path, events = []) {
   }, [path, reload]);
   useReconnect(reload);
 
+  // One change on the server can emit several events in a burst (an income
+  // settles reports, then the task, then the income itself), and every open
+  // client hears them: a burst becomes one reload, spread out a little so the
+  // clients do not all hit the server in the same instant.
+  const timer = useRef(null);
+  const scheduleReload = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(reload, RELOAD_DELAY_MS + Math.random() * RELOAD_JITTER_MS);
+  }, [reload]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
   const eventKey = events.join('|');
   useEffect(() => {
     if (!socket || !eventKey) return undefined;
     const names = eventKey.split('|');
-    names.forEach((e) => socket.on(e, reload));
-    return () => names.forEach((e) => socket.off(e, reload));
-  }, [socket, eventKey, reload]);
+    names.forEach((e) => socket.on(e, scheduleReload));
+    return () => names.forEach((e) => socket.off(e, scheduleReload));
+  }, [socket, eventKey, scheduleReload]);
 
   return { data, error, loading, reload, setData };
+}
+
+const RELOAD_DELAY_MS = 150;
+const RELOAD_JITTER_MS = 350;
+
+// For pages that keep their own list state: the same coalesced reload for a
+// set of socket events, plus a reload after a reconnect.
+export function useLiveReload(reload, events = []) {
+  const { socket } = useSocket();
+  const ref = useRef(reload);
+  ref.current = reload;
+  const timer = useRef(null);
+  useReconnect(() => ref.current());
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const eventKey = events.join('|');
+  useEffect(() => {
+    if (!socket || !eventKey) return undefined;
+    const fn = () => { clearTimeout(timer.current); timer.current = setTimeout(() => ref.current(), RELOAD_DELAY_MS + Math.random() * RELOAD_JITTER_MS); };
+    const names = eventKey.split('|');
+    names.forEach((e) => socket.on(e, fn));
+    return () => names.forEach((e) => socket.off(e, fn));
+  }, [socket, eventKey]);
 }

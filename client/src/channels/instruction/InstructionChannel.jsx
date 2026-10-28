@@ -3,7 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useAlerts } from '../../alerts/AlertsContext.jsx';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useDebouncedSocketEvent, useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useLatestRequest } from '../../useLiveData.js';
+import { EVENTS } from '../../constants.js';
 import Icon from '../../components/Icon.jsx';
 import Composer from './Composer.jsx';
 import InstructionCard from './InstructionCard.jsx';
@@ -40,6 +42,7 @@ export default function InstructionChannel({ title }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [moreError, setMoreError] = useState('');
   const cardRefs = useRef(new Map());
   const olderLoaded = useRef(false);
   // Which list is showing. Picking another member in the tree keeps this
@@ -47,15 +50,21 @@ export default function InstructionChannel({ title }) {
   const scope = `${title.key}|${memberId}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
-  const send = sendTarget(user, title, member);
+  // Only the member the URL names may receive: while the directory answer
+  // for a newly picked member is on its way, `member` is still the previous
+  // one, and sending then would go to someone no longer on screen.
+  const shown = member && String(member.id) === memberId ? member : null;
+  const send = memberId && !shown ? null : sendTarget(user, title, shown);
 
   // Who is selected in the tree, for the composer label and the header.
+  const trackMember = useLatestRequest();
   useEffect(() => {
+    const isLatest = trackMember();
     if (!memberId) { setMember(null); return; }
     api('/users/directory')
-      .then((d) => setMember(d.users.find((u) => String(u.id) === memberId) ?? null))
-      .catch(() => setMember(null));
-  }, [memberId]);
+      .then((d) => { if (isLatest()) setMember(d.users.find((u) => String(u.id) === memberId) ?? null); })
+      .catch(() => { if (isLatest()) setMember(null); });
+  }, [memberId, trackMember]);
 
   // A new list starts empty rather than showing the previous member's items.
   useEffect(() => {
@@ -63,6 +72,7 @@ export default function InstructionChannel({ title }) {
     setItems([]);
     setHasMore(false);
     setLoading(true);
+    setMoreError('');
   }, [scope]);
 
   // Reload the newest page; keep any older pages already loaded.
@@ -96,6 +106,7 @@ export default function InstructionChannel({ title }) {
     if (!oldest || loadingMore) return;
     const requested = scopeRef.current;
     setLoadingMore(true);
+    setMoreError('');
     try {
       const query = memberId ? `member=${memberId}` : `title=${encodeURIComponent(title.key)}`;
       const d = await api(`/instructions?${query}&before=${encodeURIComponent(oldest)}&beforeId=${items.at(-1).id}`);
@@ -104,7 +115,8 @@ export default function InstructionChannel({ title }) {
       setHasMore(d.hasMore);
       olderLoaded.current = true;
     } catch (err) {
-      setError(err.message);
+      // Shown by the button, at the bottom of the list where the reader is.
+      if (requested === scopeRef.current) setMoreError(err.message);
     } finally {
       setLoadingMore(false);
     }
@@ -113,24 +125,43 @@ export default function InstructionChannel({ title }) {
   const belongsHere = (e) => (memberId
     ? String(e.recipientId ?? '') === memberId
     : e.titleKey === title.key && (e.target !== 'member' || String(e.recipientId ?? '') === String(user.id)));
-  useSocketEvent('instruction:new', (e) => { if (belongsHere(e)) loadFirst(); });
-  useSocketEvent('instruction:changed', ({ id }) => { if (items.some((i) => String(i.id) === String(id))) loadFirst(); });
-  useSocketEvent('instruction:deleted', ({ id }) => setItems((prev) => prev.filter((i) => String(i.id) !== String(id))));
+  useSocketEvent(EVENTS.INSTRUCTION_NEW, (e) => { if (belongsHere(e)) loadFirst(); });
+  // Every acknowledgement of an instruction sent to many people reaches
+  // every client listing it: a burst becomes one reload.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const changed = useRef(new Set());
+  useSocketEvent(EVENTS.INSTRUCTION_CHANGED, ({ id }) => { changed.current.add(String(id)); });
+  useDebouncedSocketEvent(EVENTS.INSTRUCTION_CHANGED, () => {
+    const ids = changed.current;
+    changed.current = new Set();
+    if (itemsRef.current.some((i) => ids.has(String(i.id)))) loadFirst();
+  });
+  useSocketEvent(EVENTS.INSTRUCTION_DELETED, ({ id }) => setItems((prev) => prev.filter((i) => String(i.id) !== String(id))));
 
-  // Scroll to and highlight an instruction opened from an alert.
+  // Scroll to and highlight an instruction opened from an alert, once: a
+  // live reload of the list must not scroll again or restart the timer
+  // that drops ?focus (only a new focus id or leaving the page stops it).
+  const focusedFor = useRef(null);
+  const focusTimer = useRef(null);
   useEffect(() => {
-    if (!focusId || loading) return undefined;
+    if (!focusId || loading || focusedFor.current === focusId) return;
     const el = cardRefs.current.get(focusId);
-    if (!el) return undefined;
+    if (!el) return;
+    focusedFor.current = focusId;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Drop only ?focus, keeping the member or group picked in the tree.
-    const id = setTimeout(() => setSearchParams((prev) => {
+    clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete('focus');
       return next;
     }, { replace: true }), 2500);
-    return () => clearTimeout(id);
   }, [focusId, loading, items, setSearchParams]);
+  useEffect(() => {
+    if (!focusId) focusedFor.current = null;
+  }, [focusId]);
+  useEffect(() => () => clearTimeout(focusTimer.current), []);
 
   const unreadHere = items.filter((i) => i.isRecipient && !i.readAt).length;
 
@@ -155,7 +186,7 @@ export default function InstructionChannel({ title }) {
             : title.key === 'all' ? 'Instructions for everyone and for you' : `Instructions for ${title.name}`}
         </span>
         {unreadHere > 1 && (
-          <button className="btn small-btn toolbar-right" onClick={async () => { await markAllRead(); loadFirst(); }}>
+          <button className="btn small-btn toolbar-right" onClick={async () => { await markAllRead(title.key); loadFirst(); }}>
             <Icon name="check" size={14} /> Mark all as read
           </button>
         )}
@@ -177,6 +208,7 @@ export default function InstructionChannel({ title }) {
           />
         ))}
       </div>
+      {moreError && <div className="alert error">{moreError}</div>}
       {hasMore && (
         <button className="btn load-more" onClick={loadMore} disabled={loadingMore}>
           {loadingMore ? 'Loading...' : 'Load older instructions'}

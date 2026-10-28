@@ -47,7 +47,9 @@ userSchema.methods.setPassword = async function setPassword(plain) {
   this.passwordChangedAt = new Date();
 };
 
-userSchema.methods.checkPassword = function checkPassword(plain) {
+userSchema.methods.checkPassword = async function checkPassword(plain) {
+  // No hash (an account restored from the archive) is a wrong password, not an error.
+  if (typeof this.passwordHash !== 'string' || !this.passwordHash) return false;
   return bcrypt.compare(plain, this.passwordHash);
 };
 

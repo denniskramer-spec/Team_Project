@@ -5,7 +5,7 @@ import Icon from '../components/Icon.jsx';
 
 // Section 4, Alerts tab: unacknowledged instructions and alarm settings.
 export default function AlertsPanel() {
-  const { unread, total, settings, updateSettings, markRead, markAllRead, open, desktopSupported, testSound } = useAlerts();
+  const { unread, total, error, settings, updateSettings, markRead, markAllRead, open, desktopSupported, testSound } = useAlerts();
 
   return (
     <div className="alerts-panel">
@@ -32,8 +32,10 @@ export default function AlertsPanel() {
 
       <div className="panel-section-head">
         <h4>Unread instructions · {total}</h4>
-        {total > 0 && <button className="link small" onClick={markAllRead}>Mark all</button>}
+        {total > 0 && <button className="link small" onClick={() => markAllRead()}>Mark all</button>}
       </div>
+
+      {error && <div className="alert error">{error}</div>}
 
       {!unread.length && <p className="muted small">Nothing new. Instructions you receive appear here.</p>}
 

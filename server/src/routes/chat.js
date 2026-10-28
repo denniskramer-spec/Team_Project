@@ -113,11 +113,7 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
   await message.populate('author', AUTHOR_FIELDS);
 
   // Sending counts as having read the chat.
-  await ChatRead.findOneAndUpdate(
-    { user: req.user._id, channelKey: channel.key },
-    { lastReadAt: message.createdAt },
-    { upsert: true },
-  );
+  await ChatRead.touch(req.user._id, channel.key, message.createdAt);
 
   sendChatEvent('chat:new', channel, req.user, (titleKey, peer) => ({
     titleKey, channelName: peer ? peer.name : channel.name, message: serialize(message), dm: channel.kind === 'dm',
@@ -153,7 +149,7 @@ async function findMessage(req) {
 }
 
 router.patch('/messages/:id', async (req, res) => {
-  const { message, channel, titleKey } = await findMessage(req);
+  const { message, channel } = await findMessage(req);
   if (!canEditMessage(req.user, message)) throw forbidden('You can only edit your own messages');
   message.content = checkContent(req.body.content, message.images?.length > 0);
   message.editedAt = new Date();
@@ -176,11 +172,7 @@ router.delete('/messages/:id', async (req, res) => {
 // POST /api/chat/:titleKey/read — everything up to now has been seen.
 router.post('/:titleKey/read', async (req, res) => {
   const channel = await resolveChannel(req.user, req.params.titleKey);
-  await ChatRead.findOneAndUpdate(
-    { user: req.user._id, channelKey: channel.key },
-    { lastReadAt: new Date() },
-    { upsert: true },
-  );
+  await ChatRead.touch(req.user._id, channel.key);
   navChangedFor(req.user._id);
   res.json({ ok: true });
 });

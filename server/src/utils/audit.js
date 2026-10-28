@@ -34,7 +34,10 @@ export function sanitize(value, depth = 0) {
     if (depth > 4) return '[…]';
     const out = {};
     for (const [key, v] of Object.entries(value)) {
-      out[key.replace(/^\$/, '_').replaceAll('.', '_')] = SECRET.test(key) ? '[hidden]' : sanitize(v, depth + 1);
+      // Operators and dots cannot be field names in MongoDB, and a key called
+      // __proto__ would set this object's prototype instead of a field.
+      const name = key === '__proto__' ? '_proto_' : key.replace(/^\$/, '_').replaceAll('.', '_');
+      out[name] = SECRET.test(key) ? '[hidden]' : sanitize(v, depth + 1);
     }
     return out;
   }

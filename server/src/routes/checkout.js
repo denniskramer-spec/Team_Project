@@ -11,14 +11,19 @@ import mongoose from 'mongoose';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, notFound } from '../utils/httpError.js';
-import { person as personOf } from '../utils/finance.js';
+import { person as personOf, parseDay } from '../utils/finance.js';
 import { earnedOf, upcomingOf } from '../utils/reportWork.js';
+import { formatPrice } from '../utils/project.js';
 
 const router = Router();
 router.use(requireAuth);
 
 // Checkout periods are weekly, monthly and yearly ("annual" internally).
 const TYPES = { weekly: 'weekly', monthly: 'monthly', yearly: 'annual' };
+
+const PLAN_FIELDS = 'owner type period periodStart status statusUpdatedAt note income jobBid bid aiBid';
+const REPORT_FIELDS = 'author period periodStart sentAt income jobBid bid aiBid work.task work.text work.hours work.count work.amount work.paidBy';
+const INCOME_FIELDS = 'member date amount method task from note';
 
 const sum = (rows, field) => rows.reduce((total, row) => total + (row[field] || 0), 0);
 // Records written before bids were split counted them all as job bids.
@@ -31,11 +36,13 @@ const sumUpcoming = (rows) => money(rows.reduce((total, row) => total + upcoming
 
 // GET /api/checkout?type=weekly|monthly|yearly&period=&group=all|<slug>
 // Pulls together the Plan, Report, Task and Finance channels for one period.
+// Without ?period=, the current one: around ?date=YYYY-MM-DD when given (the
+// client's own calendar day, which is not the server's near midnight).
 router.get('/', async (req, res) => {
   const titleType = req.query.type || 'weekly';
   const type = TYPES[titleType];
   if (!type) throw badRequest('Checkout periods are weekly, monthly or yearly');
-  const period = parsePeriod(type, req.query.period || periodKey(type));
+  const period = parsePeriod(type, req.query.period || periodKey(type, req.query.date ? parseDay(req.query.date, 'date') : new Date()));
 
   // Who the numbers cover: the same role rules as the other channels.
   const owners = scopeFilter(req.user, 'owner');
@@ -68,13 +75,15 @@ router.get('/', async (req, res) => {
   const inside = { periodStart: { $gte: period.start, $lt: period.end } };
   const planned = type === 'weekly' ? { ...inside, type: 'weekly' } : inside;
 
+  // Only the fields the sums and the detail dialogs read: a yearly checkout
+  // would otherwise pull every daily report's free text.
   const [allPlans, reports, tasks, incomes, current] = await Promise.all([
     // Personal plans only: a boss's group plan repeats their members' targets.
-    Plan.find(withGroup({ ...owners, ...planned, scope: 'personal' }, 'owner')).lean(),
-    Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author')).lean(),
+    Plan.find(withGroup({ ...owners, ...planned, scope: 'personal' }, 'owner'), PLAN_FIELDS).lean(),
+    Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author'), REPORT_FIELDS).lean(),
     // Tasks that overlap the period at all.
     Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, $or: [{ endDate: null }, { endDate: { $gte: period.start } }] }, 'owner')).lean(),
-    Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member')).lean(),
+    Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member'), INCOME_FIELDS).lean(),
     // The people listed follow the same role rules: a boss sees their group,
     // a member only themselves.
     User.find(withGroup({
@@ -144,8 +153,47 @@ router.get('/', async (req, res) => {
     };
   });
 
+  // The records behind each card, for the detail dialogs: every plan, report,
+  // income record and project the numbers above add up.
+  const personById = new Map(people.map((p) => [String(p._id), personOf(p)]));
+  const who = (doc, field) => personById.get(idOf(doc, field)) ?? null;
+  const taskNames = new Map(tasks.map((t) => [String(t._id), t.name]));
+  const wanted = new Set([
+    ...incomes.map((i) => i.task).filter(Boolean).map(String),
+    ...reports.flatMap((r) => (r.work ?? []).map((w) => String(w.task))),
+  ]);
+  const missingTasks = [...wanted].filter((id) => !taskNames.has(id));
+  if (missingTasks.length) {
+    (await Task.find({ _id: { $in: missingTasks } }, 'name').lean()).forEach((t) => taskNames.set(String(t._id), t.name));
+  }
+  const counted = new Set(plans.map((p) => String(p._id)));
+  const details = {
+    plans: allPlans.map((p) => ({
+      id: p._id, member: who(p, 'owner'), type: p.type, period: p.period, label: parsePeriod(p.type, p.period).label,
+      status: p.status, statusUpdatedAt: p.statusUpdatedAt ?? null, note: p.note ?? '',
+      income: p.income || 0, jobBid: p.jobBid || p.bid || 0, aiBid: p.aiBid || 0,
+      // A weekly plan under a monthly one is not added to the targets.
+      counted: counted.has(String(p._id)),
+    })).sort((a, b) => (a.member?.name ?? '').localeCompare(b.member?.name ?? '') || a.period.localeCompare(b.period)),
+    reports: reports.map((r) => ({
+      id: r._id, member: who(r, 'author'), period: r.period, date: r.periodStart, sent: Boolean(r.sentAt),
+      jobBid: r.jobBid || r.bid || 0, aiBid: r.aiBid || 0,
+      earned: money(earnedOf(r.work) || r.income || 0), upcoming: money(upcomingOf(r.work)),
+      projects: (r.work ?? []).filter((w) => w.text?.trim() || w.hours || w.count).map((w) => taskNames.get(String(w.task)) ?? 'Project'),
+    })).sort((a, b) => b.date - a.date),
+    incomes: incomes.map((i) => ({
+      id: i._id, member: who(i, 'member'), date: i.date, amount: i.amount, method: i.method,
+      from: (i.task && taskNames.get(String(i.task))) || i.from || '', note: i.note ?? '',
+    })).sort((a, b) => b.date - a.date),
+    tasks: tasks.map((t) => ({
+      id: t._id, member: who(t, 'owner'), name: t.name, status: t.status, source: t.source ?? '',
+      price: t.price || 0, priceLabel: formatPrice(t), startDate: t.startDate, endDate: t.endDate ?? null,
+    })).sort((a, b) => b.startDate - a.startDate),
+  };
+
   const nextKey = shiftPeriod(type, period.key, 1);
   res.json({
+    details,
     period: {
       ...period,
       type: titleType,

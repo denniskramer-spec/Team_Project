@@ -99,6 +99,18 @@ html:root { --panel-w: 300px; }
 .my-day-projects li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .my-day-projects li .small { margin-left: auto; }
 .my-day-stats { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* Daily bid goals: from the plan, with yesterday's shortfall carried over. */
+.my-day-goals-title { margin-top: 14px; }
+.goal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.goal-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.goal-nums { font-variant-numeric: tabular-nums; }
+.goal-bar { height: 5px; margin: 4px 0 2px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.goal-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--warn); transition: width 0.2s; }
+.goal-list li.is-met .goal-bar > span { background: var(--good); }
+.goal-list li.is-met .goal-note { color: var(--text-ok); }
+.goal-hint { display: block; margin-top: 3px; font-size: 11px; color: var(--text-warn); text-transform: none; letter-spacing: normal; font-weight: 500; }
+.goal-hint.is-met { color: var(--text-ok); }
 .note-grow { flex: 1; }
 .report-due {
   position: fixed; right: 18px; bottom: 18px; z-index: 50;
@@ -186,6 +198,18 @@ html:root { --panel-w: 300px; }
 .warn-text { color: var(--text-warn); font-weight: 600; }
 .project-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
 .project-list { display: grid; gap: 10px; }
+/* On a wide screen the page fills the content area and the list and the
+   detail scroll on their own, so the detail stays in view while browsing a
+   long list. Narrow screens stack them and scroll as one page. */
+@media (min-width: 901px) {
+  .project-page { display: flex; flex-direction: column; height: 100%; }
+  .project-page > .project-layout { flex: 1; min-height: 0; align-items: stretch; }
+  .project-list, .project-detail { min-height: 0; overflow: hidden auto; align-content: start; scrollbar-width: thin; }
+  .project-list { padding-right: 4px; }
+  .project-detail { padding-right: 2px; }
+  /* The search stays put while the list scrolls under it. */
+  .project-list > .search { position: sticky; top: 0; z-index: 1; background: var(--bg); }
+}
 .project-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .project-item {
   display: grid; gap: 4px; width: 100%; padding: 12px 14px; text-align: left;

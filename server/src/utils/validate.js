@@ -113,3 +113,14 @@ export function checkList(value, label, max) {
   if (value.length > max) throw badRequest(`${label} can have at most ${max} items`);
   return value;
 }
+
+// Text that a regex is to match literally.
+export const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// A search box's text as a case-insensitive "contains" match: taken
+// literally and cut at `max` characters, or null when there is nothing to
+// search for.
+export function searchRegex(value, max = 60) {
+  const text = typeof value === 'string' ? value.trim().slice(0, max) : '';
+  return text ? new RegExp(escapeRegex(text), 'i') : null;
+}
