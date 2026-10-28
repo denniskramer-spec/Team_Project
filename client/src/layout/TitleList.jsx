@@ -55,10 +55,13 @@ export default function TitleList({ channel, current }) {
   );
 
   const [open, setOpen] = useState(() => new Set());
+  // Several channels have an "all" title: a branch opened in one must not
+  // show open in another.
+  const branchKey = (key) => `${channel.key}/${key}`;
   // Keep the branch holding the current selection open.
   useEffect(() => {
     const auto = channel.titles.filter(holdsSelection).map((t) => t.key);
-    if (auto.length) setOpen((prev) => new Set([...prev, ...auto]));
+    if (auto.length) setOpen((prev) => new Set([...prev, ...auto.map(branchKey)]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.key, current, selectedGroup, selectedMember]);
 
@@ -104,7 +107,7 @@ export default function TitleList({ channel, current }) {
   const renderItem = (t, parent) => {
     const active = isActive(t, parent);
     const expandable = Boolean(t.children?.length);
-    const expanded = expandable && open.has(t.key);
+    const expanded = expandable && open.has(branchKey(t.key));
 
     return (
       <li key={t.key} className={parent ? 'title-child' : ''}>
@@ -112,7 +115,7 @@ export default function TitleList({ channel, current }) {
           {expandable ? (
             <button
               className="title-twisty"
-              onClick={() => toggle(t.key)}
+              onClick={() => toggle(branchKey(t.key))}
               aria-expanded={expanded}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} ${t.name}`}
             >

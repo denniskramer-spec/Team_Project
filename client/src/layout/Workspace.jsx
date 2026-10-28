@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { load, save } from '../storage.js';
-import { useReconnect, useSocketEvent } from '../socket/SocketContext.jsx';
+import { useDebouncedSocketEvent, useReconnect, useSocketEvent } from '../socket/SocketContext.jsx';
+import { DM_PLACEHOLDER_NAME, EVENTS, dmPeerId, isDmTitleKey } from '../constants.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import { useLatestRequest } from '../useLiveData.js';
@@ -13,6 +14,7 @@ import ContentArea from './ContentArea.jsx';
 import SidePanel from './SidePanel.jsx';
 import Footer from './Footer.jsx';
 import ReportDue from './ReportDue.jsx';
+import { ReportStatusProvider } from '../channels/report/ReportStatus.jsx';
 
 const LAST_TITLES_KEY = 'bm.lastTitles';
 // For members these channels live under Settings; older links still land.
@@ -31,7 +33,7 @@ export default function Workspace() {
   const [navOpen, setNavOpen] = useState(false);
   const [panelTab, setPanelTab] = useState('members');
   const { user } = useAuth();
-  const { setCounts } = useChatAlerts() ?? {};
+  const { setCounts, isViewing } = useChatAlerts() ?? {};
 
   const track = useLatestRequest();
   const loadNav = useCallback(() => {
@@ -47,18 +49,23 @@ export default function Workspace() {
   // The server emits this when groups, roles or pending sign-ups change.
   // Bursts (a task change sends several) become one reload, spread out a
   // little so every open client doesn't hit the server in the same instant.
-  const navTimer = useRef(null);
-  useSocketEvent('nav:changed', () => {
-    clearTimeout(navTimer.current);
-    navTimer.current = setTimeout(loadNav, 300 + Math.random() * 700);
-  });
-  useEffect(() => () => clearTimeout(navTimer.current), []);
+  useDebouncedSocketEvent(EVENTS.NAV_CHANGED, loadNav);
   // A message from someone else changes the Chat badge in the rail; a direct
-  // message (either way) changes the Direct messages list under Chat.
-  useSocketEvent('chat:new', ({ message, dm }) => {
-    if (!dm && String(message?.author?.id) === String(user?.id)) return;
-    clearTimeout(navTimer.current);
-    navTimer.current = setTimeout(loadNav, 300 + Math.random() * 700);
+  // message (either way) changes the Direct messages list under Chat. A
+  // channel message in the chat being read changes nothing: it is marked
+  // read at once, and reloading first would flash a badge of 1.
+  const wantsNav = ({ titleKey, message, dm }) => {
+    if (dm) return true;
+    if (String(message?.author?.id) === String(user?.id)) return false;
+    return !isViewing?.(titleKey);
+  };
+  // Decided per message, reloaded once per burst.
+  const navWanted = useRef(false);
+  useSocketEvent(EVENTS.CHAT_NEW, (e) => { if (wantsNav(e)) navWanted.current = true; });
+  useDebouncedSocketEvent(EVENTS.CHAT_NEW, () => {
+    if (!navWanted.current) return;
+    navWanted.current = false;
+    loadNav();
   });
   // The tab title and the footer count unread chat messages: channels and
   // direct messages apart.
@@ -88,11 +95,11 @@ export default function Workspace() {
   // the navigation state), until the first message puts it there for good.
   const channel = useMemo(() => {
     const found = channels?.find((c) => c.key === channelKey);
-    if (!found || found.key !== 'chat' || !titleKey?.startsWith('dm-') || found.titles.some((t) => t.key === titleKey)) return found;
+    if (!found || found.key !== 'chat' || !isDmTitleKey(titleKey) || found.titles.some((t) => t.key === titleKey)) return found;
     const peer = location.state?.peer;
-    const id = titleKey.slice(3);
+    const id = dmPeerId(titleKey);
     if (!/^[0-9a-f]{24}$/.test(id) || (peer && String(peer.id) !== id) || id === String(user?.id)) return found;
-    const dm = peer ?? { id, name: 'Direct message', role: 'member', group: null };
+    const dm = peer ?? { id, name: DM_PLACEHOLDER_NAME, role: 'member', group: null };
     return { ...found, titles: [...found.titles, { key: titleKey, name: dm.name, section: 'Direct messages', dm }] };
   }, [channels, channelKey, titleKey, location.state, user?.id]);
   const title = channel?.titles.find((t) => t.key === titleKey);
@@ -128,6 +135,7 @@ export default function Workspace() {
   }
 
   return (
+    <ReportStatusProvider>
     <div className="app">
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
       <div className="workspace">
@@ -140,7 +148,14 @@ export default function Workspace() {
         <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
       <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />
+      {/* The nav loaded once but a refresh failed: say so, and keep the old one. */}
+      {error && (
+        <div className="nav-error alert error small" role="status">
+          Could not refresh the channels: {error} <button className="link" onClick={loadNav}>Try again</button>
+        </div>
+      )}
       <ReportDue />
     </div>
+    </ReportStatusProvider>
   );
 }

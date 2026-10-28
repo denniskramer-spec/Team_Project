@@ -1,25 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useSocket } from '../socket/SocketContext.jsx';
 import { ROLE_LABELS } from '../components/RoleBadge.jsx';
 import Avatar from '../components/Avatar.jsx';
 import Modal from '../components/Modal.jsx';
-
-// The path of a direct message with someone. The person travels in the
-// navigation state, so the conversation has a name before its first message
-// puts it in the nav.
-export const dmPath = (peer) => ({
-  to: `/chat/dm-${peer.id}`,
-  state: { peer: { id: String(peer.id), name: peer.name, role: peer.role, group: peer.group?.name ?? peer.group ?? null } },
-});
+import { useOpenDm } from '../channels/chat/useOpenDm.js';
 
 // "+" next to Direct messages: pick a person from the directory to write to.
 export default function NewDm({ onClose }) {
   const { user } = useAuth();
   const { online } = useSocket();
-  const navigate = useNavigate();
+  const openDm = useOpenDm();
   const [people, setPeople] = useState(null);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
@@ -34,9 +26,8 @@ export default function NewDm({ onClose }) {
   const shown = (people ?? []).filter((p) => !needle || `${p.name} ${p.username} ${p.group?.name ?? ''}`.toLowerCase().includes(needle));
 
   const pick = (p) => {
-    const { to, state } = dmPath(p);
     onClose();
-    navigate(to, { state });
+    openDm(p);
   };
 
   return (
@@ -50,6 +41,7 @@ export default function NewDm({ onClose }) {
         autoFocus
       />
       {error && <div className="alert error">{error}</div>}
+      {!people && !error && <p className="muted small">Loading...</p>}
       {people && !shown.length && <p className="muted small">Nobody matches.</p>}
       <ul className="new-dm-list">
         {shown.map((p) => (

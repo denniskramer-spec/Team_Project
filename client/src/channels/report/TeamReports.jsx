@@ -1,9 +1,9 @@
-import { formatAmount, timeAgo, nameOf } from '../../format.js';
+import { formatAmount, formatClock, timeAgo, nameOf } from '../../format.js';
+import { stateOf } from './reportState.js';
 import DateTag from '../../components/DateTag.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 
-const clock = (value) => new Date(value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 const RESULT = { well: 'Went well', mixed: 'Mixed', bad: "Didn't go well" };
 
 // A labelled block of one member's report; hidden when there is nothing in it.
@@ -34,7 +34,7 @@ function Figures({ pairs }) {
 // One member's daily report as a card a manager can read at a glance.
 function ReportCard({ row }) {
   const r = row.report;
-  const state = r?.sentAt ? 'sent' : r ? 'draft' : 'missing';
+  const state = stateOf(r);
   const plan = r?.todayPlan ?? [];
   const planDone = plan.filter((p) => p.done).length;
   const work = (r?.work ?? []).filter((w) => w.text?.trim() || w.hours || w.count);
@@ -52,7 +52,7 @@ function ReportCard({ row }) {
           <div className={`strong role-text-${row.member.role}`}>{nameOf(row.member)}</div>
           <div className="muted small">
             {row.member.group?.name ?? '—'}
-            {state === 'sent' && ` · sent ${clock(r.sentAt)}`}
+            {state === 'sent' && ` · sent ${formatClock(r.sentAt)}`}
             {state === 'draft' && ` · draft, saved ${timeAgo(r.updatedAt)}`}
           </div>
         </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
+import { useDebouncedSocketEvent, useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import { formatAmount } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
@@ -135,8 +135,10 @@ export default function PlanChannel({ title }) {
   useReconnect(load);
   useSocketEvent('plan:changed', (e) => { if (e.type === type) load(); });
   // Reports change what has been achieved; income records meet the income target.
-  useSocketEvent('report:changed', load);
-  useSocketEvent('income:changed', load);
+  // Reports and income only move the "achieved" figures, and an income can
+  // settle many reports at once: a burst becomes one reload.
+  useDebouncedSocketEvent('report:changed', load);
+  useDebouncedSocketEvent('income:changed', load);
 
   const setPeriod = (value) => {
     const next = new URLSearchParams(searchParams);
