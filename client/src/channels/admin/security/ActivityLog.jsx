@@ -15,7 +15,7 @@ const LOG_COLUMNS = {
   who: (e) => whoOf(e.user, e.username),
   what: (e) => actionLabel(e.action),
   address: (e) => e.ip ?? null,
-  device: (e) => device(e.userAgent) || null,
+  device: (e) => device(e.userAgent, e.method) || null,
   result: (e) => e.status,
 };
 
@@ -26,6 +26,8 @@ function Result({ status, flags }) {
     <span className="log-result">
       <span className={`status-pill ${cls}`}>{text}</span>
       {flags?.includes('new-ip') && <span className="status-pill pending" title="First login from this address">new address</span>}
+      {flags?.includes('outside-app') && <span className="status-pill disabled" title="Done on the database directly, not through the app">outside app</span>}
+      {flags?.includes('tamper') && <span className="status-pill disabled" title="The security log, the kept copies or the recording itself were touched">tampering</span>}
     </span>
   );
 }
@@ -80,17 +82,18 @@ function Details({ entry }) {
 
 function LogRow({ entry, open, onToggle }) {
   const flagged = entry.flags?.some((f) => ['new-ip', 'rate-limited', 'denied'].includes(f));
+  const outside = entry.flags?.includes('outside-app');
   return (
     <>
-      <tr className={`log-row ${flagged ? 'is-flagged' : ''} ${open ? 'is-open' : ''}`} onClick={onToggle}>
+      <tr className={`log-row ${flagged ? 'is-flagged' : ''} ${outside ? 'is-outside' : ''} ${open ? 'is-open' : ''}`} onClick={onToggle}>
         <td data-label="When"><span className="log-when">{when(entry.at)}</span><span className="muted small"> · {timeAgo(entry.at)}</span></td>
-        <td data-label="Who"><Who user={entry.user} username={entry.username} /></td>
+        <td data-label="Who"><Who user={entry.user} username={entry.username} outside={outside} /></td>
         <td data-label="What">
           <div className="strong">{actionLabel(entry.action)}</div>
           <div className="muted small">{entry.target?.label || entry.details?.of || entry.path}</div>
         </td>
         <td data-label="Address"><code className="log-ip">{entry.ip || '—'}</code></td>
-        <td data-label="Device" className="muted small" title={entry.userAgent}>{device(entry.userAgent)}</td>
+        <td data-label="Device" className="muted small" title={entry.userAgent}>{device(entry.userAgent, entry.method)}</td>
         <td data-label="Result"><Result status={entry.status} flags={entry.flags} /></td>
       </tr>
       {open && <tr className="log-row-details"><td colSpan={6}><Details entry={entry} /></td></tr>}
@@ -120,7 +123,7 @@ export default function ActivityLog() {
       <div className="toolbar">
         <div className="page-title">
           <h3>Security log</h3>
-          <span className="muted small">Every login, every look at the data and every change: who, when, from which address and device, what it touched and which fields went from what to what. Nothing here can be edited or removed.</span>
+          <span className="muted small">Every login, every change and deletion, every refused request, and anything done on the database directly, outside the app (a tool such as MongoChef, a shell): who, when, from which address and program, what it touched and which fields went from what to what. Nothing here can be edited or removed.</span>
         </div>
       </div>
       <div className="toolbar security-filters">

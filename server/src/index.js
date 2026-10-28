@@ -11,6 +11,7 @@ import { sweepOrphans } from './utils/uploads.js';
 import { fileInUse } from './utils/fileRefs.js';
 import { loadFees } from './utils/payments.js';
 import { loadSettings } from './routes/settings.js';
+import { startOutsideWatch } from './utils/outsideWatch.js';
 import { scheduleFeeRefresh } from './utils/feeRefresh.js';
 import { loadRates, scheduleRateRefresh } from './utils/exchange.js';
 
@@ -34,6 +35,7 @@ connectDB(env.mongoUri)
   .then(loadFees)
   .then(loadRates)
   .then(() => {
+    startOutsideWatch().catch((err) => console.error('Outside watch failed to start:', err.message));
     scheduleFeeRefresh();
     scheduleRateRefresh();
     sweep();

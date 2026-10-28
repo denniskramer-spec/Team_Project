@@ -29,8 +29,11 @@ nothing that is already done:
    admin password `admin1234` (change it at first login, or edit the file);
 3. starts **MongoDB** on port 27017: the `business-manager-mongo` Docker container
    (mongo:7, created if needed) when the Docker daemon is up, otherwise a local
-   `mongod` with its data in `.mongo-data/` (git-ignored). A database that is
-   already listening is left alone. `npm run db` runs this step on its own.
+   `mongod` with its data in `.mongo-data/` (git-ignored), as a one-member
+   **replica set** (`rs0`, so records deleted outside the app can be kept). A
+   database that is already listening is left alone, except that one this step
+   started earlier without the replica set is restarted with it once (data kept).
+   `npm run db` runs this step on its own.
 
 Then the API, a watch build of the client and the client start, and the browser
 opens **http://localhost:3000**. Ctrl+C stops the app; MongoDB keeps running, like
@@ -205,15 +208,14 @@ Channel titles come from `GET /api/nav`, built per user in
 - **Security (Admin → Security)** — admins and the team leader see who accessed the
   team's data, when, from which IP address and device, and what changed. Three parts:
   - The **security log**: every login and failed login (with the username tried and why
-    it failed), every look at the data (which list or record, with which filters; the
-    same person opening the same thing again within ten minutes is one visit), every
-    request that changes data, rate-limited and refused requests, and every look at
-    sensitive history (an export, opening or restoring a deleted record). For every
+    it failed), every request that changes data, rate-limited and refused requests, and
+    every look at sensitive history (an export, opening or restoring a deleted record).
+    Plain page views are not logged. For every
     change the data layer itself writes down each record created, edited or removed,
     with each edited field's old and new value, whichever screen did it (passwords are
     never written). A login from an address the account has never used before is
-    flagged **new address**. The log can be filtered (views, changes, deletions,
-    restores, logins, failed & refused, admin actions, flagged), searched by name,
+    flagged **new address**. The log can be filtered (outside the app, changes,
+    deletions, restores, logins, failed & refused, admin actions, flagged), searched by name,
     username, address or path, and exported as CSV (the export itself is logged).
   - **Deleted records**: everything anyone deletes — an outcome, a project, a resident,
     a chat account, a message, an instruction, a plan, a report, a group, a rejected
@@ -223,6 +225,23 @@ Channel titles come from `GET /api/nav`, built per user in
     **restore** it: it goes back under its old id exactly as it was, the copy stays
     and is marked restored (by whom, when), and the restore is logged. A restore is
     refused when a record with that id exists again or the copy was already restored.
+  - **Outside the app**: anyone working on the database directly — a GUI tool such as
+    MongoChef / Studio 3T or Compass, `mongosh`, another program — is logged with the
+    client's address, the database user it logged in as and the program's name, and
+    what it read (once per client and collection per ten minutes), added, edited,
+    deleted or dropped; writes to the log or the kept copies are flagged
+    **tampering**. Records deleted that way are kept in Deleted records like any
+    other and can be restored. How (`server/src/utils/outsideWatch.js`): the app's
+    own connections name themselves (`appName` `business-manager-api` /
+    `business-manager-script`), MongoDB's profiler records every operation from any
+    other client, and on a replica set a change stream hands over each deleted record
+    as it was. Requirements: the app's database user needs the **dbAdmin** role on
+    its database (for the profiler), and MongoDB must run as a **replica set** (one
+    member is enough) to keep deleted records; `npm run dev` sets this up. The
+    Security page says when either is missing. Limits: MongoDB does not report reads
+    or writes on other databases, and a client that calls itself by the app's name
+    is taken for the app, so give people their own database users and keep the
+    app's credentials to the server.
   - **Sessions**: end every session of one account on every device (tokens issued before
     that moment stop working and its sockets are dropped), for when an account may be in
     the wrong hands; pair it with a password reset from Users & roles.

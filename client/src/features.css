@@ -417,3 +417,8 @@ button.member-row { width: 100%; border: 0; background: none; color: inherit; fo
 .log-diff .log-from { color: var(--bad); text-decoration: line-through; opacity: 0.85; }
 .log-diff .log-to { color: var(--good); }
 .sessions-row select { flex: 1 1 240px; max-width: 360px; }
+
+/* Security log: work done on the database outside the app */
+.log-row.is-outside td:first-child { box-shadow: inset 3px 0 0 var(--bad, #e5484d); }
+.outside-who { color: var(--text-bad); }
+.outside-watch-note { margin-top: 12px; }

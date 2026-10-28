@@ -2,9 +2,11 @@ import AuditLog from '../models/AuditLog.js';
 import DeletedRecord from '../models/DeletedRecord.js';
 import { currentAudit, newAuditContext, runWithAudit } from './auditContext.js';
 
-// The security log (Admin → Security). Every request that reads or changes
-// the team's data is written down when its response has gone out: who, when,
-// from which IP and browser, what was asked and how it ended. The data layer
+// The security log (Admin → Security). Every request that changes the team's
+// data, every login and every refused request is written down when its
+// response has gone out: who, when, from which IP and browser, what was asked
+// and how it ended. Plain reads are not (they drowned out what matters);
+// reads of the database from outside the app are (utils/outsideWatch.js). The data layer
 // (utils/auditPlugin.js) adds every record the request created, changed
 // (field by field, old and new value) or removed. Routes can say more with
 // `req.audit = { action, target, details, flags }`; a delete also keeps the
@@ -50,19 +52,6 @@ const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
 const VERBS = { GET: 'view', HEAD: 'view', POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
 // Read receipts are sent every time a chat is opened: noise, not history.
 const SKIP = [/^\/api\/chat\/[^/]+\/read$/];
-// Reads the app makes on its own to draw the screen (the channel tree, the
-// session, badge counts, directory lists, files) are not someone looking
-// at data.
-const SKIP_READ = [
-  /^\/api\/health$/, /^\/api\/nav(\/|$)/, /^\/api\/auth\/me$/, /^\/api\/files\//, /^\/api\/chat\/(unread|dms)$/,
-  /^\/api\/users\/(directory|upcoming)$/, /^\/api\/incomes\/methods$/, /^\/api\/finance\/rates$/, /^\/api\/reports\/status$/,
-];
-// The same person looking at the same thing again within this long is one
-// visit, not many.
-const READ_WINDOW = 10 * 60 * 1000;
-const READ_KEYS_MAX = 5000;
-const recentReads = new Map();
-
 const pathOf = (req) => req.originalUrl.split('?')[0];
 const isId = (p) => /^[0-9a-f]{24}$/i.test(p);
 
@@ -83,30 +72,14 @@ export const viewOf = (req) => pathOf(req).split('/').filter(Boolean).slice(2).f
 
 const idIn = (req) => pathOf(req).split('/').find(isId) ?? null;
 
-// A read is logged once per person, address and URL per READ_WINDOW.
-function repeatedRead(req) {
-  const key = `${req.user?._id ?? '-'}|${clientIp(req)}|${req.originalUrl.slice(0, 300)}`;
-  const now = Date.now();
-  const last = recentReads.get(key);
-  if (last && now - last < READ_WINDOW) return true;
-  if (recentReads.size >= READ_KEYS_MAX) {
-    for (const [k, at] of recentReads) if (now - at >= READ_WINDOW) recentReads.delete(k);
-    if (recentReads.size >= READ_KEYS_MAX) recentReads.clear();
-  }
-  recentReads.set(key, now);
-  return false;
-}
-
 function shouldLog(req, res) {
   if (req.audit) return true;
   const path = pathOf(req);
   if (!path.startsWith('/api/')) return false;
   if (req.auditCtx?.changes.length) return true;
-  if (READ.has(req.method)) {
-    if (req.method === 'OPTIONS' || SKIP_READ.some((rx) => rx.test(path))) return false;
-    // Refused reads are always worth an entry; successful ones once per visit.
-    return res.statusCode >= 400 || !repeatedRead(req);
-  }
+  // A read that went through is not news; a refused one (not signed in,
+  // not allowed, rate-limited) is.
+  if (READ.has(req.method)) return req.method !== 'OPTIONS' && [401, 403, 429].includes(res.statusCode);
   if (path === '/api/health') return false;
   return !SKIP.some((rx) => rx.test(path));
 }

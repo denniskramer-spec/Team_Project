@@ -9,6 +9,7 @@
 // shares keep the old record's id as their split id, so each can be traced
 // back, and running the script again only finishes what an earlier run left.
 import mongoose from 'mongoose';
+import { SCRIPT_APP_NAME } from '../config/db.js';
 import { env } from '../config/env.js';
 import Outcome from '../models/Outcome.js';
 import User from '../models/User.js';
@@ -20,7 +21,7 @@ const money = (n) => n.toFixed(2);
 const day = (d) => d.toISOString().slice(0, 10);
 
 try {
-  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000 });
+  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000, appName: SCRIPT_APP_NAME });
 } catch (err) {
   console.error(`Could not connect to MongoDB: ${err.message}`);
   process.exit(1);

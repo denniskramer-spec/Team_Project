@@ -5,6 +5,7 @@
 // variable (never on the command line, where it would land in shell history
 // and the process list); add --no-must-change to let it be kept.
 import mongoose from 'mongoose';
+import { SCRIPT_APP_NAME } from '../config/db.js';
 import { env } from '../config/env.js';
 import User from '../models/User.js';
 import { checkPassword } from '../utils/validate.js';
@@ -34,7 +35,7 @@ try {
 
 // Fail fast instead of retrying forever like the API does.
 try {
-  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000 });
+  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000, appName: SCRIPT_APP_NAME });
 } catch (err) {
   console.error(`Could not connect to MongoDB: ${err.message}`);
   process.exit(1);

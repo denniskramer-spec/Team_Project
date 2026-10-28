@@ -7,6 +7,7 @@
 //
 // Safe to run again: a second run finds nothing to do.
 import mongoose from 'mongoose';
+import { SCRIPT_APP_NAME } from '../config/db.js';
 import { env } from '../config/env.js';
 import Report from '../models/Report.js';
 import Plan from '../models/Plan.js';
@@ -16,7 +17,7 @@ import User from '../models/User.js';
 const apply = process.argv.includes('--apply');
 
 try {
-  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000, autoIndex: false });
+  await mongoose.connect(env.mongoUri, { serverSelectionTimeoutMS: 5000, appName: SCRIPT_APP_NAME, autoIndex: false });
 } catch (err) {
   console.error(`Could not connect to MongoDB: ${err.message}`);
   process.exit(1);

@@ -37,7 +37,7 @@ function RecordRow({ record, open, snapshot, onToggle, onRestore }) {
     <>
       <tr className={`log-row ${open ? 'is-open' : ''}`} onClick={onToggle}>
         <td data-label="When"><span className="log-when">{when(record.deletedAt)}</span><span className="muted small"> · {timeAgo(record.deletedAt)}</span></td>
-        <td data-label="Deleted by"><Who user={record.deletedBy} /></td>
+        <td data-label="Deleted by"><Who user={record.deletedBy} outside={!record.deletedBy && /^Deleted outside the app/.test(record.reason ?? '')} /></td>
         <td data-label="Type"><span className="status-pill pending">{record.model}</span></td>
         <td data-label="Record">
           <div className="strong">{record.label || String(record.recordId)}</div>
