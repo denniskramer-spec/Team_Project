@@ -7,8 +7,9 @@ import { KIND_LABELS, OPS, actionLabel, device, when, show, whoOf } from './labe
 import Who from './Who.jsx';
 import { usePagedList } from './usePagedList.js';
 
-// The security log: every login, every look at the data and every change,
-// newest first, 100 at a time, filterable by kind and text, exportable.
+// The security log: everything is recorded, only the dangerous entries are
+// listed (the server decides which), newest first, 100 at a time,
+// filterable by kind and text, exportable.
 
 const LOG_COLUMNS = {
   when: { by: (e) => e.at, desc: true },
@@ -123,7 +124,7 @@ export default function ActivityLog() {
       <div className="toolbar">
         <div className="page-title">
           <h3>Security log</h3>
-          <span className="muted small">Every login, every change and deletion, every refused request, and anything done on the database directly, outside the app (a tool such as MongoChef, a shell): who, when, from which address and program, what it touched and which fields went from what to what. Nothing here can be edited or removed.</span>
+          <span className="muted small">Only what is dangerous: anything done on the database directly, outside the app (a tool such as MongoChef, a shell), deletions and restores, failed logins and refused requests, and changes to accounts and access (roles, disabling, passwords, ended sessions, exports). Who, when, from which address and program, what it touched and which fields went from what to what. Everything else is still recorded, just not shown. Nothing here can be edited or removed.</span>
         </div>
       </div>
       <div className="toolbar security-filters">
@@ -140,7 +141,7 @@ export default function ActivityLog() {
         </span>
       </div>
       {error && <div className="alert error">{error}</div>}
-      {!entries.length && !loading && !error && <div className="empty-inline muted"><Icon name="shield" size={20} /> Nothing in the log for this filter yet.</div>}
+      {!entries.length && !loading && !error && <div className="empty-inline muted"><Icon name="shield" size={20} /> Nothing dangerous for this filter.</div>}
       {entries.length > 0 && (
         <table className="table log-table">
           <thead>

@@ -6,9 +6,9 @@ import DeletedRecords from './security/DeletedRecords.jsx';
 import Sessions from './security/Sessions.jsx';
 
 // Admin → Security: who did what, when and from where. Three parts: the
-// numbers for the last day and week, the security log itself (every login,
-// every look at the data and every change with the fields that changed,
-// filterable and exportable), and the records people deleted, kept whole
+// numbers for the last day and week, the security log itself (everything is
+// recorded, only the dangerous entries are shown, with the fields that
+// changed, filterable and exportable), and the records people deleted, kept whole
 // and restorable. Plus the means to end an account's sessions.
 
 const TABS = [['log', 'Security log'], ['deleted', 'Deleted records'], ['sessions', 'Sessions']];
@@ -32,7 +32,7 @@ export default function Security() {
       <div className="note">
         <Icon name="shield" size={16} />
         <span>
-          The log and the deleted records are <strong>append-only</strong>: nothing in the app can change or remove an entry, and the data layer refuses any attempt. Every record that is deleted is copied here first, whichever screen did it, and can be <strong>restored</strong>. Anyone working on the database directly, outside the app (MongoChef, a shell...), is recorded with their address and program and marked <strong>outside app</strong>; records they delete are kept too. Edits are kept field by field, old value and new. Passwords are never written down. Logins from an address an account has never used are marked <strong>new address</strong>.
+          The log and the deleted records are <strong>append-only</strong>: nothing in the app can change or remove an entry, and the data layer refuses any attempt. Every record that is deleted is copied here first, whichever screen did it, and can be <strong>restored</strong>. Anyone working on the database directly, outside the app (MongoChef, a shell...), is recorded with their address and program and marked <strong>outside app</strong>; records they delete are kept too. Edits are kept field by field, old value and new. Passwords are never written down. Everything is recorded; the log shows only the dangerous entries.
         </span>
       </div>
       {/* All three stay mounted: switching tabs keeps filters, search and loaded pages. */}

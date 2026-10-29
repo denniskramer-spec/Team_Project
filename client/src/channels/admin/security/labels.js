@@ -1,7 +1,7 @@
 // Words for the security pages: what each log entry means, in plain English.
 
 export const KIND_LABELS = {
-  all: 'Everything', outside: 'Outside the app', change: 'Changes', delete: 'Deletions', restore: 'Restores', login: 'Logins', failed: 'Failed & refused', admin: 'Admin actions', flagged: 'Flagged',
+  all: 'All dangerous', outside: 'Outside the app', delete: 'Deletions', restore: 'Restores', failed: 'Failed logins & refused', account: 'Accounts & access',
 };
 const VERBS = {
   create: 'Added', update: 'Edited', delete: 'Deleted', approve: 'Approved', reject: 'Rejected', upload: 'Uploaded to',
