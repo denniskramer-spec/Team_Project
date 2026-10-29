@@ -478,6 +478,8 @@ code {
 .msg-head { display: flex; align-items: baseline; gap: 8px; }
 .msg-text { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .edited-tag { margin-left: 6px; }
+.msg-deleted .msg-body { opacity: 0.6; }
+.deleted-tag { color: var(--text-bad); }
 .msg-actions { opacity: 0; align-self: start; }
 .msg:hover .msg-actions, .msg:focus-within .msg-actions { opacity: 1; }
 .msg-edit { display: grid; gap: 4px; margin-top: 4px; }

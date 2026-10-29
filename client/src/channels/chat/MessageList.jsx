@@ -5,7 +5,7 @@ import { dayLabel } from './buildRows.js';
 // sticky scroll keeps in view. `empty` is what to show for a chat with no
 // messages yet.
 export default function MessageList({ rows, user, loading, error, empty, hasMore, loadingOlder, onLoadOlder, scroll, onChanged, onDeleted }) {
-  const canDeleteOthers = ['leader', 'admin'].includes(user.role);
+  const canDeleteAny = ['leader', 'admin'].includes(user.role);
   return (
     <div className="chat-scroll" ref={scroll.listRef} onScroll={scroll.onScroll}>
       {hasMore && (
@@ -29,8 +29,10 @@ export default function MessageList({ rows, user, loading, error, empty, hasMore
               key={row.key}
               message={m}
               grouped={row.grouped}
-              canEdit={mine}
-              canDelete={mine || canDeleteOthers}
+              canEdit={mine && !m.deletedAt}
+              // Members delete (hide) their own; bosses delete nothing.
+              canDelete={canDeleteAny || (mine && user.role === 'member' && !m.deletedAt)}
+              deleteHides={!canDeleteAny}
               onChanged={onChanged}
               onDeleted={onDeleted}
             />
