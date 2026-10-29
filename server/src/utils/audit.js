@@ -51,7 +51,9 @@ export function sanitize(value, depth = 0) {
 const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
 const VERBS = { GET: 'view', HEAD: 'view', POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
 // Read receipts are sent every time a chat is opened: noise, not history.
-const SKIP = [/^\/api\/chat\/[^/]+\/read$/];
+// A copy is written only when it held bank details (routes/copies.js sets
+// req.audit then).
+const SKIP = [/^\/api\/chat\/[^/]+\/read$/, /^\/api\/copies$/];
 const pathOf = (req) => req.originalUrl.split('?')[0];
 const isId = (p) => /^[0-9a-f]{24}$/i.test(p);
 

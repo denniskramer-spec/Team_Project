@@ -10,6 +10,7 @@ export default function Overview() {
     { value: data.last7d.outside, label: `outside the app · 7d${data.last7d.outsideWrites ? ` · ${data.last7d.outsideWrites} changes` : ''}`, cls: data.last7d.outsideWrites ? 'stat-bad' : data.last7d.outside ? 'role-border-boss' : '' },
     { value: data.last24h.failedLogins, label: 'failed logins · 24h', cls: data.last24h.failedLogins ? 'stat-bad' : '' },
     { value: data.last7d.flagged, label: 'refused or rate-limited · 7d', cls: data.last7d.flagged ? 'stat-bad' : '' },
+    { value: data.last7d.copies, label: 'bank details copied · 7d', cls: data.last7d.copies ? 'stat-bad' : '' },
     { value: data.last24h.dangerous, label: 'dangerous events · 24h', cls: data.last24h.dangerous ? 'role-border-boss' : '' },
     { value: data.deletedRecords, label: 'deleted records kept' },
   ];

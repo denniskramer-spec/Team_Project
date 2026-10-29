@@ -7,6 +7,7 @@ import { DM_PLACEHOLDER_NAME, EVENTS, dmPeerId, isDmTitleKey } from '../constant
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import { useLatestRequest } from '../useLiveData.js';
+import { useCopyWatch } from '../security/useCopyWatch.js';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
@@ -35,6 +36,7 @@ export default function Workspace() {
   const [panelTab, setPanelTab] = useState('members');
   const { user } = useAuth();
   const { setCounts, isViewing } = useChatAlerts() ?? {};
+  useCopyWatch();
 
   const track = useLatestRequest();
   const loadNav = useCallback(() => {

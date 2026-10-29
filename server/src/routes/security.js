@@ -38,14 +38,15 @@ function olderOn(query, field) {
 
 // Everything is recorded, but the page lists only what is dangerous: work on
 // the database outside the app, tampering, deletions and restores, refused
-// or rate-limited requests and failed logins, and changes to accounts and
-// access (roles, disabling, passwords, ended sessions, exports of the log).
+// or rate-limited requests and failed logins, changes to accounts and
+// access (roles, disabling, passwords, ended sessions, exports of the log),
+// and bank or card details copied out of the app.
 // Ordinary logins, plain edits and reads stay in the log (it is append-only)
 // but are not shown.
 const ACCOUNT = /^(members\.(role|status|reset-password)|auth\.password|security\.(sign-out|export|restore))$/;
 const DANGEROUS = {
   $or: [
-    { flags: { $in: ['outside-app', 'tamper', 'denied', 'rate-limited'] } },
+    { flags: { $in: ['outside-app', 'tamper', 'denied', 'rate-limited', 'sensitive-copy'] } },
     { action: /\.delete$/ },
     { action: 'auth.login.failed' },
     { action: /^database\./ },
@@ -60,6 +61,7 @@ const KINDS = {
   restore: { action: 'security.restore' },
   failed: { $or: [{ action: 'auth.login.failed' }, { flags: 'rate-limited' }, { flags: 'denied' }] },
   account: { action: ACCOUNT },
+  copy: { flags: 'sensitive-copy' },
 };
 
 function logFilter(query) {
@@ -102,7 +104,7 @@ const serializeEntry = (e) => ({
 router.get('/overview', async (req, res) => {
   const now = Date.now();
   const since = (ms) => ({ at: { $gte: new Date(now - ms) } });
-  const [today, failed, flagged, deleted, lastFailed, outside, outsideWrites] = await Promise.all([
+  const [today, failed, flagged, deleted, lastFailed, outside, outsideWrites, copies] = await Promise.all([
     AuditLog.countDocuments({ ...since(DAY), ...DANGEROUS }),
     AuditLog.countDocuments({ ...since(DAY), action: 'auth.login.failed' }),
     AuditLog.countDocuments({ ...since(7 * DAY), flags: { $in: ['rate-limited', 'denied'] } }),
@@ -110,10 +112,11 @@ router.get('/overview', async (req, res) => {
     AuditLog.find({ action: 'auth.login.failed' }).sort(NEWEST_FIRST).limit(5).lean(),
     AuditLog.countDocuments({ ...since(7 * DAY), flags: 'outside-app' }),
     AuditLog.countDocuments({ ...since(7 * DAY), flags: 'outside-write' }),
+    AuditLog.countDocuments({ ...since(7 * DAY), flags: 'sensitive-copy' }),
   ]);
   res.json({
     last24h: { dangerous: today, failedLogins: failed },
-    last7d: { flagged, outside, outsideWrites },
+    last7d: { flagged, outside, outsideWrites, copies },
     // Whether work done on the database outside the app is being recorded.
     outsideWatch: outsideWatchStatus(),
     deletedRecords: deleted,
