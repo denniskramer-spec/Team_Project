@@ -19,6 +19,7 @@ export const EVENTS = {
   DIRECTORY_CHANGED: 'directory:changed',
   PRESENCE_OFFLINE: 'presence:offline',
   SETTINGS_CHANGED: 'settings:changed',
+  SECURITY_ALERT: 'security:alert',
 };
 
 // Text lengths (routes/chat.js checkContent, routes/instructions.js checkBody).

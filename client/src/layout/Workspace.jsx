@@ -7,6 +7,10 @@ import { DM_PLACEHOLDER_NAME, EVENTS, dmPeerId, isDmTitleKey } from '../constant
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import { useLatestRequest } from '../useLiveData.js';
+import { useCopyWatch } from '../security/useCopyWatch.js';
+import IdleLogout from '../security/IdleLogout.jsx';
+import CopyNotice from '../security/CopyNotice.jsx';
+import SecurityAlerts from '../alerts/SecurityAlerts.jsx';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
@@ -35,6 +39,7 @@ export default function Workspace() {
   const [panelTab, setPanelTab] = useState('members');
   const { user } = useAuth();
   const { setCounts, isViewing } = useChatAlerts() ?? {};
+  useCopyWatch();
 
   const track = useLatestRequest();
   const loadNav = useCallback(() => {
@@ -140,6 +145,9 @@ export default function Workspace() {
     <ReportStatusProvider>
     <div className="app">
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
+      <SecurityAlerts />
+      <IdleLogout />
+      <CopyNotice />
       <div className="workspace">
         <nav className={`nav-drawer ${navOpen ? 'open' : ''}`} aria-label="Channels">
           <ChannelRail channels={channels} current={channel.key} />

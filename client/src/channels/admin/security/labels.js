@@ -1,7 +1,7 @@
 // Words for the security pages: what each log entry means, in plain English.
 
 export const KIND_LABELS = {
-  all: 'Everything', outside: 'Outside the app', change: 'Changes', delete: 'Deletions', restore: 'Restores', login: 'Logins', failed: 'Failed & refused', admin: 'Admin actions', flagged: 'Flagged',
+  all: 'All dangerous', outside: 'Outside the app', delete: 'Deletions', restore: 'Restores', failed: 'Failed logins & refused', account: 'Accounts & access', copy: 'Copied bank details',
 };
 const VERBS = {
   create: 'Added', update: 'Edited', delete: 'Deleted', approve: 'Approved', reject: 'Rejected', upload: 'Uploaded to',
@@ -14,6 +14,8 @@ const FIXED = {
   'auth.signup': 'Signed up', 'auth.profile': 'Edited profile', 'security.export': 'Exported the security log',
   'security.deleted.view': 'Opened a deleted record', 'security.sign-out': 'Ended sessions of', 'finance.rates.refresh': 'Refreshed exchange rates',
   'security.restore': 'Restored a deleted record',
+  'copy.sensitive': 'Copied bank or card details',
+  'auth.copy-notice': 'Confirmed the copy recording notice',
   // Work on the database from outside the app (a GUI tool, a shell).
   'database.read': 'Read the database directly', 'database.browse': 'Browsed the database directly',
   'database.insert': 'Added records directly in the database', 'database.update': 'Edited records directly in the database',

@@ -403,6 +403,18 @@ code {
 .chat-popup-timer { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--series-3); transform-origin: left; animation: shrink linear forwards; }
 .chat-popup:hover .chat-popup-timer { animation-play-state: paused; }
 
+.security-alerts {
+  position: fixed;
+  top: calc(var(--header-h) + 12px);
+  right: 16px;
+  z-index: 191;
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 32px));
+}
+.security-alert { border-color: var(--bad); border-left: 4px solid var(--bad); }
+.security-alert-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--bad); color: #fff; }
+
 .urgent-backdrop { background: color-mix(in srgb, var(--bad) 20%, var(--backdrop)); }
 .urgent-alarm { max-width: 520px; border-color: var(--bad); animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: var(--shadow-lg), 0 0 0 6px var(--bad-soft); } }

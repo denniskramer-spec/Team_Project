@@ -12,6 +12,8 @@ export default function PasswordRules({ password }) {
       {passwordChecks(password).map((c) => (
         <li key={c.label} className={c.ok ? 'ok' : ''}>{c.ok ? '✓' : '•'} {c.label}</li>
       ))}
+      {/* Checked by the server only: the list of leaked passwords is too big to send. */}
+      <li className="muted">Not a common password, and not your username</li>
     </ul>
   );
 }

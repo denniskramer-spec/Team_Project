@@ -1,9 +1,8 @@
 import mongoose from 'mongoose';
-import AuditLog from '../models/AuditLog.js';
 import DeletedRecord from '../models/DeletedRecord.js';
 import Setting from '../models/Setting.js';
 import { APP_NAMES } from '../config/db.js';
-import { filesOf } from './audit.js';
+import { filesOf, writeAudit } from './audit.js';
 import { labelOf } from './auditPlugin.js';
 import { accessKind, collectionOf, entryFromProfile, isWrite, readGate } from './outsideAccess.js';
 
@@ -39,7 +38,7 @@ export const outsideWatchStatus = () => ({ ...status });
 
 let stopped = false;
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms).unref?.(); });
-const log = (entry) => AuditLog.create(entry).catch((err) => console.error('Security log write failed:', err.message));
+const log = (entry) => writeAudit(entry);
 
 // collection name -> model name, for the app's own collections.
 function modelFor(collection) {

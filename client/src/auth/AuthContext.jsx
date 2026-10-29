@@ -6,11 +6,14 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // { idleMinutes }: how long the server keeps an unused session.
+  const [session, setSession] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
-      const { user } = await api('/auth/me');
+      const { user, session } = await api('/auth/me');
       setUser(user);
+      if (session) setSession(session);
       return user;
     } catch (err) {
       // Only a rejected session logs the user out; a network blip keeps them in.
@@ -40,10 +43,12 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => ({
     user,
     loading,
+    session,
     refresh,
     async login(username, password) {
-      const { user } = await api('/auth/login', { method: 'POST', body: { username, password } });
+      const { user, session } = await api('/auth/login', { method: 'POST', body: { username, password } });
       setUser(user);
+      if (session) setSession(session);
       return user;
     },
     async logout() {
@@ -64,7 +69,7 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       return data;
     },
-  }), [user, loading, refresh]);
+  }), [user, loading, session, refresh]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

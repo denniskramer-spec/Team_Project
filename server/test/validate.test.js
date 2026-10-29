@@ -64,10 +64,23 @@ test('control characters are dropped, line breaks kept', async () => {
 
 test('a password has to be text of the right length with a digit', async () => {
   const { checkPassword } = await import('../src/utils/validate.js');
-  assert.equal(checkPassword('demo1234'), 'demo1234');
+  assert.equal(checkPassword('lantern-Fjord42'), 'lantern-Fjord42');
   for (const bad of [12345678, null, undefined, { length: 10 }, 'short1', 'noDigitsHere', 'a1'.repeat(70)]) {
     assert.throws(() => checkPassword(bad), { status: 400 }, String(bad));
   }
+});
+
+test('a common or leaked password is refused, whatever its case', async () => {
+  const { checkPassword } = await import('../src/utils/validate.js');
+  for (const bad of ['password1', 'Password1', 'qwerty123', 'demo1234', 'ADMIN1234']) {
+    assert.throws(() => checkPassword(bad), /most common/, bad);
+  }
+});
+
+test('a password may not contain the username', async () => {
+  const { checkPassword } = await import('../src/utils/validate.js');
+  assert.throws(() => checkPassword('xBrunoTheBest77', 'bruno'), /username/);
+  assert.equal(checkPassword('lantern-Fjord42', 'bruno'), 'lantern-Fjord42');
 });
 
 test('counts are whole numbers and lists have a size limit', async () => {

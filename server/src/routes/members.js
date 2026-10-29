@@ -143,7 +143,7 @@ router.post('/', requireCapability('addMembers'), async (req, res) => {
   if (await User.exists({ username })) throw conflict('That username is already taken');
 
   const generated = !req.body.password;
-  const password = generated ? tempPassword() : checkPassword(req.body.password);
+  const password = generated ? tempPassword() : checkPassword(req.body.password, username);
 
   const user = new User({
     username, name, birthday, role, group: group?._id ?? null, status: 'active', mustChangePassword: true,

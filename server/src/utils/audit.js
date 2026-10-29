@@ -1,6 +1,7 @@
 import AuditLog from '../models/AuditLog.js';
 import DeletedRecord from '../models/DeletedRecord.js';
 import { currentAudit, newAuditContext, runWithAudit } from './auditContext.js';
+import { raiseSecurityAlert } from './securityAlerts.js';
 
 // The security log (Admin → Security). Every request that changes the team's
 // data, every login and every refused request is written down when its
@@ -11,6 +12,12 @@ import { currentAudit, newAuditContext, runWithAudit } from './auditContext.js';
 // (field by field, old and new value) or removed. Routes can say more with
 // `req.audit = { action, target, details, flags }`; a delete also keeps the
 // whole record (archiveDeleted) so nothing is ever lost.
+
+// Every entry goes through here: written, and if it is one admins must hear
+// about at once, announced (utils/securityAlerts.js).
+export const writeAudit = (entry) => AuditLog.create(entry)
+  .then((saved) => { raiseSecurityAlert(saved); return saved; })
+  .catch((err) => console.error('Security log write failed:', err.message));
 
 export const clientIp = (req) => req.ip || req.socket?.remoteAddress || '';
 
@@ -51,7 +58,9 @@ export function sanitize(value, depth = 0) {
 const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
 const VERBS = { GET: 'view', HEAD: 'view', POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
 // Read receipts are sent every time a chat is opened: noise, not history.
-const SKIP = [/^\/api\/chat\/[^/]+\/read$/];
+// A copy is written only when it held bank details (routes/copies.js sets
+// req.audit then).
+const SKIP = [/^\/api\/chat\/[^/]+\/read$/, /^\/api\/copies$/];
 const pathOf = (req) => req.originalUrl.split('?')[0];
 const isId = (p) => /^[0-9a-f]{24}$/i.test(p);
 
@@ -134,14 +143,13 @@ export function auditRequests(req, res, next) {
       details: detailsOf(req, res, extra),
       flags,
     };
-    AuditLog.create(entry).catch((err) => console.error('Security log write failed:', err.message));
+    writeAudit(entry);
   });
   runWithAudit(ctx, next);
 }
 
 // Writes an entry outside a request (a scheduled job, a socket event).
-export const recordAudit = (entry) => AuditLog.create({ at: new Date(), ...entry })
-  .catch((err) => console.error('Security log write failed:', err.message));
+export const recordAudit = (entry) => writeAudit({ at: new Date(), ...entry });
 
 // Every uploaded file a record points to, wherever the model keeps them.
 export function filesOf(snapshot) {
