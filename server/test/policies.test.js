@@ -5,6 +5,7 @@ import {
   scopeFilter, canManageFor, canSeeMember, canRecordOutcome, canManageOutcome,
 } from '../src/utils/visibility.js';
 import { canSendTo, canModify, canView, isRecipient } from '../src/utils/instructionPolicy.js';
+import { deleteModeFor, deletedFilter, canEditMessage } from '../src/utils/chatPolicy.js';
 
 const A = 'a'.repeat(24);
 const B = 'b'.repeat(24);
@@ -91,4 +92,24 @@ test('finance chat is for bosses and the leader only', async () => {
   assert.equal(canUseFinanceChat(leader), true);
   assert.equal(canUseFinanceChat(memberA), false);
   assert.equal(canUseFinanceChat(admin), false);
+});
+
+test('who deletes chat messages, and how', () => {
+  const byMember = { author: 'memA', deletedAt: null };
+  const byBoss = { author: 'bossA', deletedAt: null };
+  assert.equal(deleteModeFor(memberA, byMember), 'hide'); // own: hidden from members only
+  assert.equal(deleteModeFor(memberA2, byMember), null);
+  assert.equal(deleteModeFor(bossA, byBoss), null); // bosses delete nothing
+  assert.equal(deleteModeFor(bossA, byMember), null);
+  assert.equal(deleteModeFor(leader, byMember), 'remove');
+  assert.equal(deleteModeFor(admin, byBoss), 'remove');
+
+  const hidden = { author: 'memA', deletedAt: new Date() };
+  assert.equal(deleteModeFor(memberA, hidden), null);
+  assert.ok(!canEditMessage(memberA, hidden));
+  assert.equal(deleteModeFor(leader, hidden), 'remove');
+
+  assert.deepEqual(deletedFilter(memberA), { deletedAt: null });
+  assert.deepEqual(deletedFilter(bossA), {});
+  assert.deepEqual(deletedFilter(leader), {});
 });

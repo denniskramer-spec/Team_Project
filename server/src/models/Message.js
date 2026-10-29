@@ -13,6 +13,9 @@ const messageSchema = new mongoose.Schema(
     content: { type: String, default: '', trim: true, maxlength: 2000 },
     images: { type: [imageSchema], default: [] },
     editedAt: { type: Date, default: null },
+    // Set when a member deletes their own message: members no longer see it,
+    // bosses, the leader and admins still do, marked deleted.
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

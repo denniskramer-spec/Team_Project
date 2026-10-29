@@ -3,12 +3,15 @@ import { api } from '../../api.js';
 import { useToast } from '../../components/Toast.jsx';
 import { useReconnect, useSocketEvent } from '../../socket/SocketContext.jsx';
 import { EVENTS } from '../../constants.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
+import { seesDeletedMessages } from '../../roles.js';
 
 // The messages of one chat: the newest page, older pages on demand, and the
 // changes the socket brings. `onIncoming(message)` runs for a message that
 // just arrived from anyone; `onLoaded(newestAt)` after each load of the newest page.
 export function useChatMessages(titleKey, { onIncoming, onLoaded } = {}) {
   const toast = useToast();
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -29,9 +32,14 @@ export function useChatMessages(titleKey, { onIncoming, onLoaded } = {}) {
   const applyChange = useCallback((message) => {
     setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
   }, []);
-  const applyDelete = useCallback((id) => {
-    setMessages((prev) => prev.filter((m) => String(m.id) !== String(id)));
-  }, []);
+  // `deletedAt` set: a member hid their own message, which bosses, the
+  // leader and admins keep seeing, marked deleted. Otherwise it is gone.
+  const keepsDeleted = seesDeletedMessages(user);
+  const applyDelete = useCallback((id, deletedAt = null) => {
+    setMessages((prev) => (deletedAt && keepsDeleted
+      ? prev.map((m) => (String(m.id) === String(id) ? { ...m, deletedAt } : m))
+      : prev.filter((m) => String(m.id) !== String(id))));
+  }, [keepsDeleted]);
 
   // The newest page (also after a reconnect). Older pages the reader already
   // loaded stay, unless so much arrived meanwhile that they no longer join up
@@ -94,8 +102,8 @@ export function useChatMessages(titleKey, { onIncoming, onLoaded } = {}) {
   useSocketEvent(EVENTS.CHAT_CHANGED, ({ titleKey: key, message }) => {
     if (key === titleKey) applyChange(message);
   });
-  useSocketEvent(EVENTS.CHAT_DELETED, ({ titleKey: key, id }) => {
-    if (key === titleKey) applyDelete(id);
+  useSocketEvent(EVENTS.CHAT_DELETED, ({ titleKey: key, id, deletedAt }) => {
+    if (key === titleKey) applyDelete(id, deletedAt);
   });
 
   return { messages, hasMore, loading, loadingOlder, error, lastReadAt, peerName, load, loadOlder, append, applyChange, applyDelete };

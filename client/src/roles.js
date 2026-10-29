@@ -12,4 +12,7 @@ export const isManager = (user) => ['admin', 'leader'].includes(user?.role);
 
 // Members and bosses own records (residents, chat accounts, projects); the
 // leader and admins record them for others.
+// Bosses, the leader and admins still see chat messages a member deleted.
+export const seesDeletedMessages = (user) => ['boss', 'leader', 'admin'].includes(user?.role);
+
 export const ownsRecords = (user) => ['member', 'boss'].includes(user?.role);

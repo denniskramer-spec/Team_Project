@@ -10,9 +10,10 @@ import { MESSAGE_MAX_CHARS } from '../../constants.js';
 
 // One message. `grouped` hides the avatar and name for consecutive messages
 // from the same person, like Discord. The list is updated from the server's
-// reply (`onChanged(message)`, `onDeleted(id)`), not only via the socket.
+// reply (`onChanged(message)`, `onDeleted(id, deletedAt)`), not only via the socket.
+// `deleteHides`: deleting only hides it from members (a member's own message).
 // Memoised: typing in the composer re-renders the chat, not every message.
-export default memo(function Message({ message: m, grouped, canDelete, canEdit, onChanged, onDeleted }) {
+export default memo(function Message({ message: m, grouped, canDelete, deleteHides, canEdit, onChanged, onDeleted }) {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
@@ -39,9 +40,9 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
   const remove = async () => {
     setBusy(true);
     try {
-      await api(`/chat/messages/${m.id}`, { method: 'DELETE' });
+      const { deletedAt } = await api(`/chat/messages/${m.id}`, { method: 'DELETE' });
       setConfirm(false);
-      onDeleted(m.id);
+      onDeleted(m.id, deletedAt);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -50,7 +51,7 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
   };
 
   return (
-    <li className={`msg ${grouped ? 'grouped' : ''}`}>
+    <li className={`msg ${grouped ? 'grouped' : ''} ${m.deletedAt ? 'msg-deleted' : ''}`}>
       {grouped
         ? <span className="msg-gutter-time">{formatClock(m.createdAt)}</span>
         : <Avatar name={m.author?.name ?? '?'} role={m.author?.role ?? 'member'} size={38} />}
@@ -91,6 +92,9 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
               </ul>
             )}
             {m.editedAt && <span className="muted small edited-tag">(edited)</span>}
+            {m.deletedAt && (
+              <span className="muted small edited-tag deleted-tag" title={`Deleted ${new Date(m.deletedAt).toLocaleString()}`}>(deleted)</span>
+            )}
           </>
         )}
       </div>
@@ -124,7 +128,9 @@ export default memo(function Message({ message: m, grouped, canDelete, canEdit, 
       {confirm && (
         <ConfirmDialog
           title="Delete message?"
-          message="It will disappear for everyone in this chat."
+          message={deleteHides
+            ? 'It will disappear from the chat. Bosses and the team leader can still see it, marked deleted.'
+            : 'It will disappear for everyone in this chat.'}
           confirmLabel="Delete"
           danger
           busy={busy}

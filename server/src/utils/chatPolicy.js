@@ -61,7 +61,17 @@ export const roomsFor = (channel) => {
   return ['all'];
 };
 
-// Message authors can edit their own; the leader and admins can delete any.
-export const canEditMessage = (user, message) => String(message.author._id ?? message.author) === String(user._id);
-export const canDeleteMessage = (user, message) =>
-  canEditMessage(user, message) || ['leader', 'admin'].includes(user.role);
+// Message authors can edit their own until they delete it. The leader and
+// admins delete any message outright. A member may delete their own, which
+// only hides it: other members no longer see it, but bosses, the leader and
+// admins still do, marked deleted. Bosses cannot delete.
+export const seesDeletedMessages = (user) => ['boss', 'leader', 'admin'].includes(user.role);
+export const deletedFilter = (user) => (seesDeletedMessages(user) ? {} : { deletedAt: null });
+const isAuthor = (user, message) => String(message.author._id ?? message.author) === String(user._id);
+export const canEditMessage = (user, message) => isAuthor(user, message) && !message.deletedAt;
+// 'remove', 'hide' or null (may not delete).
+export function deleteModeFor(user, message) {
+  if (['leader', 'admin'].includes(user.role)) return 'remove';
+  if (user.role === 'member' && canEditMessage(user, message)) return 'hide';
+  return null;
+}
