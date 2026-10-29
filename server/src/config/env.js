@@ -29,7 +29,11 @@ export const env = {
   // needs its own folder: files no record points to are cleaned up.
   uploadsDir: process.env.UPLOADS_DIR || null,
   jwtSecret: process.env.JWT_SECRET,
+  // The longest a login lasts, however busy (admins and the team leader:
+  // ADMIN_SESSION_HOURS), and how long it survives without use.
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS) || 12,
+  sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 30,
   seedAdmin: {
     username: process.env.SEED_ADMIN_USERNAME,
     password: process.env.SEED_ADMIN_PASSWORD,

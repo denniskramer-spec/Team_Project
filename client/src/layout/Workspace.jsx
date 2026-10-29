@@ -8,6 +8,8 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import { useLatestRequest } from '../useLiveData.js';
 import { useCopyWatch } from '../security/useCopyWatch.js';
+import IdleLogout from '../security/IdleLogout.jsx';
+import SecurityAlerts from '../alerts/SecurityAlerts.jsx';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
@@ -142,6 +144,8 @@ export default function Workspace() {
     <ReportStatusProvider>
     <div className="app">
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
+      <SecurityAlerts />
+      <IdleLogout />
       <div className="workspace">
         <nav className={`nav-drawer ${navOpen ? 'open' : ''}`} aria-label="Channels">
           <ChannelRail channels={channels} current={channel.key} />

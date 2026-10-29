@@ -58,7 +58,9 @@ Then fill in:
 | `MONGODB_URI` | `mongodb://localhost:27017/business_manager` locally |
 | `CLIENT_ORIGIN` | `http://localhost:3000` locally; the public address in production |
 | `JWT_SECRET` | a long random string, e.g. `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `JWT_EXPIRES_IN` | how long a login lasts, e.g. `7d` |
+| `JWT_EXPIRES_IN` | the longest a member's login lasts, e.g. `7d` |
+| `ADMIN_SESSION_HOURS` | optional; the longest an admin's or team leader's login lasts (default `12`) |
+| `SESSION_IDLE_MINUTES` | optional; logged out after this long without use (default `30`) |
 | `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD` | the first admin account (the password must be changed at first login) |
 | `TRUST_PROXY` | `0` locally; `1` behind a reverse proxy |
 | `UPLOADS_DIR` | optional; where uploaded images go (default `server/uploads`) |

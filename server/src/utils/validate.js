@@ -1,4 +1,5 @@
 import { badRequest } from './httpError.js';
+import { isCommonPassword } from './commonPasswords.js';
 
 export const USERNAME_RULE = /^[a-z0-9_.]{3,30}$/;
 
@@ -19,13 +20,20 @@ export function checkUsername(username) {
   return value;
 }
 
-export function checkPassword(password) {
+// `username` is the account's own, which the password may not contain.
+export function checkPassword(password, username = '') {
   if (typeof password !== 'string') throw badRequest('Password must be text');
   if (password.length < 8 || password.length > 128) {
     throw badRequest('Password must be 8-128 characters');
   }
   if (!/\d/.test(password)) {
     throw badRequest('Password must contain at least one number');
+  }
+  if (isCommonPassword(password)) {
+    throw badRequest('That password is one of the most common ones and easy to guess, please choose another');
+  }
+  if (username && username.length >= 3 && password.toLowerCase().includes(username.toLowerCase())) {
+    throw badRequest('Password must not contain your username');
   }
   return password;
 }

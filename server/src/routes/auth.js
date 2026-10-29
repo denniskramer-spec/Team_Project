@@ -16,6 +16,8 @@ import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/ev
 import { disconnectSession } from '../socket/index.js';
 import AuditLog from '../models/AuditLog.js';
 import { clientIp } from '../utils/audit.js';
+import { env } from '../config/env.js';
+import { isCommonPassword } from '../utils/commonPasswords.js';
 
 const router = Router();
 
@@ -69,6 +71,9 @@ const ipLimiter = rateLimit({
 // Compared against when the username does not exist (hash of a random string).
 const DUMMY_HASH = bcrypt.hashSync(Math.random().toString(36), 12);
 
+// What the page needs to log an idle user out on time.
+const sessionInfo = { idleMinutes: env.sessionIdleMinutes };
+
 async function publicUser(user) {
   await user.populate('group', 'name slug');
   return user.toPublic();
@@ -90,7 +95,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   requireFields(req.body, ['username', 'name', 'password']);
   const username = checkUsername(req.body.username);
   const name = checkName(req.body.name);
-  const password = checkPassword(req.body.password);
+  const password = checkPassword(req.body.password, username);
   const birthday = parseBirthday(req.body.birthday);
 
   let group = null;
@@ -142,6 +147,12 @@ router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) =
   const flags = [];
   if (user.lastLoginAt && !(await AuditLog.exists({ 'user.id': user._id, action: 'auth.login', ip }))) flags.push('new-ip');
   req.audit = { action: 'auth.login', details: { username }, flags };
+  // A password from the leaked-password lists has to be changed now. Only in
+  // production: the demo accounts share one on purpose.
+  if (env.isProd && !user.mustChangePassword && isCommonPassword(req.body.password)) {
+    user.mustChangePassword = true;
+    req.audit.details.weakPassword = true;
+  }
 
   user.lastLoginAt = new Date();
   await user.save();
@@ -149,7 +160,7 @@ router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) =
   setSessionCookie(res, user);
   // The log entry names who logged in, even though the request started out anonymous.
   req.user = user;
-  res.json({ user: await publicUser(user) });
+  res.json({ user: await publicUser(user), session: sessionInfo });
 });
 
 router.post('/logout', async (req, res) => {
@@ -164,7 +175,7 @@ router.post('/logout', async (req, res) => {
 });
 
 router.get('/me', requireAuth, async (req, res) => {
-  res.json({ user: await publicUser(req.user) });
+  res.json({ user: await publicUser(req.user), session: sessionInfo });
 });
 
 // Users can edit their own name and birthday.
@@ -196,7 +207,7 @@ router.post('/change-password', requireAuth, passwordLimiter, async (req, res) =
   if (!(await user.checkPassword(req.body.currentPassword))) {
     throw badRequest('Current password is incorrect');
   }
-  const newPassword = checkPassword(req.body.newPassword);
+  const newPassword = checkPassword(req.body.newPassword, user.username);
   if (req.body.currentPassword === newPassword) {
     throw badRequest('New password must be different from the current one');
   }
