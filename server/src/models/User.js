@@ -29,6 +29,8 @@ const userSchema = new mongoose.Schema(
     // tokens issued before it are refused.
     sessionsEndedAt: { type: Date, default: null },
     lastLoginAt: { type: Date, default: null },
+    // When they confirmed the notice that copying bank details is recorded.
+    copyNoticeAt: { type: Date, default: null },
     // Last time a socket of theirs disconnected (or connected): "last seen".
     lastSeenAt: { type: Date, default: null },
   },
@@ -69,6 +71,7 @@ userSchema.methods.toPublic = function toPublic() {
     role: this.role,
     status: this.status,
     mustChangePassword: this.mustChangePassword,
+    copyNoticeSeen: Boolean(this.copyNoticeAt),
     createdAt: this.createdAt,
   };
 };

@@ -190,6 +190,18 @@ router.patch('/profile', requireAuth, async (req, res) => {
   res.json({ user: await publicUser(req.user) });
 });
 
+// The member confirms the notice that copying bank or card details in the
+// app is recorded (client/src/security/CopyNotice.jsx). The confirmation
+// itself goes in the security log, as proof they were told.
+router.post('/copy-notice', requireAuth, async (req, res) => {
+  if (!req.user.copyNoticeAt) {
+    req.user.copyNoticeAt = new Date();
+    await req.user.save();
+  }
+  req.audit = { action: 'auth.copy-notice', details: { seenAt: req.user.copyNoticeAt } };
+  res.json({ user: await publicUser(req.user) });
+});
+
 // Each check costs a bcrypt hash: a handful of tries a quarter of an hour
 // is plenty for a person and nothing for a script to lean on.
 const passwordLimiter = rateLimit({

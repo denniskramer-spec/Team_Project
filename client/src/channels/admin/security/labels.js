@@ -15,6 +15,7 @@ const FIXED = {
   'security.deleted.view': 'Opened a deleted record', 'security.sign-out': 'Ended sessions of', 'finance.rates.refresh': 'Refreshed exchange rates',
   'security.restore': 'Restored a deleted record',
   'copy.sensitive': 'Copied bank or card details',
+  'auth.copy-notice': 'Confirmed the copy recording notice',
   // Work on the database from outside the app (a GUI tool, a shell).
   'database.read': 'Read the database directly', 'database.browse': 'Browsed the database directly',
   'database.insert': 'Added records directly in the database', 'database.update': 'Edited records directly in the database',
