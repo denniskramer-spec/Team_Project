@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useSocket } from '../socket/SocketContext.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
@@ -11,6 +11,7 @@ import ThemeToggle from '../components/ThemeToggle.jsx';
 import DateTag from '../components/DateTag.jsx';
 
 function UserMenu() {
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -56,7 +57,7 @@ function UserMenu() {
           <button className="menu-item" role="menuitem" onClick={() => { setOpen(false); setEditing(true); }}>
             <Icon name="user" size={16} /> Edit profile
           </button>
-          <Link className="menu-item" to="/change-password" role="menuitem">
+          <Link className="menu-item" to="/change-password" state={{ back: location.pathname + location.search }} role="menuitem">
             <Icon name="key" size={16} /> Change password
           </Link>
           <button className="menu-item danger" onClick={logout} role="menuitem">

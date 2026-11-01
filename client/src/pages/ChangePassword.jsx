@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { AuthFooter } from '../layout/Footer.jsx';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
@@ -7,6 +7,9 @@ import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
 export default function ChangePassword() {
   const { user, changePassword, logout } = useAuth();
   const navigate = useNavigate();
+  // The page the user came from (footer, user menu, Account page): Cancel
+  // and a successful change both go back there.
+  const back = useLocation().state?.back || '/';
   const [form, setForm] = useState({ current: '', next: '', confirm: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,7 +25,7 @@ export default function ChangePassword() {
     setBusy(true);
     try {
       await changePassword(form.current, form.next);
-      navigate('/', { replace: true, state: { notice: 'Password changed' } });
+      navigate(back, { replace: true, state: { notice: 'Password changed' } });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -55,7 +58,7 @@ export default function ChangePassword() {
         <p className="muted small">
           {forced
             ? <button type="button" className="link" onClick={logout}>Log out</button>
-            : <Link to="/">Cancel</Link>}
+            : <Link to={back} replace>Cancel</Link>}
         </p>
         <p className="muted small">Other devices will be logged out.</p>
       </form>

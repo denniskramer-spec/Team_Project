@@ -62,7 +62,7 @@ export default function MemberActions({ member, onChanged }) {
       {dialog?.type === 'confirm-reset' && (
         <ConfirmDialog
           title="Reset password?"
-          message={`${member.name} will be logged out everywhere and get a temporary password they must change at next login.`}
+          message={`${member.name} will be logged out everywhere and have their password set to 123456, which they must change at next login.`}
           confirmLabel="Reset password"
           busy={busy}
           onConfirm={resetPassword}

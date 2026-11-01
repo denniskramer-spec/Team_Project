@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useSocket } from '../socket/SocketContext.jsx';
 import { useAlerts } from '../alerts/AlertsContext.jsx';
 import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
@@ -41,6 +41,7 @@ function Brand({ compact }) {
 // The status bar under the workspace: brand and version on the left, quick
 // links in the middle, live status, who is online and the time on the right.
 export default function Footer({ onPanel, panelOpen, panelTab }) {
+  const location = useLocation();
   const { connected, online } = useSocket();
   const { total } = useAlerts();
   const dmUnread = useChatAlerts()?.dmUnread ?? 0;
@@ -66,7 +67,7 @@ export default function Footer({ onPanel, panelOpen, panelTab }) {
           <Icon name="bell" size={14} /> Alerts
           {total > 0 && <span className="badge footer-badge">{total > 99 ? '99+' : total}</span>}
         </button>
-        <Link className="footer-link" to="/change-password">
+        <Link className="footer-link" to="/change-password" state={{ back: location.pathname + location.search }}>
           <Icon name="key" size={14} /> Password
         </Link>
       </nav>

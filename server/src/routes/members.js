@@ -6,7 +6,7 @@ import Group from '../models/Group.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
 import { ROLES } from '../config/roles.js';
 import { permissionsFor, pendingFilter } from '../utils/memberPolicy.js';
-import { tempPassword } from '../utils/password.js';
+import { RESET_PASSWORD, tempPassword } from '../utils/password.js';
 import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday, searchRegex,
 } from '../utils/validate.js';
@@ -188,12 +188,13 @@ router.patch('/:id', async (req, res) => {
   res.json({ member: serialize(target, req.user) });
 });
 
-// POST /api/members/:id/reset-password — issues a temporary password.
+// POST /api/members/:id/reset-password — sets the password back to
+// RESET_PASSWORD, which the member must change at their next login.
 router.post('/:id/reset-password', async (req, res) => {
   const target = await findTarget(req.params.id);
   if (!permissionsFor(req.user, target).resetPassword) throw forbidden();
 
-  const password = tempPassword();
+  const password = RESET_PASSWORD;
   await target.setPassword(password);
   target.mustChangePassword = true;
   await target.save();
