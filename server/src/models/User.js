@@ -25,6 +25,9 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true, select: false },
     passwordChangedAt: { type: Date, default: null },
     mustChangePassword: { type: Boolean, default: false },
+    // When Members → Reset password last set RESET_PASSWORD (utils/password.js);
+    // cleared once the person picks their own.
+    passwordResetAt: { type: Date, default: null },
     // Set when an admin (or the person) ends every session of the account:
     // tokens issued before it are refused.
     sessionsEndedAt: { type: Date, default: null },

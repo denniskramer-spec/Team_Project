@@ -3,7 +3,8 @@ import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
 
 // Shows a generated password once, with a copy button.
-export default function TempPassword({ title, username, password, onClose }) {
+// `expiresHours`: the password stops working after that long (a reset).
+export default function TempPassword({ title, username, password, expiresHours, onClose }) {
   const [copied, setCopied] = useState(false);
   const text = `Username: ${username}\nTemporary password: ${password}`;
 
@@ -25,6 +26,7 @@ export default function TempPassword({ title, username, password, onClose }) {
     >
       <p className="modal-text">
         Share these details with the member. The password is shown only once, and they will be asked to change it when they log in.
+        {expiresHours ? ` It works for ${expiresHours} hours only.` : ''}
       </p>
       <div className="credential">
         <div><span className="muted small">Username</span><code>{username}</code></div>

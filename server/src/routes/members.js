@@ -6,7 +6,7 @@ import Group from '../models/Group.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
 import { ROLES } from '../config/roles.js';
 import { permissionsFor, pendingFilter } from '../utils/memberPolicy.js';
-import { RESET_PASSWORD, tempPassword } from '../utils/password.js';
+import { RESET_PASSWORD, RESET_VALID_HOURS, tempPassword } from '../utils/password.js';
 import {
   requireFields, checkUsername, checkPassword, checkName, parseBirthday, searchRegex,
 } from '../utils/validate.js';
@@ -189,7 +189,8 @@ router.patch('/:id', async (req, res) => {
 });
 
 // POST /api/members/:id/reset-password — sets the password back to
-// RESET_PASSWORD, which the member must change at their next login.
+// RESET_PASSWORD, which the member must change at their next login, within
+// RESET_VALID_HOURS.
 router.post('/:id/reset-password', async (req, res) => {
   const target = await findTarget(req.params.id);
   if (!permissionsFor(req.user, target).resetPassword) throw forbidden();
@@ -197,10 +198,11 @@ router.post('/:id/reset-password', async (req, res) => {
   const password = RESET_PASSWORD;
   await target.setPassword(password);
   target.mustChangePassword = true;
+  target.passwordResetAt = new Date();
   await target.save();
 
   sessionChanged(String(target._id), { disconnect: true });
-  res.json({ tempPassword: password });
+  res.json({ tempPassword: password, expiresHours: RESET_VALID_HOURS });
 });
 
 // POST /api/members/:id/status { status: 'active' | 'disabled' }
