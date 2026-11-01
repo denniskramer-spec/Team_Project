@@ -99,6 +99,30 @@ export function incomeChanged(income) {
   getIO()?.to(ownerRooms(income, 'member')).emit('income:changed', { id: income._id });
 }
 
+// A member or a boss recorded income: a popup for the team leader and the
+// bosses of the member's group (`bossIds`), never the recorder. A pending
+// one also changes the leader's Finance badge.
+export function incomeRecorded(income, recorder, bossIds = []) {
+  const io = getIO();
+  if (!io) return;
+  const rooms = ['role:leader', ...bossIds.map((id) => `user:${id}`)];
+  io.to(rooms).except(`user:${recorder._id}`).emit('income:recorded', {
+    id: String(income._id),
+    member: { id: income.member?._id ?? income.member, name: income.member?.name ?? '' },
+    recorder: { id: recorder._id, name: recorder.name, role: recorder.role },
+    amount: income.amount,
+    currency: income.currency,
+    originalAmount: income.originalAmount ?? income.amount,
+    from: income.from ?? '',
+    status: income.status,
+    at: income.createdAt ?? new Date(),
+  });
+  if (income.status === 'pending') io.to('role:leader').emit('nav:changed');
+}
+
+// New exchange rates were fetched: the Finance pages reload them.
+export const ratesChanged = () => getIO()?.emit('rates:changed');
+
 // Sends an instruction event to everyone who can see it: its audience,
 // plus the leader and admins (who see every group), plus the author.
 // Badge counts change too, so their channel tree reloads.

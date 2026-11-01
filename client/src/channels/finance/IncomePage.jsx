@@ -27,7 +27,9 @@ const netRows = (rows) => rows.map((r) => ({
 // what is left after the payment fee and the resident's share, in the base
 // currency it is recorded in. Members record their own income, bosses and
 // the leader for the people they manage. Records are history: once recorded
-// they cannot be edited or deleted.
+// they cannot be edited or deleted. A member's own record waits for the team
+// leader's approval: it is listed, marked pending, and counts nowhere until
+// approved (a rejected one never does).
 const EMPTY = [];
 const COLUMNS = {
   date: { by: (i) => i.date, desc: true },
@@ -100,6 +102,57 @@ function VarianceNote({ income, money }) {
   );
 }
 
+// Pending, approved by whom, or rejected and why; for the team leader, the
+// buttons that decide a pending one.
+function ApprovalNote({ income, canApprove }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  const decide = async (action) => {
+    setBusy(true);
+    try {
+      await api(`/incomes/${income.id}/${action}`, { method: 'POST', body: action === 'reject' ? { reason } : {} });
+      toast(action === 'approve' ? 'Income approved' : 'Income rejected');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const by = income.reviewedBy;
+  if (income.status === 'approved') {
+    return by ? <div className="muted small">approved by {by.name}</div> : null;
+  }
+  if (income.status === 'rejected') {
+    return (
+      <div className="approval-note">
+        <span className="status-pill rejected">Rejected</span>
+        <span className="muted small">{by ? `by ${by.name}` : ''}{income.rejectReason ? ` · “${income.rejectReason}”` : ''} · not counted</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`approval-note${canApprove ? ' is-open' : ''}`}>
+      <span className="status-pill pending">Pending</span>
+      <span className="muted small">{canApprove ? 'not counted until you approve it' : 'waiting for the team leader · not counted yet'}</span>
+      {canApprove && !rejecting && (
+        <span className="approval-actions">
+          <button type="button" className="btn primary small-btn" onClick={() => decide('approve')} disabled={busy}>Approve</button>
+          <button type="button" className="btn small-btn" onClick={() => setRejecting(true)} disabled={busy}>Reject</button>
+        </span>
+      )}
+      {canApprove && rejecting && (
+        <span className="approval-actions">
+          <input value={reason} maxLength={500} placeholder="Reason (optional)" onChange={(e) => setReason(e.target.value)} aria-label="Reason for rejecting" />
+          <button type="button" className="btn danger small-btn" onClick={() => decide('reject')} disabled={busy}>{busy ? 'Saving...' : 'Reject'}</button>
+          <button type="button" className="link small" onClick={() => setRejecting(false)} disabled={busy}>Cancel</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function IncomeBody({ data, group, currency, sorter, onImages }) {
   const { money } = currency;
   const p = data.period;
@@ -130,6 +183,11 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
         <section className="card">
           <div className="report-section-head"><h3>Income records</h3></div>
           {shownOf(data.incomes.length, data.count) && <p className="muted small list-note">{shownOf(data.incomes.length, data.count)}</p>}
+          {data.pending > 0 && (
+            <p className="muted small list-note">
+              {data.pending} {data.pending === 1 ? 'record waits' : 'records wait'} for the team leader&apos;s approval and {data.pending === 1 ? 'is' : 'are'} not in the totals yet.
+            </p>
+          )}
           <table className="table finance-table">
             <thead>
               <tr>
@@ -141,7 +199,7 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
             </thead>
             <tbody>
               {sorter.rows.map((i) => (
-                <tr key={i.id}>
+                <tr key={i.id} className={i.status && i.status !== 'approved' ? `income-${i.status}` : undefined}>
                   <td data-label="Date"><DateTag value={i.date} utc /></td>
                   <td data-label="Member">
                     <div className="cell-user">
@@ -153,6 +211,7 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
                     <div className="strong">{i.task?.name ?? i.from ?? '—'}</div>
                     {i.resident && <div className="muted small">for {i.resident.name}</div>}
                     {i.note && <div className="muted small">{i.note}</div>}
+                    <ApprovalNote income={i} canApprove={data.can.approve} />
                     {i.variance && <VarianceNote income={i} money={money} />}
                     <ImageThumbs images={i.images} label="Screenshots" onOpen={(index) => onImages({ images: i.images, index, title: i.task?.name ?? i.from ?? 'Income' })} />
                   </td>

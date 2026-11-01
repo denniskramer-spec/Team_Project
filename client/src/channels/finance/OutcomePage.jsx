@@ -12,14 +12,14 @@ import OutcomeForm from './OutcomeForm.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinancePage, { GroupTiles, MemberBars } from './FinancePage.jsx';
 import { useFinancePage } from './useFinancePage.js';
-import { rankOf } from './chartMath.js';
+import { isRanked, rankOf } from './chartMath.js';
 import DateTag from '../../components/DateTag.jsx';
 import { TOOLTIP_LIMIT } from './constants.js';
 
 const SERIES = [{ key: 'outcome', label: 'Outcome', color: 'var(--series-2)' }];
 
-// Who spent the most and the least this period (see rankOf: people with
-// nothing recorded are never "Lowest").
+// Who spent the most and the least this period among members and bosses
+// (see rankOf: nothing recorded counts as 0).
 const RANK_TAGS = {
   top: { text: '▲ Highest', cls: 'top', color: 'var(--series-2)' },
   low: { text: '▼ Lowest', cls: 'low', color: 'var(--status-neutral)' },
@@ -133,8 +133,8 @@ export default function OutcomePage() {
 function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages }) {
   const { money } = currency;
   const p = data.period;
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count }));
-  const rank = rankOf(rows.map((r) => r.values.outcome));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count, member: c.member }));
+  const rank = rankOf(rows.map((r) => r.values.outcome), rows.map((r) => isRanked(r.member)));
 
   return (
     <>

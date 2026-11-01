@@ -122,10 +122,10 @@ export const NO_GROUP = 'none';
 // under NO_GROUP, so the tiles add up to the total.
 //   net  also add up income records' net (what is left after the fee and
 //        the resident's share; older records without one count in full)
-export async function perGroupSums(Model, user, allowed, period, { net = false } = {}) {
+export async function perGroupSums(Model, user, allowed, period, { net = false, where = {} } = {}) {
   if (!allowed.length) return new Map();
   const known = new Set(allowed.map((g) => String(g._id)));
-  const match = { ...scopeFilter(user, 'member'), date: inPeriod(period) };
+  const match = { ...scopeFilter(user, 'member'), ...where, date: inPeriod(period) };
   if (!seesAllGroups(user)) match.group = { $in: allowed.map((g) => g._id) };
   const sums = await Model.aggregate([
     { $match: match },

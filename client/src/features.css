@@ -298,7 +298,7 @@ html:root { --panel-w: 300px; }
 .photo-row > label { flex: 1; }
 
 /* One sentence per resident in the member directory */
-.residents-cell { max-width: 320px; }
+.residents-cell { min-width: 240px; }
 .resident-line {
   font-size: 13px;
   color: var(--muted);
@@ -354,10 +354,10 @@ button.chip .tick { color: var(--accent); }
 .panel-block { padding: 0 0 10px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
 .panel-block .btn { margin-top: 6px; gap: 6px; }
 .panel-plan { margin: 4px 0 2px; }
-.today-list, .upcoming-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.today-list li, .upcoming-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.today-list li, .upcoming-list li { min-width: 0; }
-.today-list li > .small, .upcoming-list li > .small, .today-list li > .status-pill { flex-shrink: 0; }
+.today-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.today-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.today-list li { min-width: 0; }
+.today-list li > .small, .today-list li > .status-pill { flex-shrink: 0; }
 .today-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-item { display: grid; }
 button.member-row { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -422,3 +422,56 @@ button.member-row { width: 100%; border: 0; background: none; color: inherit; fo
 .log-row.is-outside td:first-child { box-shadow: inset 3px 0 0 var(--bad, #e5484d); }
 .outside-who { color: var(--text-bad); }
 .outside-watch-note { margin-top: 12px; }
+
+/* Income approval: a member's own income waits for the team leader. */
+.approval-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; }
+.approval-note.is-open { padding: 6px 10px; border-radius: 8px; background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn); }
+.approval-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.approval-actions input { min-width: 0; width: 200px; max-width: 100%; }
+.status-pill.rejected { background: var(--bad-soft); color: var(--text-bad); }
+.finance-table tr.income-pending td.num, .finance-table tr.income-rejected td.num { opacity: 0.55; }
+.finance-table tr.income-rejected td.num .strong { text-decoration: line-through; }
+
+/* Income a member or boss just recorded, for the leader and bosses (alerts/IncomeAlerts.jsx). */
+.income-alerts {
+  position: fixed;
+  top: calc(var(--header-h) + 12px);
+  right: 16px;
+  z-index: 190;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+}
+.income-alert { border-left: 4px solid var(--good); }
+.income-alert.is-pending { border-left-color: var(--warn); }
+.income-alert-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--good); color: #fff; }
+.income-alert.is-pending .income-alert-icon { background: var(--warn); }
+
+/* Buzz: someone shook this screen from a chat (alerts/Buzz.jsx). */
+@keyframes buzz-shake {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  10%, 50%, 90% { transform: translate(-10px, 2px) rotate(-0.6deg); }
+  30%, 70% { transform: translate(10px, -2px) rotate(0.6deg); }
+}
+#root.buzz-shake { animation: buzz-shake 0.45s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes buzz-flash { 50% { box-shadow: inset 0 0 0 6px var(--warn); } }
+  #root.buzz-shake { animation: buzz-flash 0.45s ease-in-out 2; }
+}
+.buzz-popup {
+  position: fixed;
+  top: calc(var(--header-h) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 192;
+  width: min(380px, calc(100vw - 32px));
+}
+.buzz-alert { border-left: 4px solid var(--warn); }
+.buzz-alert-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--warn); color: #fff; }
+.composer-buzz:disabled { opacity: 0.45; cursor: default; }
+.desktop-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  margin: 0 16px 8px; padding: 8px 12px; border-radius: 8px;
+  background: var(--warn-soft); font-size: 13px;
+}
+.desktop-bar > span { flex: 1 1 240px; }

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { imageSchema } from './image.js';
 import { CURRENCIES } from './Task.js';
+import { INCOME_STATUSES } from '../utils/incomeApproval.js';
 
 // An income record for one member: date, amount and where it came from.
 const incomeSchema = new mongoose.Schema(
@@ -47,6 +48,13 @@ const incomeSchema = new mongoose.Schema(
       type: [{ _id: false, user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, at: Date }],
       default: [],
     },
+    // A member's own income waits for the team leader (utils/incomeApproval.js).
+    status: { type: String, enum: INCOME_STATUSES, default: 'approved' },
+    reviewedBy: {
+      type: { _id: false, user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, at: Date },
+      default: null,
+    },
+    rejectReason: { type: String, default: '', trim: true, maxlength: 500 },
   },
   { timestamps: true },
 );
@@ -54,6 +62,7 @@ const incomeSchema = new mongoose.Schema(
 incomeSchema.index({ member: 1, date: -1 });
 incomeSchema.index({ group: 1, date: -1 });
 incomeSchema.index({ date: 1 });
+incomeSchema.index({ status: 1, group: 1 }, { partialFilterExpression: { status: 'pending' } });
 incomeSchema.index({ variancePercent: 1, group: 1 }, { partialFilterExpression: { variancePercent: { $type: 'number' } } });
 
 export default mongoose.model('Income', incomeSchema);

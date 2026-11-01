@@ -18,8 +18,9 @@ import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
-import { incomeChanged, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
+import { incomeChanged, incomeRecorded, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
 import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
+import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome } from '../utils/incomeApproval.js';
 import { settleTaskWork } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 
@@ -54,6 +55,11 @@ const serialize = (i) => ({
     expected: i.expected, percent: i.variancePercent, reason: i.varianceReason,
     checkedBy: (i.varianceCheckedBy ?? []).map((c) => ({ id: c.user, name: c.name, at: c.at })),
   },
+  // pending: a member's own record, waiting for the team leader; it counts
+  // nowhere until approved. Older records have no status and count.
+  status: i.status ?? 'approved',
+  reviewedBy: i.reviewedBy?.user ? { id: i.reviewedBy.user, name: i.reviewedBy.name, at: i.reviewedBy.at } : null,
+  rejectReason: i.rejectReason ?? '',
   createdAt: i.createdAt,
 });
 
@@ -165,21 +171,24 @@ router.get('/', async (req, res) => {
   const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
     .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name').lean();
 
-  // Totals overall and per member, for the summary: received and net.
+  // Totals overall and per member, for the summary: received and net. Only
+  // real income counts: records waiting for approval (or rejected) are
+  // listed, not summed.
+  const real = incomes.filter(isRealIncome);
   const cents = (n) => Math.round(n * 100) / 100;
-  const byMember = perMember(incomes);
-  for (const [key, entry] of perMember(incomes.map((i) => ({ ...i, amount: netOf(i) })))) byMember.get(key).net = cents(entry.amount);
-  const total = cents(incomes.reduce((sum, i) => sum + i.amount, 0));
-  const raw = incomes.reduce((acc, i) => ({
+  const byMember = perMember(real);
+  for (const [key, entry] of perMember(real.map((i) => ({ ...i, amount: netOf(i) })))) byMember.get(key).net = cents(entry.amount);
+  const total = cents(real.reduce((sum, i) => sum + i.amount, 0));
+  const raw = real.reduce((acc, i) => ({
     fees: acc.fees + (i.feeAmount || 0),
     residents: acc.residents + (i.residentAmount || 0),
     net: acc.net + netOf(i),
   }), { fees: 0, residents: 0, net: 0 });
   const sums = { fees: cents(raw.fees), residents: cents(raw.residents), net: cents(raw.net) };
 
-  const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, incomes);
+  const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, real);
 
-  const sumFor = await perGroupSums(Income, req.user, allowed, period, { net: true });
+  const sumFor = await perGroupSums(Income, req.user, allowed, period, { net: true, where: REAL_INCOME });
   const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
     amount: sumFor.get(k)?.amount ?? 0,
     net: cents(sumFor.get(k)?.net ?? 0),
@@ -191,6 +200,7 @@ router.get('/', async (req, res) => {
     // The newest records; `count` is how many there are in all.
     incomes: incomes.slice(0, LIST_LIMIT).map((i) => serialize(i)),
     count: incomes.length,
+    pending: incomes.filter((i) => i.status === 'pending').length,
     total,
     fees: sums.fees,
     residents: sums.residents,
@@ -200,7 +210,10 @@ router.get('/', async (req, res) => {
     perGroup,
     chart,
     groups: groupList(allowed),
-    can: { record: ownsRecords(req.user) || canReadTeam(req.user), recordForSelf: ownsRecords(req.user), recordForOthers: canReadTeam(req.user) },
+    can: {
+      record: ownsRecords(req.user) || canReadTeam(req.user), recordForSelf: ownsRecords(req.user), recordForOthers: canReadTeam(req.user),
+      approve: canApproveIncome(req.user), needsApproval: needsApproval(req.user),
+    },
     scope: scopeName(req.user),
   });
 });
@@ -282,28 +295,78 @@ router.post('/', async (req, res) => {
     task: taskId,
     resident: resident?._id ?? null,
     createdBy: req.user._id,
+    status: needsApproval(req.user) ? 'pending' : 'approved',
     ...varianceFields,
   }).save();
   await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
-  // Recording income for a project settles the unpaid work reported on it:
-  // those days stop counting as upcoming (their reports are recomputed and
-  // the Dashboard, Plan and Finance screens are told). The project's paid
-  // total changes either way, so Projects reloads too.
-  let settled = 0;
-  if (taskId) {
-    settled = await settleTaskWork(taskId, member._id, income._id);
-    taskWorkChanged(member._id, member.group ?? null);
-  }
+  // Real income for a project settles the unpaid work reported on it: those
+  // days stop counting as upcoming (their reports are recomputed and the
+  // Dashboard, Plan and Finance screens are told). The project's paid total
+  // changes too, so Projects reloads. A pending record waits for approval.
+  const settled = income.status === 'approved' ? await settleFor(income) : 0;
 
   incomeChanged(income);
   if (variance.outside) varianceRaised(income.group?._id ?? income.group);
+  // The team leader and the member's boss hear of income a member or a boss records.
+  if (['member', 'boss'].includes(req.user.role)) incomeRecorded(income, req.user, await bossesOf(income.group?._id ?? income.group));
   req.audit = {
     action: 'incomes.create',
     target: { model: 'Income', id: income._id, label: `${money.currency} ${money.originalAmount} for ${member.name}` },
     details: { ...req.body, images: (income.images ?? []).length, base: { amount: money.amount, currency: currentRates().base, rate: money.rate } },
   };
   res.status(201).json({ income: serialize(income), settled });
+});
+
+async function settleFor(income) {
+  const taskId = income.task?._id ?? income.task;
+  if (!taskId) return 0;
+  const memberId = income.member?._id ?? income.member;
+  const settled = await settleTaskWork(taskId, memberId, income._id);
+  taskWorkChanged(memberId, income.group?._id ?? income.group ?? null);
+  return settled;
+}
+
+const bossesOf = async (groupId) => (groupId
+  ? (await User.find({ role: 'boss', status: 'active', group: groupId }, '_id').lean()).map((u) => u._id)
+  : []);
+
+// A pending record the team leader is deciding on.
+async function pendingIncome(req) {
+  if (!canApproveIncome(req.user)) throw forbidden('Only the team leader approves income');
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
+  if (!income) throw notFound('Income record not found');
+  if (income.status !== 'pending') throw badRequest(`This income was already ${income.status}`);
+  return income;
+}
+
+// POST /api/incomes/:id/approve — the team leader accepts a member's income:
+// from now on it counts, and it settles the project's reported work.
+router.post('/:id/approve', async (req, res) => {
+  const income = await pendingIncome(req);
+  income.status = 'approved';
+  income.reviewedBy = { user: req.user._id, name: req.user.name, at: new Date() };
+  await income.save();
+  const settled = await settleFor(income);
+  incomeChanged(income);
+  varianceRaised(income.group);
+  req.audit = { action: 'incomes.approve', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` } };
+  res.json({ ok: true, settled });
+});
+
+// POST /api/incomes/:id/reject { reason } — the team leader turns it down.
+// It stays listed, as history, and never counts.
+router.post('/:id/reject', async (req, res) => {
+  const income = await pendingIncome(req);
+  income.status = 'rejected';
+  income.rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
+  income.reviewedBy = { user: req.user._id, name: req.user.name, at: new Date() };
+  await income.save();
+  incomeChanged(income);
+  varianceRaised(income.group);
+  req.audit = { action: 'incomes.reject', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` }, details: { reason: income.rejectReason } };
+  res.json({ ok: true });
 });
 
 // POST /api/incomes/:id/check — the team leader or the member's boss has

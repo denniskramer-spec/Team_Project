@@ -11,6 +11,8 @@ import { useCopyWatch } from '../security/useCopyWatch.js';
 import IdleLogout from '../security/IdleLogout.jsx';
 import CopyNotice from '../security/CopyNotice.jsx';
 import SecurityAlerts from '../alerts/SecurityAlerts.jsx';
+import IncomeAlerts from '../alerts/IncomeAlerts.jsx';
+import BuzzListener from '../alerts/Buzz.jsx';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
 import TitleList from './TitleList.jsx';
@@ -146,6 +148,8 @@ export default function Workspace() {
     <div className="app">
       <Header channel={channel} title={title} onMenu={() => setNavOpen((o) => !o)} onBell={toggleAlerts} />
       <SecurityAlerts />
+      <IncomeAlerts />
+      <BuzzListener />
       <IdleLogout />
       <CopyNotice />
       <div className="workspace">
@@ -154,7 +158,7 @@ export default function Workspace() {
           <TitleList channel={channel} current={title.key} />
         </nav>
         {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
-        <TeamDay><ContentArea channel={channel} title={title} panelOpen={panelOpen} onTogglePanel={togglePanel} /></TeamDay>
+        <TeamDay><ContentArea channel={channel} title={title} /></TeamDay>
         <SidePanel open={panelOpen} onToggle={togglePanel} tab={panelTab} setTab={setPanelTab} />
       </div>
       <Footer onPanel={openPanelTab} panelOpen={panelOpen} panelTab={panelTab} />

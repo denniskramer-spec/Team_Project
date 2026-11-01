@@ -1,6 +1,7 @@
 import ExchangeRate from '../models/ExchangeRate.js';
 import { CURRENCIES } from '../models/Task.js';
 import { badRequest } from './httpError.js';
+import { ratesChanged } from '../socket/events.js';
 
 // Exchange rates for the Finance pages. Amounts are recorded in the team's
 // base currency (USD); the pages can show them in any of the app's
@@ -11,9 +12,11 @@ import { badRequest } from './httpError.js';
 
 export const BASE = 'USD';
 const TIMEOUT_MS = 10000;
-// Rates are checked this often while the server runs, and again whenever
-// someone asks for them and the stored ones are older than a day.
-const REFRESH_EVERY_MS = 6 * 60 * 60 * 1000;
+// Rates are checked this often while the server runs (the day's new fix
+// shows up within the hour), and again whenever someone asks for them and
+// the stored ones are older than a day. Open Finance pages are told of new
+// rates, so a conversion (R$ to $, say) never uses an old one.
+const REFRESH_EVERY_MS = 60 * 60 * 1000;
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const OTHERS = CURRENCIES.filter((c) => c !== BASE);
 
@@ -83,7 +86,9 @@ export function refreshRates() {
         { rates: fetched.rates, source: fetched.source, rateDate: fetched.rateDate, fetchedAt: new Date() },
         { new: true, upsert: true, setDefaultsOnInsert: true },
       ).lean();
+      const changed = current.rateDate !== doc.rateDate || OTHERS.some((c) => current.rates[c] !== fromDoc(doc).rates[c]);
       current = fromDoc(doc);
+      if (changed) ratesChanged();
       return current;
     })().finally(() => { refreshing = null; });
   }

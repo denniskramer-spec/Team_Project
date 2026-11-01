@@ -5,6 +5,7 @@ import Instruction from '../models/Instruction.js';
 import Task from '../models/Task.js';
 import Income from '../models/Income.js';
 import { canCheckVariance } from '../utils/incomeVariance.js';
+import { canApproveIncome } from '../utils/incomeApproval.js';
 import { pendingFilter } from '../utils/memberPolicy.js';
 import { unreadFilter } from '../utils/instructionPolicy.js';
 import { scopeFilter } from '../utils/visibility.js';
@@ -48,8 +49,12 @@ router.get('/', requireAuth, async (req, res) => {
   const incomeChecks = canCheckVariance(req.user)
     ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' }, 'varianceCheckedBy.user': { $ne: req.user._id } })
     : 0;
+  // Plus, for the team leader, members' income waiting for approval.
+  const incomeApprovals = canApproveIncome(req.user)
+    ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), status: 'pending' })
+    : 0;
 
-  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members, dms, incomeChecks }) });
+  res.json({ channels: buildNav(req.user, groups, { pendingCount, instructionUnread, chatUnread, tasks, members, dms, incomeChecks: incomeChecks + incomeApprovals }) });
 });
 
 export default router;

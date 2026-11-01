@@ -1,5 +1,6 @@
 import Report from '../models/Report.js';
 import Income from '../models/Income.js';
+import { REAL_INCOME } from './incomeApproval.js';
 import { periodKey } from './period.js';
 
 // What the daily reports say about each project, for the Projects list: the
@@ -63,7 +64,7 @@ export async function workSummary(tasks) {
         },
       },
     ]),
-    Income.aggregate([{ $match: { task: { $in: ids } } }, { $group: { _id: '$task', amount: { $sum: '$amount' } } }]),
+    Income.aggregate([{ $match: { task: { $in: ids }, ...REAL_INCOME } }, { $group: { _id: '$task', amount: { $sum: '$amount' } } }]),
   ]);
   return summaryFromRows(workRows, paidRows, owners);
 }

@@ -3,7 +3,7 @@ import { formatAmount, formatDay, nameOf, shownOf } from '../../format.js';
 import Modal from '../../components/Modal.jsx';
 import { useSort, Th } from '../../components/SortTable.jsx';
 import DateTag from '../../components/DateTag.jsx';
-import { GAP, MARGIN, columnLayout, compact, fitLabel, rankOf, tooltipLeft, topRounded, useElementWidth } from './chartMath.js';
+import { GAP, MARGIN, columnLayout, compact, fitLabel, isRanked, rankOf, tooltipLeft, topRounded, useElementWidth } from './chartMath.js';
 import { TOOLTIP_LIMIT } from './constants.js';
 
 // Planned vs real income per member, as grouped columns:
@@ -106,7 +106,7 @@ export default function IncomeChart({ rows, periodLabel }) {
   });
   const hasData = rows.some((r) => r.planned || r.actual || r.upcoming);
   // Who is highest and lowest this period, by recorded income only (the green segment).
-  const rank = rankOf(rows.map((r) => r.actual));
+  const rank = rankOf(rows.map((r) => r.actual), rows.map((r) => isRanked(r.member)));
 
   return (
     <figure className="chart income-chart">
