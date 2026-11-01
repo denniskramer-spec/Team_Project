@@ -149,7 +149,7 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
         method: 'POST',
         body: { ...form, varianceReason: needsReason ? form.varianceReason : undefined, currency, member: form.member || undefined, task: form.task || undefined, resident: form.resident || undefined, images },
       });
-      if (result.income.status === 'pending') toast('Income recorded · it counts once the team leader approves it');
+      if (result.income.status === 'pending') toast('Income recorded · it counts once your boss or the team leader approves it');
       else toast(result.settled ? `Income recorded · ${result.settled} upcoming ${result.settled === 1 ? 'day' : 'days'} settled` : 'Income recorded');
       onSaved();
     } catch (err) {

@@ -20,7 +20,8 @@ import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, incomeRecorded, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
 import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
-import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome } from '../utils/incomeApproval.js';
+import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
+import { archiveDeleted } from '../utils/audit.js';
 import { settleTaskWork } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 
@@ -55,9 +56,11 @@ const serialize = (i) => ({
     expected: i.expected, percent: i.variancePercent, reason: i.varianceReason,
     checkedBy: (i.varianceCheckedBy ?? []).map((c) => ({ id: c.user, name: c.name, at: c.at })),
   },
-  // pending: a member's own record, waiting for the team leader; it counts
-  // nowhere until approved. Older records have no status and count.
+  // pending: a member's own record, waiting for the team leader or their
+  // boss; it counts nowhere until approved. Older records have no status
+  // and count.
   status: i.status ?? 'approved',
+  createdBy: i.createdBy ?? null,
   reviewedBy: i.reviewedBy?.user ? { id: i.reviewedBy.user, name: i.reviewedBy.name, at: i.reviewedBy.at } : null,
   rejectReason: i.rejectReason ?? '',
   createdAt: i.createdAt,
@@ -331,9 +334,9 @@ const bossesOf = async (groupId) => (groupId
   ? (await User.find({ role: 'boss', status: 'active', group: groupId }, '_id').lean()).map((u) => u._id)
   : []);
 
-// A pending record the team leader is deciding on.
+// A pending record the team leader (or the member's boss) is deciding on.
 async function pendingIncome(req) {
-  if (!canApproveIncome(req.user)) throw forbidden('Only the team leader approves income');
+  if (!canApproveIncome(req.user)) throw forbidden('Only the team leader and bosses approve income');
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
   if (!income) throw notFound('Income record not found');
@@ -341,8 +344,9 @@ async function pendingIncome(req) {
   return income;
 }
 
-// POST /api/incomes/:id/approve — the team leader accepts a member's income:
-// from now on it counts, and it settles the project's reported work.
+// POST /api/incomes/:id/approve — the team leader or the member's boss
+// accepts it: from now on it counts, and it settles the project's reported
+// work. varianceRaised: the Finance badges of the leader and the boss change.
 router.post('/:id/approve', async (req, res) => {
   const income = await pendingIncome(req);
   income.status = 'approved';
@@ -355,7 +359,8 @@ router.post('/:id/approve', async (req, res) => {
   res.json({ ok: true, settled });
 });
 
-// POST /api/incomes/:id/reject { reason } — the team leader turns it down.
+// POST /api/incomes/:id/reject { reason } — the team leader or the member's
+// boss turns it down.
 // It stays listed, as history, and never counts.
 router.post('/:id/reject', async (req, res) => {
   const income = await pendingIncome(req);
@@ -366,6 +371,22 @@ router.post('/:id/reject', async (req, res) => {
   incomeChanged(income);
   varianceRaised(income.group);
   req.audit = { action: 'incomes.reject', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` }, details: { reason: income.rejectReason } };
+  res.json({ ok: true });
+});
+
+// POST /api/incomes/:id/withdraw — the member takes back their own record
+// while it still waits for approval. It never counted, so it is removed,
+// kept in Deleted Records like any other delete.
+router.post('/:id/withdraw', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
+  if (!income) throw notFound('Income record not found');
+  if (!canWithdrawIncome(req.user, income)) throw badRequest('Only your own income still waiting for approval can be withdrawn');
+  req.audit = { action: 'incomes.withdraw' };
+  await archiveDeleted(income, req, { model: 'Income', label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` });
+  await Income.deleteOne({ _id: income._id });
+  incomeChanged(income);
+  varianceRaised(income.group);
   res.json({ ok: true });
 });
 

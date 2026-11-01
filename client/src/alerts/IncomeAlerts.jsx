@@ -15,8 +15,8 @@ const amountOf = (a) => `${a.currency} ${formatAmount(a.originalAmount ?? a.amou
 
 // Income a member or a boss just recorded (socket/events.js incomeRecorded):
 // for the team leader and the member's boss, top right, until dismissed.
-// A member's own income waits for the team leader's approval, so the
-// leader's popup says so. Clicking one opens Finance → Income.
+// A member's own income waits for approval by either of them, so the
+// popup says so. Clicking one opens Finance → Income.
 export default function IncomeAlerts() {
   const { user } = useAuth();
   const { settings } = useAlerts() ?? {};
@@ -29,7 +29,7 @@ export default function IncomeAlerts() {
     if (!['leader', 'boss'].includes(user?.role) || !alert?.id) return;
     setPopups((list) => (list.some((p) => p.id === alert.id) ? list : [...list.slice(-(MAX_POPUPS - 1)), alert]));
     if (settings?.sound) playAlert();
-    if (settings?.desktop) notify(titleOf(alert, user), { body: textOf(alert), tag: `income-${alert.id}` }, open);
+    if (settings?.desktop) notify(titleOf(alert), { body: textOf(alert), tag: `income-${alert.id}` }, open);
   });
 
   if (!popups.length) return null;
@@ -41,7 +41,7 @@ export default function IncomeAlerts() {
             <span className="income-alert-icon"><Icon name="coins" size={18} /></span>
             <span className="chat-popup-text">
               <span className="chat-popup-head">
-                <span className="strong">{titleOf(p, user)}</span>
+                <span className="strong">{titleOf(p)}</span>
                 <span className="muted small chat-popup-time">{formatClock(p.at)}</span>
               </span>
               <span className="chat-popup-content">{textOf(p)}</span>
@@ -54,9 +54,8 @@ export default function IncomeAlerts() {
   );
 }
 
-function titleOf(a, user) {
-  if (a.status !== 'pending') return `${a.recorder.name} recorded income`;
-  return user?.role === 'leader' ? `${a.recorder.name} recorded income · approve it` : `${a.recorder.name} recorded income · waiting for the team leader`;
+function titleOf(a) {
+  return a.status === 'pending' ? `${a.recorder.name} recorded income · approve it` : `${a.recorder.name} recorded income`;
 }
 
 function textOf(a) {

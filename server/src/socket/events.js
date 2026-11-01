@@ -101,7 +101,7 @@ export function incomeChanged(income) {
 
 // A member or a boss recorded income: a popup for the team leader and the
 // bosses of the member's group (`bossIds`), never the recorder. A pending
-// one also changes the leader's Finance badge.
+// one also changes their Finance badges (they approve it).
 export function incomeRecorded(income, recorder, bossIds = []) {
   const io = getIO();
   if (!io) return;
@@ -117,7 +117,7 @@ export function incomeRecorded(income, recorder, bossIds = []) {
     status: income.status,
     at: income.createdAt ?? new Date(),
   });
-  if (income.status === 'pending') io.to('role:leader').emit('nav:changed');
+  if (income.status === 'pending') io.to(rooms).emit('nav:changed');
 }
 
 // New exchange rates were fetched: the Finance pages reload them.

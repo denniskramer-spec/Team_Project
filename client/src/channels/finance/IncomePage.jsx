@@ -28,8 +28,9 @@ const netRows = (rows) => rows.map((r) => ({
 // currency it is recorded in. Members record their own income, bosses and
 // the leader for the people they manage. Records are history: once recorded
 // they cannot be edited or deleted. A member's own record waits for the team
-// leader's approval: it is listed, marked pending, and counts nowhere until
-// approved (a rejected one never does).
+// leader's or their boss's approval: it is listed, marked pending, and counts
+// nowhere until approved (a rejected one never does). Until then the member
+// may withdraw it.
 const EMPTY = [];
 const COLUMNS = {
   date: { by: (i) => i.date, desc: true },
@@ -80,7 +81,8 @@ function VarianceNote({ income, money }) {
   const [busy, setBusy] = useState(false);
   const v = income.variance;
   const mine = v.checkedBy.some((c) => String(c.id) === String(user.id));
-  const canCheck = ['leader', 'boss'].includes(user.role) && !mine;
+  // A pending or rejected record is not counted, so it is not checked either.
+  const canCheck = ['leader', 'boss'].includes(user.role) && !mine && income.status === 'approved';
   const check = async () => {
     setBusy(true);
     try {
@@ -102,18 +104,23 @@ function VarianceNote({ income, money }) {
   );
 }
 
-// Pending, approved by whom, or rejected and why; for the team leader, the
-// buttons that decide a pending one.
+// Pending, approved by whom, or rejected and why; for the team leader and
+// the member's boss, the buttons that decide a pending one; for the member
+// who recorded it, a way to take it back.
+const DONE = { approve: 'Income approved', reject: 'Income rejected', withdraw: 'Income withdrawn' };
 function ApprovalNote({ income, canApprove }) {
+  const { user } = useAuth();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [reason, setReason] = useState('');
+  const canWithdraw = !canApprove && String(income.createdBy) === String(user.id);
   const decide = async (action) => {
     setBusy(true);
     try {
       await api(`/incomes/${income.id}/${action}`, { method: 'POST', body: action === 'reject' ? { reason } : {} });
-      toast(action === 'approve' ? 'Income approved' : 'Income rejected');
+      toast(DONE[action]);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -135,7 +142,20 @@ function ApprovalNote({ income, canApprove }) {
   return (
     <div className={`approval-note${canApprove ? ' is-open' : ''}`}>
       <span className="status-pill pending">Pending</span>
-      <span className="muted small">{canApprove ? 'not counted until you approve it' : 'waiting for the team leader · not counted yet'}</span>
+      <span className="muted small">{canApprove ? 'not counted until you approve it' : 'waiting for approval · not counted yet'}</span>
+      {canWithdraw && (
+        <span className="approval-actions">
+          {withdrawing ? (
+            <>
+              <span className="small">Withdraw this record?</span>
+              <button type="button" className="btn danger small-btn" onClick={() => decide('withdraw')} disabled={busy}>{busy ? 'Saving...' : 'Withdraw'}</button>
+              <button type="button" className="link small" onClick={() => setWithdrawing(false)} disabled={busy}>Cancel</button>
+            </>
+          ) : (
+            <button type="button" className="btn small-btn" onClick={() => setWithdrawing(true)}>Withdraw</button>
+          )}
+        </span>
+      )}
       {canApprove && !rejecting && (
         <span className="approval-actions">
           <button type="button" className="btn primary small-btn" onClick={() => decide('approve')} disabled={busy}>Approve</button>
@@ -185,7 +205,7 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
           {shownOf(data.incomes.length, data.count) && <p className="muted small list-note">{shownOf(data.incomes.length, data.count)}</p>}
           {data.pending > 0 && (
             <p className="muted small list-note">
-              {data.pending} {data.pending === 1 ? 'record waits' : 'records wait'} for the team leader&apos;s approval and {data.pending === 1 ? 'is' : 'are'} not in the totals yet.
+              {data.pending} {data.pending === 1 ? 'record waits' : 'records wait'} for approval and {data.pending === 1 ? 'is' : 'are'} not in the totals yet.
             </p>
           )}
           <table className="table finance-table">

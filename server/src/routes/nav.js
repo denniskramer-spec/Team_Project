@@ -5,7 +5,7 @@ import Instruction from '../models/Instruction.js';
 import Task from '../models/Task.js';
 import Income from '../models/Income.js';
 import { canCheckVariance } from '../utils/incomeVariance.js';
-import { canApproveIncome } from '../utils/incomeApproval.js';
+import { canApproveIncome, REAL_INCOME } from '../utils/incomeApproval.js';
 import { pendingFilter } from '../utils/memberPolicy.js';
 import { unreadFilter } from '../utils/instructionPolicy.js';
 import { scopeFilter } from '../utils/visibility.js';
@@ -45,11 +45,14 @@ router.get('/', requireAuth, async (req, res) => {
     .sort({ startDate: -1, createdAt: -1 }).limit(40).lean();
 
   // Income far from what the reported work expected, not yet checked by
-  // this team leader or boss.
+  // this team leader or boss. Only counted income: a pending record is in
+  // the approvals below (and shows up here once approved), a rejected one
+  // never needs a check.
   const incomeChecks = canCheckVariance(req.user)
-    ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' }, 'varianceCheckedBy.user': { $ne: req.user._id } })
+    ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), ...REAL_INCOME, variancePercent: { $type: 'number' }, 'varianceCheckedBy.user': { $ne: req.user._id } })
     : 0;
-  // Plus, for the team leader, members' income waiting for approval.
+  // Plus members' income waiting for approval: all of it for the team
+  // leader, their group's for a boss.
   const incomeApprovals = canApproveIncome(req.user)
     ? await Income.countDocuments({ ...scopeFilter(req.user, 'member'), status: 'pending' })
     : 0;

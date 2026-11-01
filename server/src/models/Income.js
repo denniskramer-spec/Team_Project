@@ -48,7 +48,7 @@ const incomeSchema = new mongoose.Schema(
       type: [{ _id: false, user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, at: Date }],
       default: [],
     },
-    // A member's own income waits for the team leader (utils/incomeApproval.js).
+    // A member's own income waits for the team leader or their boss (utils/incomeApproval.js).
     status: { type: String, enum: INCOME_STATUSES, default: 'approved' },
     reviewedBy: {
       type: { _id: false, user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, name: String, at: Date },
