@@ -26,7 +26,9 @@ export function buildRows(messages, lastReadAt, userId) {
       unreadDone = true;
     }
     const last = rows[rows.length - 1];
+    // A reply always starts a new block, so its quote sits above a name.
     const grouped = last?.type === 'msg'
+      && !m.replyTo
       && last.message.author?.id === m.author?.id
       && new Date(m.createdAt) - new Date(last.message.createdAt) < GROUP_WINDOW_MS;
     rows.push({ type: 'msg', key: m.id, message: m, grouped });

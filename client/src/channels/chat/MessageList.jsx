@@ -4,8 +4,10 @@ import { dayLabel } from './buildRows.js';
 // The scrolling list: "load older" on top, the rows, and the sentinel the
 // sticky scroll keeps in view. `empty` is what to show for a chat with no
 // messages yet.
-export default function MessageList({ rows, user, loading, error, empty, hasMore, loadingOlder, onLoadOlder, scroll, onChanged, onDeleted }) {
+export default function MessageList({ rows, user, dm, loading, error, empty, hasMore, loadingOlder, onLoadOlder, scroll, onChanged, onDeleted, onReply, onJump }) {
   const canDeleteAny = ['leader', 'admin'].includes(user.role);
+  // Team chats are for work: bosses, the leader and admins flag what is not.
+  const canFlag = !dm && ['boss', 'leader', 'admin'].includes(user.role);
   return (
     <div className="chat-scroll" ref={scroll.listRef} onScroll={scroll.onScroll}>
       {hasMore && (
@@ -29,12 +31,16 @@ export default function MessageList({ rows, user, loading, error, empty, hasMore
               key={row.key}
               message={m}
               grouped={row.grouped}
+              meId={user.id}
               canEdit={mine && !m.deletedAt}
               // Members delete (hide) their own; bosses delete nothing.
               canDelete={canDeleteAny || (mine && user.role === 'member' && !m.deletedAt)}
               deleteHides={!canDeleteAny}
+              canFlag={canFlag && !mine && !m.deletedAt}
               onChanged={onChanged}
               onDeleted={onDeleted}
+              onReply={onReply}
+              onJump={onJump}
             />
           );
         })}

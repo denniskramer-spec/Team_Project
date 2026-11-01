@@ -16,6 +16,19 @@ const messageSchema = new mongoose.Schema(
     // Set when a member deletes their own message: members no longer see it,
     // bosses, the leader and admins still do, marked deleted.
     deletedAt: { type: Date, default: null },
+    // Set when a boss, the leader or an admin marks it as not about work
+    // (team chats are for work only); everyone in the chat sees the flag.
+    offTopic: {
+      type: { _id: false, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, at: { type: Date, required: true } },
+      default: null,
+    },
+    // The message this one answers (same chat).
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
+    // One entry per emoji, with who reacted with it, in the order first used.
+    reactions: {
+      type: [{ _id: false, emoji: { type: String, required: true }, users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] }],
+      default: [],
+    },
   },
   { timestamps: true },
 );

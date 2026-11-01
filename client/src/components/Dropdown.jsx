@@ -1,12 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 
 // "⋯" button with a small action menu. items: [{ label, icon, onClick, danger, hidden }]
-export default function Dropdown({ items, label = 'Actions' }) {
+// `header(close)` draws extra content above the items (a row of quick
+// reactions, say); `up` opens the menu above the button. Setting `openAt` to
+// a fresh { x, y } (a right-click, say) opens the menu at that spot instead.
+export default function Dropdown({ items, label = 'Actions', header, up = false, className = '', openAt = null }) {
   const [open, setOpen] = useState(false);
+  const [point, setPoint] = useState(null); // where a right-click opened it
   const ref = useRef(null);
   const button = useRef(null);
+  const menu = useRef(null);
   const visible = items.filter((i) => !i.hidden);
+
+  useEffect(() => {
+    if (!openAt) return;
+    setPoint(openAt);
+    setOpen(true);
+  }, [openAt]);
+  useEffect(() => { if (!open) setPoint(null); }, [open]);
+
+  // Keep a menu opened at the pointer inside the window.
+  useLayoutEffect(() => {
+    const node = menu.current;
+    if (!point || !node) return;
+    const { width, height } = node.getBoundingClientRect();
+    node.style.left = `${Math.max(8, Math.min(point.x, window.innerWidth - width - 8))}px`;
+    node.style.top = `${Math.max(8, point.y + height > window.innerHeight - 8 ? point.y - height : point.y)}px`;
+  }, [point]);
+
+  // A menu pinned to the pointer would float away from its message on scroll.
+  useEffect(() => {
+    if (!point) return undefined;
+    const shut = (e) => { if (!menu.current?.contains(e.target)) setOpen(false); };
+    window.addEventListener('scroll', shut, true);
+    window.addEventListener('resize', shut);
+    return () => {
+      window.removeEventListener('scroll', shut, true);
+      window.removeEventListener('resize', shut);
+    };
+  }, [point]);
 
   // Keyboard: the menu opens on its first item, the arrow keys (and Home /
   // End) move through it, Escape closes it and returns to the button.
@@ -41,21 +74,28 @@ export default function Dropdown({ items, label = 'Actions' }) {
     };
   }, [open]);
 
-  if (!visible.length) return null;
+  if (!visible.length && !header) return null;
+  const close = () => { setOpen(false); button.current?.focus(); };
 
   return (
-    <div className="dropdown" ref={ref}>
+    <div className={`dropdown${up ? ' up' : ''}${open ? ' open' : ''} ${className}`.trim()} ref={ref}>
       <button ref={button} className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label={label} aria-haspopup="menu" aria-expanded={open}>
         <Icon name="more" size={18} />
       </button>
       {open && (
-        <div className="menu dropdown-menu" role="menu">
+        <div
+          ref={menu}
+          className={`menu dropdown-menu${point ? ' at-point' : ''}`}
+          role="menu"
+          style={point ? { left: point.x, top: point.y } : undefined}
+        >
+          {header?.(close)}
           {visible.map((item) => (
             <button
               key={item.label}
               role="menuitem"
               className={`menu-item ${item.danger ? 'danger' : ''}`}
-              onClick={() => { setOpen(false); button.current?.focus(); item.onClick(); }}
+              onClick={() => { close(); item.onClick(); }}
             >
               {item.icon && <Icon name={item.icon} size={16} />} {item.label}
             </button>

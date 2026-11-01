@@ -15,6 +15,9 @@ import { notFound } from './httpError.js';
 // between two active people, whoever they are.
 
 export const canUseFinanceChat = (user) => ['boss', 'leader'].includes(user.role);
+// Anyone may shake the other side of a DM; a whole channel only the team
+// leader, bosses and admins, as it shakes everyone reading it.
+export const canBuzzChannel = (user) => ['leader', 'boss', 'admin'].includes(user.role);
 export const dmKey = (a, b) => `dm:${[String(a), String(b)].sort().join(':')}`;
 export const isDmKey = (key) => key.startsWith('dm:');
 // The other side of a DM channel key, seen from `userId`.
@@ -70,6 +73,11 @@ export const deletedFilter = (user) => (seesDeletedMessages(user) ? {} : { delet
 const isAuthor = (user, message) => String(message.author._id ?? message.author) === String(user._id);
 export const canEditMessage = (user, message) => isAuthor(user, message) && !message.deletedAt;
 // 'remove', 'hide' or null (may not delete).
+// Bosses, the leader and admins flag someone else's message in a team chat
+// as not about work. Direct messages are private and never flagged.
+export const canFlagOffTopic = (user, message) => ['boss', 'leader', 'admin'].includes(user.role)
+  && !isDmKey(message.channelKey) && !isAuthor(user, message) && !message.deletedAt;
+
 export function deleteModeFor(user, message) {
   if (['leader', 'admin'].includes(user.role)) return 'remove';
   if (user.role === 'member' && canEditMessage(user, message)) return 'hide';

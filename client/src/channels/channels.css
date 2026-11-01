@@ -465,7 +465,7 @@ code {
 .msg {
   position: relative;
   display: grid;
-  grid-template-columns: 36px 1fr auto;
+  grid-template-columns: 36px 1fr;
   gap: 12px;
   padding: 6px 8px;
   border-radius: var(--radius-sm);
@@ -478,10 +478,108 @@ code {
 .msg-head { display: flex; align-items: baseline; gap: 8px; }
 .msg-text { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .edited-tag { margin-left: 6px; }
+/* A message flagged as not about work: a warning bar on the left and a note under it. */
+.msg.msg-off-topic { box-shadow: inset 3px 0 0 var(--warn); background: color-mix(in srgb, var(--warn) 6%, transparent); }
+.off-topic-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-warn);
+  background: var(--warn-soft);
+  border-radius: var(--radius-sm);
+}
+.off-topic-note .icon { flex-shrink: 0; }
 .msg-deleted .msg-body { opacity: 0.6; }
 .deleted-tag { color: var(--text-bad); }
-.msg-actions { opacity: 0; align-self: start; }
-.msg:hover .msg-actions, .msg:focus-within .msg-actions { opacity: 1; }
+
+/* Hover toolbar (react, reply, ⋯), floating over the message's top right. */
+.msg-toolbar {
+  position: absolute;
+  top: -14px;
+  right: 12px;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+.msg:hover .msg-toolbar, .msg:focus-within .msg-toolbar, .msg-toolbar.open, .msg-toolbar:has(.dropdown.open) { display: flex; }
+.msg-toolbar .icon-btn { width: 30px; height: 30px; }
+.msg-list > .msg:first-child .msg-toolbar { top: 2px; }
+.msg-react { position: relative; }
+.msg-picker .emoji-picker { right: 0; }
+.msg-picker.down .emoji-picker { top: calc(100% + 6px); bottom: auto; }
+.msg-picker.up .emoji-picker { bottom: calc(100% + 6px); top: auto; }
+.msg-menu .dropdown-menu { width: 260px; z-index: 41; }
+.dropdown.up .dropdown-menu { top: auto; bottom: calc(100% + 8px); }
+.dropdown .dropdown-menu.at-point { position: fixed; right: auto; bottom: auto; }
+.quick-reactions { display: flex; justify-content: space-between; padding: 2px 2px 6px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.quick-reactions .emoji-btn { width: 32px; height: 32px; font-size: 20px; }
+
+/* Reactions under a message: emoji and count, outlined when one is yours. */
+.msg-reactions { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; padding: 0; }
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.reaction:hover:not(:disabled) { border-color: var(--border); }
+.reaction.mine { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.reaction:disabled { cursor: default; }
+.reaction-emoji { font-size: 15px; line-height: 1; }
+
+/* The message a reply answers, one line above it. */
+.msg-reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0 0 2px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.msg-reply-quote:disabled { cursor: default; }
+.msg-reply-quote .strong { color: var(--text); white-space: nowrap; }
+.msg-reply-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.msg-reply-quote:hover:not(:disabled) .msg-reply-text { color: var(--text); }
+.msg.flash { animation: flash 2.2s ease; }
+
+/* "Replying to ..." above the composer. */
+.composer-reply {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  font-size: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.composer-reply > span:first-of-type { white-space: nowrap; }
+.composer-reply-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-reply .icon-btn { width: 24px; height: 24px; margin-left: auto; }
 .msg-edit { display: grid; gap: 4px; margin-top: 4px; }
 
 .day-sep, .unread-sep {
@@ -613,7 +711,7 @@ code {
   .chat-scroll { padding: 12px 8px 0; }
   .chat-composer { padding: 0 8px 12px; }
   .emoji-picker { height: 320px; }
-  .msg { grid-template-columns: 32px 1fr auto; gap: 8px; }
+  .msg { grid-template-columns: 32px 1fr; gap: 8px; }
 }
 
 /* ---------- Report channel ---------- */
@@ -934,18 +1032,19 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 220px;
+  max-width: 100%;
   padding: 3px 9px 3px 7px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* The whole name shows; it wraps only on a screen too narrow for it. */
+  overflow-wrap: anywhere;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .asset-chip .icon { color: var(--muted); flex-shrink: 0; }
@@ -1063,7 +1162,7 @@ code {
   .toast, .alert-popup, .chat-popup, .urgent-alarm, .typing-dots i, .instruction.focused,
   .income-chart .column-group.top path, .income-chart .low .rank-ring,
   .columns-chart .column-group.top path, .columns-chart .low .rank-ring { animation: none; }
-  .segmented button, .asset-chip, .panel-btn, .income-chart .column-group { transition: none; }
+  .segmented button, .asset-chip, .income-chart .column-group { transition: none; }
 }
 
 /* Finance: while another period loads, the numbers on screen are the old
