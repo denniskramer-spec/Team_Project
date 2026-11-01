@@ -6,7 +6,7 @@ import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, checkEmoji } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
@@ -209,17 +209,6 @@ router.patch('/messages/:id', async (req, res) => {
   sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(message) }));
   res.json({ message: serialize(message) });
 });
-
-// One emoji, nothing else: a grapheme or two of pictographs (with skin
-// tones, joiners and variation selectors), never text.
-const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\u200D\uFE0F\u20E3#*0-9])+$/u;
-function checkEmoji(value) {
-  const emoji = typeof value === 'string' ? value.trim() : '';
-  if (!emoji || emoji.length > 16 || !EMOJI_RE.test(emoji) || !/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(emoji)) {
-    throw badRequest('Pick an emoji');
-  }
-  return emoji;
-}
 
 // POST /api/chat/messages/:id/reactions { emoji } — adds this person's
 // reaction, or takes it back if they already reacted with that emoji.

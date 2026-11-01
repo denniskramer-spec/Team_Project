@@ -2,7 +2,7 @@ import Group from '../models/Group.js';
 import User from '../models/User.js';
 import mongoose from 'mongoose';
 import { seesAllGroups } from './scope.js';
-import { notFound } from './httpError.js';
+import { badRequest, notFound } from './httpError.js';
 
 // Chat titles in the nav map to channel keys:
 //   general       -> 'general'
@@ -72,14 +72,25 @@ export const seesDeletedMessages = (user) => ['boss', 'leader', 'admin'].include
 export const deletedFilter = (user) => (seesDeletedMessages(user) ? {} : { deletedAt: null });
 const isAuthor = (user, message) => String(message.author._id ?? message.author) === String(user._id);
 export const canEditMessage = (user, message) => isAuthor(user, message) && !message.deletedAt;
-// 'remove', 'hide' or null (may not delete).
 // Bosses, the leader and admins flag someone else's message in a team chat
 // as not about work. Direct messages are private and never flagged.
 export const canFlagOffTopic = (user, message) => ['boss', 'leader', 'admin'].includes(user.role)
   && !isDmKey(message.channelKey) && !isAuthor(user, message) && !message.deletedAt;
 
+// 'remove', 'hide' or null (may not delete).
 export function deleteModeFor(user, message) {
   if (['leader', 'admin'].includes(user.role)) return 'remove';
   if (user.role === 'member' && canEditMessage(user, message)) return 'hide';
   return null;
+}
+
+// One emoji, nothing else: a grapheme or two of pictographs (with skin
+// tones, joiners and variation selectors), never text.
+const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\u200D\uFE0F\u20E3#*0-9])+$/u;
+export function checkEmoji(value) {
+  const emoji = typeof value === 'string' ? value.trim() : '';
+  if (!emoji || emoji.length > 16 || !EMOJI_RE.test(emoji) || !/\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20E3/u.test(emoji)) {
+    throw badRequest('Pick an emoji');
+  }
+  return emoji;
 }
