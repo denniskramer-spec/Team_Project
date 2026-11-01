@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { AuthFooter } from '../layout/Footer.jsx';
+import { useToast } from '../components/Toast.jsx';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
 
 export default function ChangePassword() {
   const { user, changePassword, logout } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   // The page the user came from (footer, user menu, Account page): Cancel
   // and a successful change both go back there.
   const back = useLocation().state?.back || '/';
@@ -25,7 +27,8 @@ export default function ChangePassword() {
     setBusy(true);
     try {
       await changePassword(form.current, form.next);
-      navigate(back, { replace: true, state: { notice: 'Password changed' } });
+      toast('Password changed');
+      navigate(back, { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
