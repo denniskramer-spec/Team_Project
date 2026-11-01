@@ -25,18 +25,20 @@
   color-scheme: dark;
 
   /* Surfaces, from the page back to raised elements. */
-  --bg: #151619;
-  --surface: #1c1d21;
-  --surface-2: #24262b;
-  --popover: #1f2025;
-  --input: #111214;
-  --border: #2b2e34;
-  --border-strong: #3a3e46;
+  /* A soft charcoal, not near-black: the page is the lightest layer and the
+     chrome around it (header, rail, side panels) one step darker. */
+  --bg: #313338;
+  --surface: #2b2d31;
+  --surface-2: #383a40;
+  --popover: #232428;
+  --input: #1e1f22;
+  --border: #3f4147;
+  --border-strong: #4e5058;
 
   /* Text. */
-  --text: #d5d8dd;
-  --text-strong: #f6f7f8;
-  --muted: #8b919b;
+  --text: #dbdee1;
+  --text-strong: #f2f3f5;
+  --muted: #949ba4;
   --link: #6ea8fe;
 
   /* Semantic colours and their soft tints (for pills, notes, alerts). */

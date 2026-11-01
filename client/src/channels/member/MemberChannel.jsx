@@ -47,7 +47,11 @@ export default function MemberChannel({ title }) {
   if (showDisabled) params.set('status', 'disabled');
 
   const { data, error, loading, reload } = useLiveData(`/members?${params}`, ['directory:changed', 'resident:changed']);
-  const all = useMemo(() => data?.members ?? [], [data]);
+  // Admins are left out of the directory (Users & roles lists them); the
+  // team leader heads it, everyone else keeps the server's name order.
+  const all = useMemo(() => (data?.members ?? [])
+    .filter((m) => m.role !== 'admin')
+    .sort((a, b) => (b.role === 'leader') - (a.role === 'leader')), [data]);
   // Picking a member in the tree narrows the list to that person.
   const members = useMemo(() => (selectedMember ? all.filter((m) => String(m.id) === selectedMember) : all), [all, selectedMember]);
   const sorter = useSort(members, COLUMNS);
