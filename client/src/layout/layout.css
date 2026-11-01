@@ -420,25 +420,6 @@
   border-bottom: 1px solid var(--border);
 }
 .content-head h2 { margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.content-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.panel-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--control-h-sm);
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.panel-btn:hover { color: var(--text); background: var(--hover); }
-.panel-btn.on { color: var(--accent); border-color: transparent; background: var(--accent-soft); }
-.panel-btn .badge { margin-left: 2px; }
 .content-body { flex: 1; overflow-y: auto; padding: clamp(12px, 2vw, 24px); }
 /* Text people type (names, notes, links) can hold one very long word. It
    breaks where it must rather than pushing the page wider than the window
@@ -481,6 +462,27 @@ select, input, textarea { max-width: 100%; }
   transition: width 0.2s ease, visibility 0.2s;
 }
 .side-panel.open { width: var(--panel-w); visibility: visible; }
+.panel-collapse {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  z-index: 21;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 48px;
+  padding: 0;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: pointer;
+  transition: right 0.2s ease;
+}
+.panel-collapse.open { right: var(--panel-w); }
+.panel-collapse:hover { color: var(--text); background: var(--hover); }
 .panel-tabs {
   height: 48px;
   flex-shrink: 0;
@@ -544,8 +546,6 @@ select, input, textarea { max-width: 100%; }
   .hamburger { display: grid; }
   .crumbs { padding-left: 8px; }
   .crumb-label { max-width: 110px; }
-  .panel-btn .panel-btn-label { display: none; }
-  .panel-btn { padding: 0 7px; }
   .live-label { display: none; }
   .live { margin-right: 2px; }
   .footer { gap: 10px; padding: 0 10px; }

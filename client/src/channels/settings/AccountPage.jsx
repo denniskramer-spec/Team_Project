@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useAlerts } from '../../alerts/AlertsContext.jsx';
 import { useTheme } from '../../theme.js';
@@ -13,6 +13,7 @@ import ProfileForm from '../../components/ProfileForm.jsx';
 // how it gets your attention. The same things the header menu and the
 // Alerts tab offer, gathered in one place.
 export default function AccountPage() {
+  const location = useLocation();
   const { user, logout } = useAuth();
   const { settings, updateSettings, desktopSupported, testSound } = useAlerts();
   const [theme, toggleTheme] = useTheme();
@@ -46,7 +47,7 @@ export default function AccountPage() {
             <div className="strong">Password</div>
             <div className="muted small">Changing it logs out your other devices.</div>
           </div>
-          <Link className="btn small-btn" to="/change-password"><Icon name="key" size={14} /> Change password</Link>
+          <Link className="btn small-btn" to="/change-password" state={{ back: location.pathname + location.search }}><Icon name="key" size={14} /> Change password</Link>
         </div>
       </section>
 

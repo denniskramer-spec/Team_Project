@@ -6,6 +6,7 @@ import {
 } from '../src/utils/visibility.js';
 import { canSendTo, canModify, canView, isRecipient } from '../src/utils/instructionPolicy.js';
 import { deleteModeFor, deletedFilter, canEditMessage } from '../src/utils/chatPolicy.js';
+import { RESET_VALID_HOURS, resetExpired } from '../src/utils/password.js';
 
 const A = 'a'.repeat(24);
 const B = 'b'.repeat(24);
@@ -112,4 +113,14 @@ test('who deletes chat messages, and how', () => {
   assert.deepEqual(deletedFilter(memberA), { deletedAt: null });
   assert.deepEqual(deletedFilter(bossA), {});
   assert.deepEqual(deletedFilter(leader), {});
+});
+
+test('a reset password works for RESET_VALID_HOURS only', () => {
+  const hours = (h) => new Date(Date.now() - h * 60 * 60 * 1000);
+  assert.ok(!resetExpired({ mustChangePassword: true, passwordResetAt: hours(1) }));
+  assert.ok(!resetExpired({ mustChangePassword: true, passwordResetAt: hours(RESET_VALID_HOURS - 0.1) }));
+  assert.ok(resetExpired({ mustChangePassword: true, passwordResetAt: hours(RESET_VALID_HOURS + 0.1) }));
+  // Not a reset (a new account, a weak password) or already changed: no limit.
+  assert.ok(!resetExpired({ mustChangePassword: true, passwordResetAt: null }));
+  assert.ok(!resetExpired({ mustChangePassword: false, passwordResetAt: hours(100) }));
 });

@@ -20,6 +20,9 @@ export const EVENTS = {
   PRESENCE_OFFLINE: 'presence:offline',
   SETTINGS_CHANGED: 'settings:changed',
   SECURITY_ALERT: 'security:alert',
+  INCOME_RECORDED: 'income:recorded',
+  RATES_CHANGED: 'rates:changed',
+  CHAT_BUZZ: 'chat:buzz',
 };
 
 // Text lengths (routes/chat.js checkContent, routes/instructions.js checkBody).

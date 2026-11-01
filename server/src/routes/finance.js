@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import Income from '../models/Income.js';
+import { REAL_INCOME } from '../utils/incomeApproval.js';
 import Outcome from '../models/Outcome.js';
 import { requireAuth } from '../middleware/auth.js';
 import { forbidden } from '../utils/httpError.js';
@@ -43,7 +44,7 @@ router.get('/total', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
   const [incomes, outcomes] = await Promise.all([
-    Income.find(filter).populate('member', PERSON_FIELDS).populate('task', 'name').lean(),
+    Income.find({ ...filter, ...REAL_INCOME }).populate('member', PERSON_FIELDS).populate('task', 'name').lean(),
     Outcome.find(filter).populate('member', PERSON_FIELDS).populate('group', 'name slug').lean(),
   ]);
   const people = await peopleInScope(req.user, { groupId, memberId }, [...incomes, ...outcomes].map((r) => ownerId(r, 'member')));
@@ -73,7 +74,7 @@ router.get('/total', async (req, res) => {
   ].sort((a, b) => (b.date - a.date) || (b.createdAt - a.createdAt));
 
   const [incomeSums, outcomeSums] = await Promise.all([
-    perGroupSums(Income, req.user, allowed, period),
+    perGroupSums(Income, req.user, allowed, period, { where: REAL_INCOME }),
     perGroupSums(Outcome, req.user, allowed, period),
   ]);
   const perGroup = groupTiles(allowed, (k) => incomeSums.has(k) || outcomeSums.has(k), (k) => {

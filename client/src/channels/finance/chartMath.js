@@ -69,12 +69,16 @@ export function columnLayout({ width, rows, perGroup, maxValue }) {
 const TOOLTIP_HALF = 150; // half of .chart-tooltip's max-width
 export const tooltipLeft = (x, width) => Math.min(Math.max(x, TOOLTIP_HALF), Math.max(width - TOOLTIP_HALF, TOOLTIP_HALF));
 
-// Top and lowest among the rows that have something recorded (`active`; by
-// default a value above 0). Everyone tied at the top or bottom is tagged;
-// nothing is tagged with fewer than two such rows or when they are all
-// equal; a row with nothing recorded is never tagged — "Lowest" would
-// otherwise mark half the chart. Returns (i) => 'top' | 'low' | ''.
-export function rankOf(values, active = values.map((v) => v > 0)) {
+// Who takes part in the Finance rankings: active members and bosses. The
+// team leader, admins, disabled accounts and team costs have columns but
+// are never ranked.
+export const isRanked = (member) => (member?.role === 'member' || member?.role === 'boss') && !member.note;
+
+// Top and lowest among the ranked rows (`active`), counting nothing recorded
+// as 0, so someone with no income is the lowest. Everyone tied at the top or
+// bottom is tagged; nothing is tagged with fewer than two ranked rows or when
+// they are all equal. Returns (i) => 'top' | 'low' | ''.
+export function rankOf(values, active) {
   const live = values.filter((_, i) => active[i]);
   const best = Math.max(...live);
   const worst = Math.min(...live);

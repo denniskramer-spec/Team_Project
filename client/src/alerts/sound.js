@@ -61,3 +61,11 @@ export function playMessage() {
   tone(ac, 880, t, 0.12, 0.12);
   tone(ac, 1320, t + 0.08, 0.18, 0.1);
 }
+
+// A buzz (someone shook this screen from a chat): a low, rattling rumble.
+export function playBuzz() {
+  const ac = ready();
+  if (!ac) return;
+  const t = ac.currentTime;
+  for (let i = 0; i < 8; i += 1) tone(ac, i % 2 ? 140 : 180, t + i * 0.07, 0.09, 0.3);
+}

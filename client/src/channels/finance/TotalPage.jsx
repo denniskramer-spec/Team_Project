@@ -5,7 +5,7 @@ import Icon from '../../components/Icon.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinancePage, { GroupTiles } from './FinancePage.jsx';
 import { useFinancePage } from './useFinancePage.js';
-import { rankOf } from './chartMath.js';
+import { isRanked, rankOf } from './chartMath.js';
 import DateTag from '../../components/DateTag.jsx';
 import { useSort, Th } from '../../components/SortTable.jsx';
 
@@ -18,15 +18,16 @@ const SERIES = [
 const signed = (n) => ({ text: `${n < 0 ? '−' : '+'}${formatAmount(Math.abs(n))}`, cls: n < 0 ? 'net-bad' : 'net-good' });
 
 // Net above each member's pair of columns. The best and worst net among
-// the people with something recorded get the Top / Lowest highlight, like
-// the Income chart (see rankOf); someone with nothing recorded gets no tag.
+// members and bosses get the Top / Lowest highlight, like the Income chart
+// (see rankOf: nothing recorded counts as 0). Anyone else with records
+// shows their net, unranked.
 const netOf = (row) => row.values.income - row.values.outcome;
 const hasActivity = (row) => Boolean(row.values.income || row.values.outcome);
 function netTags(rows) {
-  const rank = rankOf(rows.map(netOf), rows.map(hasActivity));
+  const rank = rankOf(rows.map(netOf), rows.map((r) => isRanked(r.member)));
   return (row, all, i) => {
-    if (!hasActivity(row)) return null;
     const net = netOf(row);
+    if (!rank(i) && !hasActivity(row)) return null;
     if (rank(i) === 'top') return { text: `★ Top ${signed(net).text}`, cls: 'top', color: 'var(--series-3)' };
     if (rank(i) === 'low') return { text: `▼ Lowest ${signed(net).text}`, cls: 'low', color: 'var(--status-warning)' };
     return { text: signed(net).text, cls: 'net', color: net < 0 ? 'var(--series-2)' : 'var(--series-3)' };
@@ -127,7 +128,7 @@ function TotalBody({ data, group, currency, by, setBy }) {
   const { money } = currency;
   const p = data.period;
   const net = signed(data.net);
-  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: c.income, outcome: c.outcome } }));
+  const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { income: c.income, outcome: c.outcome }, member: c.member }));
   const { history } = data;
   const recordCount = data.counts.income + data.counts.outcome;
   const groups = groupHistory(history, by);

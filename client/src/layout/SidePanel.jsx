@@ -145,25 +145,6 @@ function TeamToday({ onMessage }) {
   );
 }
 
-// Birthdays and project expiries in the next two weeks.
-function Upcoming() {
-  const { data } = useLiveData('/users/upcoming', [EVENTS.DIRECTORY_CHANGED, EVENTS.TASK_CHANGED]);
-  const items = [
-    ...(data?.birthdays ?? []).map((b) => ({ key: `b-${b.id}`, icon: 'cake', text: `${b.name}'s birthday`, when: b.inDays })),
-    ...(data?.expiries ?? []).map((e) => ({ key: `e-${e.id}`, icon: 'briefcase', text: `${e.name}${e.owner ? ` · ${e.owner}` : ''} expires`, when: e.inDays })),
-  ].sort((a, b) => a.when - b.when);
-  if (!items.length) return null;
-  const when = (d) => (d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`);
-  return (
-    <section className="panel-block">
-      <div className="panel-section-head"><h4>Coming up</h4></div>
-      <ul className="upcoming-list">
-        {items.map((i) => <li key={i.key}><Icon name={i.icon} size={14} className="muted" /><span className="today-name">{i.text}</span><span className="muted small">{when(i.when)}</span></li>)}
-      </ul>
-    </section>
-  );
-}
-
 function Members({ onMessage }) {
   const { online } = useSocket();
   const [peek, setPeek] = useState(null);
@@ -198,7 +179,6 @@ function Members({ onMessage }) {
     <>
       <MyDay />
       <TeamToday onMessage={(r) => onMessage({ id: r.id, name: r.name, role: r.role, group: r.group })} />
-      <Upcoming />
       {sections.map((s) => (
         <section key={s.key} className="member-section">
           <h4>{s.label}</h4>
@@ -224,6 +204,10 @@ export default function SidePanel({ open, onToggle, tab, setTab }) {
 
   return (
     <>
+      {/* A tab just outside the panel's left edge hides it, or shows it again. */}
+      <button type="button" className={`panel-collapse ${open ? 'open' : ''}`} onClick={onToggle} title={open ? 'Hide panel' : 'Show panel'} aria-label={open ? 'Hide panel' : 'Show panel'} aria-expanded={open}>
+        <Icon name={open ? 'chevronRight' : 'chevronLeft'} size={14} />
+      </button>
       <aside className={`side-panel ${open ? 'open' : ''}`} aria-hidden={!open}>
         <div className="panel-tabs">
           <button className={tab === 'members' ? 'active' : ''} onClick={() => setTab('members')}>Members</button>

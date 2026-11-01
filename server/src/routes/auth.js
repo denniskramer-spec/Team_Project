@@ -18,6 +18,7 @@ import AuditLog from '../models/AuditLog.js';
 import { clientIp } from '../utils/audit.js';
 import { env } from '../config/env.js';
 import { isCommonPassword } from '../utils/commonPasswords.js';
+import { RESET_VALID_HOURS, resetExpired } from '../utils/password.js';
 
 const router = Router();
 
@@ -141,6 +142,10 @@ router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) =
     req.audit = { action: 'auth.login.failed', username, details: { reason: 'account disabled' } };
     throw forbidden('Your account has been disabled');
   }
+  if (resetExpired(user)) {
+    req.audit = { action: 'auth.login.failed', username, details: { reason: 'reset password expired' } };
+    throw forbidden(`This reset password expired after ${RESET_VALID_HOURS} hours: ask your team leader or boss to reset it again`);
+  }
 
   // A login from an address this account has never used before is flagged.
   const ip = clientIp(req);
@@ -226,6 +231,7 @@ router.post('/change-password', requireAuth, passwordLimiter, async (req, res) =
 
   await user.setPassword(newPassword);
   user.mustChangePassword = false;
+  user.passwordResetAt = null;
   await user.save();
   req.audit = { action: 'auth.password', details: null };
 

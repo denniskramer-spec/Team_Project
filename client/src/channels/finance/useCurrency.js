@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { formatAmount } from '../../format.js';
+import { useSocketEvent } from '../../socket/SocketContext.jsx';
+import { EVENTS } from '../../constants.js';
 
 const SYMBOLS = { USD: '$', EUR: '€', GBP: '£', CAD: 'CA$', AUD: 'A$', BRL: 'R$' };
 const EMPTY = { base: 'USD', rates: { USD: 1 }, currencies: ['USD'], source: '', rateDate: '', fetchedAt: null };
 
-// Shared across the Finance pages: today's rates are fetched once per session.
+// Shared across the Finance pages: today's rates are fetched once, and again
+// whenever the server fetches new ones (it checks every hour).
 let cached = null;
 let loading = null;
 const listeners = new Set();
 const tell = () => listeners.forEach((fn) => fn());
+
+// The server has new rates: the next fetch asks again.
+function reloadRates() {
+  if (loading) return;
+  cached = null;
+  fetchRates();
+}
 
 function fetchRates() {
   if (cached) return Promise.resolve(cached);
@@ -35,6 +45,7 @@ export function useCurrency() {
     fetchRates().then(sync);
     return () => listeners.delete(sync);
   }, []);
+  useSocketEvent(EVENTS.RATES_CHANGED, reloadRates);
 
   const symbol = SYMBOLS[rates.base] ?? `${rates.base} `;
   const money = useCallback((n) => `${symbol}${formatAmount(Number(n) || 0)}`, [symbol]);

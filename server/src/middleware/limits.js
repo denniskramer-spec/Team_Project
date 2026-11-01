@@ -52,6 +52,13 @@ export const chatLimit = perUser({
   message: 'You are sending messages too fast, please wait a moment',
 });
 
+// Shaking someone's screen from a chat: once every 10 seconds.
+export const buzzLimit = perUser({
+  windowMs: 10 * 1000,
+  limit: 1,
+  message: 'You just shook this screen, please wait a few seconds',
+});
+
 // Instructions reach many people at once: 10 a minute, and 3 urgent ones
 // (each of those raises an alarm on every recipient's screen).
 export const instructionLimit = perUser({

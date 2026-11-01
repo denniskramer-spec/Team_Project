@@ -14,13 +14,17 @@ function copiedText(event) {
   return window.getSelection()?.toString() ?? '';
 }
 
+// Also for copies made by a button (navigator.clipboard), which fire no
+// copy event.
+export function noteCopy(value) {
+  const text = String(value ?? '').slice(0, MAX_TEXT);
+  if (!MAYBE.test(text)) return;
+  api('/copies', { method: 'POST', body: { text, page: window.location.pathname } }).catch(() => {});
+}
+
 export function useCopyWatch() {
   useEffect(() => {
-    const onCopy = (event) => {
-      const text = copiedText(event).slice(0, MAX_TEXT);
-      if (!MAYBE.test(text)) return;
-      api('/copies', { method: 'POST', body: { text, page: window.location.pathname } }).catch(() => {});
-    };
+    const onCopy = (event) => noteCopy(copiedText(event));
     document.addEventListener('copy', onCopy);
     document.addEventListener('cut', onCopy);
     return () => {

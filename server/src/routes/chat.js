@@ -6,12 +6,12 @@ import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, checkEmoji } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
-import { chatLimit } from '../middleware/limits.js';
+import { chatLimit, buzzLimit } from '../middleware/limits.js';
 import { chatEvent, navChangedFor, dmEvent } from '../socket/events.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
@@ -21,6 +21,23 @@ router.use(requireAuth);
 
 const PAGE_SIZE = 50;
 const AUTHOR_FIELDS = 'name role username';
+const MAX_REACTIONS = 20; // different emoji on one message
+// What a message needs loaded to be sent to the client.
+const POPULATE = [
+  { path: 'author', select: AUTHOR_FIELDS },
+  { path: 'reactions.users', select: 'name' },
+  { path: 'offTopic.by', select: 'name' },
+  { path: 'replyTo', select: 'author content images deletedAt', populate: { path: 'author', select: 'name' } },
+];
+
+// The message answered, as one line. A message since deleted (or hidden by
+// its member author) shows as deleted: this goes to everyone in the chat.
+// `id` is the stored reference: populate leaves null where the message is gone.
+const replyOf = (r, id) => {
+  if (!r) return id ? { id, deleted: true } : null;
+  if (r.deletedAt) return { id: r._id, deleted: true };
+  return { id: r._id, authorName: r.author?.name ?? 'Deleted user', preview: previewOf(r).slice(0, 140) };
+};
 
 const serialize = (m) => ({
   id: m._id,
@@ -32,6 +49,12 @@ const serialize = (m) => ({
   createdAt: m.createdAt,
   editedAt: m.editedAt,
   deletedAt: m.deletedAt ?? null,
+  offTopic: m.offTopic?.at ? { at: m.offTopic.at, by: m.offTopic.by?.name ?? 'Former member' } : null,
+  replyTo: replyOf(m.replyTo, m.populated?.('replyTo')),
+  reactions: (m.reactions ?? []).filter((r) => r.users?.length).map((r) => ({
+    emoji: r.emoji,
+    users: r.users.map((u) => ({ id: u._id ?? u, name: u.name ?? 'Former member' })),
+  })),
 });
 
 // A message is text, images, or both; `hasImages` says whether it will
@@ -77,7 +100,7 @@ router.get('/:titleKey/messages', async (req, res) => {
   const filter = { channelKey: channel.key, ...deletedFilter(req.user), ...olderThan(req.query) };
 
   const found = await Message.find(filter).sort(NEWEST_FIRST).limit(PAGE_SIZE + 1)
-    .populate('author', AUTHOR_FIELDS);
+    .populate(POPULATE);
   const page = found.slice(0, PAGE_SIZE).reverse(); // oldest first for display
   const read = await ChatRead.findOne({ user: req.user._id, channelKey: channel.key }).lean();
 
@@ -98,11 +121,22 @@ router.post('/:titleKey/upload', uploadLimiter(), async (req, res, next) => {
   res.status(201).json({ images: (req.files ?? []).map(describeUpload) });
 });
 
-// POST /api/chat/:titleKey/messages { content, images? }
+// The message being answered: it must be in the same chat and visible to
+// the one answering.
+async function checkReplyTo(value, channel, user) {
+  if (value == null || value === '') return null;
+  if (!mongoose.isValidObjectId(value)) throw badRequest('That message cannot be answered');
+  const original = await Message.findOne({ _id: value, channelKey: channel.key, ...deletedFilter(user) }, '_id').lean();
+  if (!original) throw badRequest('That message cannot be answered');
+  return original._id;
+}
+
+// POST /api/chat/:titleKey/messages { content, images?, replyTo? }
 router.post('/:titleKey/messages', chatLimit, async (req, res) => {
   const channel = await resolveChannel(req.user, req.params.titleKey);
   const images = (await checkImages(req.body.images)) ?? [];
   const content = checkContent(req.body.content, images.length > 0);
+  const replyTo = await checkReplyTo(req.body.replyTo, channel, req.user);
 
   const message = await new Message({
     channelKey: channel.key,
@@ -111,8 +145,9 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
     ...(channel.kind === 'dm' ? { peers: channel.peers } : {}),
     content,
     images,
+    replyTo,
   }).save();
-  await message.populate('author', AUTHOR_FIELDS);
+  await message.populate(POPULATE);
 
   // Sending counts as having read the chat.
   await ChatRead.touch(req.user._id, channel.key, message.createdAt);
@@ -121,6 +156,20 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
     titleKey, channelName: peer ? peer.name : channel.name, message: serialize(message), dm: channel.kind === 'dm',
   }));
   res.status(201).json({ message: serialize(message) });
+});
+
+// POST /api/chat/:titleKey/buzz — shakes the screens of the people in the
+// chat: the other side of a DM, or everyone who reads a channel (leader,
+// bosses and admins only). Nothing is stored; whoever is not online misses it.
+router.post('/:titleKey/buzz', buzzLimit, async (req, res) => {
+  const channel = await resolveChannel(req.user, req.params.titleKey);
+  if (channel.kind !== 'dm' && !canBuzzChannel(req.user)) throw forbidden('Only the team leader and bosses can shake a whole chat');
+  const at = new Date();
+  sendChatEvent('chat:buzz', channel, req.user, (titleKey, peer) => ({
+    titleKey, channelName: peer ? peer.name : channel.name, dm: channel.kind === 'dm',
+    from: { id: req.user._id, name: req.user.name, role: req.user.role }, at,
+  }));
+  res.json({ ok: true });
 });
 
 // Sends a chat event to everyone in the channel. In a DM each side gets the
@@ -139,7 +188,7 @@ function sendChatEvent(event, channel, user, payloadFor) {
 
 async function findMessage(req) {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Message not found');
-  const message = await Message.findById(req.params.id).populate('author', AUTHOR_FIELDS);
+  const message = await Message.findById(req.params.id).populate(POPULATE);
   if (!message || (message.deletedAt && !seesDeletedMessages(req.user))) throw notFound('Message not found');
   // Re-check that the user may open this chat at all.
   if (isDmKey(message.channelKey) && !message.peers?.some((p) => String(p) === String(req.user._id))) throw notFound('Message not found');
@@ -156,6 +205,48 @@ router.patch('/messages/:id', async (req, res) => {
   message.content = checkContent(req.body.content, message.images?.length > 0);
   message.editedAt = new Date();
   await message.save();
+
+  sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(message) }));
+  res.json({ message: serialize(message) });
+});
+
+// POST /api/chat/messages/:id/reactions { emoji } — adds this person's
+// reaction, or takes it back if they already reacted with that emoji.
+router.post('/messages/:id/reactions', async (req, res) => {
+  const { message, channel } = await findMessage(req);
+  if (message.deletedAt) throw badRequest('This message was deleted');
+  const emoji = checkEmoji(req.body.emoji);
+  const me = req.user._id;
+  // Atomic updates, so two people reacting at once do not undo each other.
+  const mine = message.reactions.some((r) => r.emoji === emoji && r.users.some((u) => String(u._id ?? u) === String(me)));
+  if (mine) {
+    await Message.updateOne({ _id: message._id, 'reactions.emoji': emoji }, { $pull: { 'reactions.$.users': me } });
+    await Message.updateOne({ _id: message._id }, { $pull: { reactions: { users: { $size: 0 } } } });
+  } else {
+    const added = await Message.updateOne(
+      { _id: message._id, reactions: { $not: { $elemMatch: { emoji } } }, [`reactions.${MAX_REACTIONS - 1}`]: { $exists: false } },
+      { $push: { reactions: { emoji, users: [me] } } },
+    );
+    if (!added.modifiedCount) {
+      const joined = await Message.updateOne({ _id: message._id, 'reactions.emoji': emoji }, { $addToSet: { 'reactions.$.users': me } });
+      if (!joined.matchedCount) throw badRequest('This message has too many different reactions');
+    }
+  }
+  const updated = await Message.findById(message._id).populate(POPULATE);
+  if (!updated) throw notFound('Message not found');
+
+  sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(updated) }));
+  res.json({ message: serialize(updated) });
+});
+
+// POST /api/chat/messages/:id/off-topic { flagged } — marks a message as not
+// about work (or takes the flag back).
+router.post('/messages/:id/off-topic', async (req, res) => {
+  const { message, channel } = await findMessage(req);
+  if (!canFlagOffTopic(req.user, message)) throw forbidden('You cannot flag this message');
+  message.offTopic = req.body.flagged ? { by: req.user._id, at: new Date() } : null;
+  await message.save();
+  await message.populate(POPULATE);
 
   sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(message) }));
   res.json({ message: serialize(message) });

@@ -213,7 +213,8 @@ export function buildNav(user, groups, {
       icon: 'coins',
       // Income, outcome (leader and bosses record it) and the total of both.
       // The period is picked in the page toolbar, not here.
-      // The badge counts income far from what the work expected, unchecked.
+      // The badge counts income far from what the work expected, unchecked,
+      // and members' income waiting for approval (the leader's, a boss's group).
       ...(incomeChecks ? { badge: incomeChecks } : {}),
       titles: [
         { key: 'income', name: 'Income', section: 'Finance', ...(incomeChecks ? { badge: incomeChecks } : {}) },

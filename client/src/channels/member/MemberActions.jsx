@@ -26,8 +26,8 @@ export default function MemberActions({ member, onChanged }) {
   };
 
   const resetPassword = () => run(async () => {
-    const { tempPassword } = await api(`/members/${member.id}/reset-password`, { method: 'POST' });
-    setDialog({ type: 'password', password: tempPassword });
+    const { tempPassword, expiresHours } = await api(`/members/${member.id}/reset-password`, { method: 'POST' });
+    setDialog({ type: 'password', password: tempPassword, expiresHours });
     setBusy(false);
   });
 
@@ -62,7 +62,7 @@ export default function MemberActions({ member, onChanged }) {
       {dialog?.type === 'confirm-reset' && (
         <ConfirmDialog
           title="Reset password?"
-          message={`${member.name} will be logged out everywhere and get a temporary password they must change at next login.`}
+          message={`${member.name} will be logged out everywhere and have their password set to 123456, which they must change at their next login, within 24 hours.`}
           confirmLabel="Reset password"
           busy={busy}
           onConfirm={resetPassword}
@@ -70,7 +70,7 @@ export default function MemberActions({ member, onChanged }) {
         />
       )}
       {dialog?.type === 'password' && (
-        <TempPassword title="Password reset" username={member.username} password={dialog.password} onClose={close} />
+        <TempPassword title="Password reset" username={member.username} password={dialog.password} expiresHours={dialog.expiresHours} onClose={close} />
       )}
       {dialog?.type === 'confirm-disable' && (
         <ConfirmDialog

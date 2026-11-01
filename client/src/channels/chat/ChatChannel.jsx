@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import Icon from '../../components/Icon.jsx';
+import { useToast } from '../../components/Toast.jsx';
 import Avatar from '../../components/Avatar.jsx';
 import { useWatchChat } from '../../alerts/ChatAlertsContext.jsx';
 import { windowFocused } from '../../alerts/notify.js';
@@ -12,13 +13,17 @@ import { useStickyScroll } from './useStickyScroll.js';
 import { buildRows } from './buildRows.js';
 import MessageList from './MessageList.jsx';
 import ChatComposer from './ChatComposer.jsx';
+import { DesktopAlertsBar } from '../../alerts/Buzz.jsx';
 
 // A channel (#general-chat, a group's chat, #finance-chat) or a direct
 // message (title key dm-<userId>, `title.dm` is the other person): the same
 // screen on the same API, with the name drawn differently.
 export default function ChatChannel({ title }) {
   const { user } = useAuth();
+  const toast = useToast();
   const dm = title.dm ?? null;
+  const [replyTo, setReplyTo] = useState(null); // the message being answered
+  useEffect(() => setReplyTo(null), [title.key]);
 
   // The chat is read up to the newest message on screen, but only while the
   // reader is looking (a background tab keeps its unread count), and only
@@ -59,8 +64,23 @@ export default function ChatChannel({ title }) {
 
   const onSent = (message) => {
     scroll.stick.current = true;
+    setReplyTo(null);
     chat.append(message);
   };
+  // A message deleted while being answered cannot be answered any more.
+  useEffect(() => {
+    if (replyTo && !messages.some((m) => m.id === replyTo.id && !m.deletedAt)) setReplyTo(null);
+  }, [messages, replyTo]);
+
+  // Clicking a reply's quote shows the message it answers, if it is loaded.
+  const jumpTo = useCallback((id) => {
+    const el = document.getElementById(`msg-${id}`);
+    if (!el) { toast('That message is further up: load older messages to see it'); return; }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('flash');
+  }, [toast]);
   const jumpToBottom = () => { scroll.jumpToBottom(); markRead(); };
 
   const rows = buildRows(messages, chat.lastReadAt, user.id);
@@ -83,6 +103,7 @@ export default function ChatChannel({ title }) {
       <MessageList
         rows={rows}
         user={user}
+        dm={Boolean(dm)}
         loading={chat.loading}
         error={chat.error}
         empty={empty}
@@ -92,6 +113,8 @@ export default function ChatChannel({ title }) {
         scroll={scroll}
         onChanged={chat.applyChange}
         onDeleted={chat.applyDelete}
+        onReply={setReplyTo}
+        onJump={jumpTo}
       />
 
       {!scroll.atBottom && (
@@ -110,7 +133,8 @@ export default function ChatChannel({ title }) {
         )}
       </div>
 
-      <ChatComposer titleKey={title.key} name={name} dm={dm} onSent={onSent} onTyping={typing.noteTyping} />
+      <DesktopAlertsBar />
+      <ChatComposer titleKey={title.key} name={name} dm={dm} onSent={onSent} onTyping={typing.noteTyping} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} canBuzz={Boolean(dm) || ['leader', 'boss', 'admin'].includes(user.role)} />
     </div>
   );
 }

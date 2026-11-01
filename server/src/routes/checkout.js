@@ -3,6 +3,7 @@ import Plan, { PLAN_STATES } from '../models/Plan.js';
 import Report from '../models/Report.js';
 import Task from '../models/Task.js';
 import Income from '../models/Income.js';
+import { REAL_INCOME } from '../utils/incomeApproval.js';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -85,7 +86,7 @@ router.get('/', async (req, res) => {
     Report.find(withGroup({ ...authors, ...inside, scope: 'personal' }, 'author'), REPORT_FIELDS).lean(),
     // Tasks that overlap the period at all.
     Task.find(withGroup({ ...owners, startDate: { $lt: period.end }, $or: [{ endDate: null }, { endDate: { $gte: period.start } }] }, 'owner')).lean(),
-    Income.find(withGroup({ ...members, date: { $gte: period.start, $lt: period.end } }, 'member'), INCOME_FIELDS).lean(),
+    Income.find(withGroup({ ...members, ...REAL_INCOME, date: { $gte: period.start, $lt: period.end } }, 'member'), INCOME_FIELDS).lean(),
     // The people listed follow the same role rules: a boss sees their group,
     // a member only themselves.
     User.find(withGroup({
@@ -139,7 +140,7 @@ router.get('/', async (req, res) => {
     const owners = [...new Set(ended.map((p) => String(p.owner)))];
     const [planReports, planIncomes] = await Promise.all([
       Report.find({ scope: 'personal', type: 'daily', author: { $in: owners }, periodStart: { $gte: from, $lt: to } }, 'author group periodStart jobBid bid aiBid resumes forms').lean(),
-      Income.find({ member: { $in: owners }, date: { $gte: from, $lt: to } }, 'member group date amount').lean(),
+      Income.find({ member: { $in: owners }, ...REAL_INCOME, date: { $gte: from, $lt: to } }, 'member group date amount').lean(),
     ]);
     for (const p of ended) p.status = planStatus(p, achievedFor(p, planReports, planIncomes), now);
   }

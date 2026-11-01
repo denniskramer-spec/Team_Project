@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
 import Income from '../models/Income.js';
+import { REAL_INCOME } from '../utils/incomeApproval.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
@@ -104,7 +105,7 @@ router.get('/', async (req, res) => {
       ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { author: readable.owner } : {}),
     }, [...PLAN_ITEMS.map((i) => i.key), 'bid', 'author', 'group'].join(' ')).lean(),
     Income.find({
-      date: inside,
+      date: inside, ...REAL_INCOME,
       ...(readable.group ? { group: readable.group } : {}), ...(readable.owner ? { member: readable.owner } : {}),
     }, 'member group amount').lean(),
   ]);
