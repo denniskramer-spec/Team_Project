@@ -19,7 +19,7 @@ const readLastActive = () => {
 
 export default function IdleLogout() {
   const { user, session, logout } = useAuth();
-  const idleMs = (session?.idleMinutes ?? 30) * 60 * 1000;
+  const idleMs = (session?.idleMinutes ?? 7 * 24 * 60) * 60 * 1000;
   const lastActive = useRef(Date.now());
   const lastPing = useRef(Date.now());
   const [left, setLeft] = useState(null);

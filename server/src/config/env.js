@@ -30,10 +30,11 @@ export const env = {
   uploadsDir: process.env.UPLOADS_DIR || null,
   jwtSecret: process.env.JWT_SECRET,
   // The longest a login lasts, however busy (admins and the team leader:
-  // ADMIN_SESSION_HOURS), and how long it survives without use.
+  // ADMIN_SESSION_HOURS), and how long it survives without use. All 7 days
+  // by default: nobody is logged out sooner.
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS) || 12,
-  sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 30,
+  adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS) || 7 * 24,
+  sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 7 * 24 * 60,
   seedAdmin: {
     username: process.env.SEED_ADMIN_USERNAME,
     password: process.env.SEED_ADMIN_PASSWORD,
