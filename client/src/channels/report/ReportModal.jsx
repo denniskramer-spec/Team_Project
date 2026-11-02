@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import Icon from '../../components/Icon.jsx';
 import { GoalHint } from './BidGoals.jsx';
-import { formatClock } from '../../format.js';
+import { formatClock, formatAmount } from '../../format.js';
 
 const RESULTS = [{ key: 'well', label: 'Went well' }, { key: 'mixed', label: 'Mixed' }, { key: 'bad', label: "Didn't go well" }];
 const EMPTY_CALL = { time: '', title: '', profile: '', caller: '', result: '', note: '' };
@@ -30,7 +30,7 @@ function toForm(r, context) {
 // hourly project, price × tasks done on a per-task one.
 const unitsOf = (p, w) => (p.priceUnit === 'hour' ? Number(w?.hours) : p.priceUnit === 'task' ? Number(w?.count) : 0) || 0;
 const earns = (p, w) => (p.price > 0 && unitsOf(p, w) > 0 ? p.price * unitsOf(p, w) * (1 - (p.residentPercent || 0) / 100) : 0);
-const money = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
+const money = (n) => formatAmount(n);
 
 function Section({ title, meta, children }) {
   return (

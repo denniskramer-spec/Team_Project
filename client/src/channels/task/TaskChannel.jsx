@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
-import { formatDay, formatAmount } from '../../format.js';
+import { formatDay, formatAmount, formatNumber } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
 import { WRITE_REPORT_PATH } from '../../constants.js';
@@ -65,7 +65,7 @@ function WorkLog({ projectId }) {
           <tbody>
             {log.map((entry) => (
               <tr key={entry.period}>
-                <th scope="row">{dayLabel(entry.period)}{(entry.hours || entry.count) ? <span className="muted small work-hours">{entry.hours ? `${entry.hours} h` : `${entry.count} tasks`}{entry.amount ? ` · ${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(entry.amount)}${entry.paid ? ' paid' : ''}` : ''}</span> : null}</th>
+                <th scope="row">{dayLabel(entry.period)}{(entry.hours || entry.count) ? <span className="muted small work-hours">{entry.hours ? `${entry.hours} h` : `${entry.count} tasks`}{entry.amount ? ` · ${formatAmount(entry.amount)}${entry.paid ? ' paid' : ''}` : ''}</span> : null}</th>
                 <td>
                   <ul className="work-lines">
                     {entry.lines.map((line, i) => <li key={i}>{line}</li>)}
@@ -119,7 +119,7 @@ function Detail({ project, isOwner, showOwner, onEdit }) {
               {project.endDate && <span className="muted small">{new Date(project.endDate) < new Date() ? 'Expired' : `Expires ${formatDay(project.endDate)}`}</span>}
             </dd>
           </div>
-          <div><dt>Days worked</dt><dd>{project.daysWorked} {project.daysWorked === 1 ? 'day' : 'days'}{project.hours > 0 && <span className="muted small">{formatAmount(project.hours)} h</span>}</dd></div>
+          <div><dt>Days worked</dt><dd>{project.daysWorked} {project.daysWorked === 1 ? 'day' : 'days'}{project.hours > 0 && <span className="muted small">{formatNumber(project.hours)} h</span>}</dd></div>
           <div><dt>Upcoming</dt><dd className="upcoming-amt">{formatAmount(project.upcoming)}<span className="muted small">reported, not paid yet</span></dd></div>
           <div><dt>Paid</dt><dd className="earned">{formatAmount(project.paid)}<span className="muted small">income recorded</span></dd></div>
         </dl>

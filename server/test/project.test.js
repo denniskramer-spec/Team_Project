@@ -4,7 +4,7 @@ import { formatPrice, checkPrice, workLines } from '../src/utils/project.js';
 
 test('prices read like "$65/hr"', () => {
   assert.equal(formatPrice({ price: 65, currency: 'USD', priceUnit: 'hour' }), '$65/hr');
-  assert.equal(formatPrice({ price: 1200.5, currency: 'EUR', priceUnit: 'month' }), '€1,200.5/mo');
+  assert.equal(formatPrice({ price: 1200.5, currency: 'EUR', priceUnit: 'month' }), '€1,200.50/mo');
   assert.equal(formatPrice({ price: 500, currency: 'BRL', priceUnit: 'fixed' }), 'R$500');
   assert.equal(formatPrice({}), '$0/hr');
 });

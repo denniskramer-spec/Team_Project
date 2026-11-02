@@ -62,7 +62,15 @@ export function shownOf(shown, total, what = 'records') {
 }
 
 // 1234.5 -> "1,234.5"
-export const formatAmount = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(n) || 0);
+// "1,234" for a whole amount, "1,234.50" when it has cents: never "1,234.5".
+const WHOLE = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+const CENTS = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Hours and other quantities: "3.5", "12".
+export const formatNumber = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(n) || 0);
+export const formatAmount = (n) => {
+  const value = Math.round((Number(n) || 0) * 100) / 100;
+  return (Number.isInteger(value) ? WHOLE : CENTS).format(value);
+};
 
 // "09:05" / "9:05 AM" in the browser's own convention, for message times,
 // report timestamps and the footer clock.
