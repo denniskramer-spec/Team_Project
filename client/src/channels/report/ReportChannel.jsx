@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext.jsx';
-import { formatAmount, formatClock, timeAgo } from '../../format.js';
+import { formatAmount, formatNumber, formatClock, timeAgo } from '../../format.js';
 import Icon from '../../components/Icon.jsx';
 import ReportModal from './ReportModal.jsx';
 import BidGoals from './BidGoals.jsx';
@@ -40,14 +40,14 @@ function GroupReports({ groups }) {
                   <div><dt>AI bids</dt><dd>{formatAmount(g.totals.aiBid)}</dd></div>
                   <div><dt>Résumés</dt><dd>{formatAmount(g.totals.resumes)}</dd></div>
                   <div><dt>Forms</dt><dd>{formatAmount(g.totals.forms)}</dd></div>
-                  <div><dt>Bidding h</dt><dd>{formatAmount(g.totals.biddingHours)}</dd></div>
+                  <div><dt>Bidding h</dt><dd>{formatNumber(g.totals.biddingHours)}</dd></div>
                 </dl>
               </div>
               <div className="rc-block">
                 <span className="rm-section-title">Projects · calls</span>
                 <dl className="rc-figures">
                   <div><dt>Projects written</dt><dd>{g.projectsWritten}</dd></div>
-                  <div><dt>Hours</dt><dd>{formatAmount(g.hours)}</dd></div>
+                  <div><dt>Hours</dt><dd>{formatNumber(g.hours)}</dd></div>
                   <div><dt>Calls</dt><dd>{g.calls}</dd></div>
                 </dl>
               </div>

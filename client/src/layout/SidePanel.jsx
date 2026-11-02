@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { useSocket, useSocketEvent } from '../socket/SocketContext.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ROLE_LABELS } from '../components/RoleBadge.jsx';
-import { formatAmount, formatBirthday, formatClock, timeAgo } from '../format.js';
+import { formatAmount, formatNumber, formatBirthday, formatClock, timeAgo } from '../format.js';
 import Avatar from '../components/Avatar.jsx';
 import Icon from '../components/Icon.jsx';
 import AlertsPanel from '../alerts/AlertsPanel.jsx';
@@ -45,7 +45,7 @@ function PeekCard({ id, onMessage, onClose }) {
             <span className={`status-pill ${STATE[t.state][0]}`}>{STATE[t.state][1]}{t.state === 'sent' ? ` ${formatClock(t.sentAt)}` : ''}</span>
           </div>
           {t.state !== 'missing' && (
-            <div className="muted small">Plan {t.planDone}/{t.planTotal} · applied {formatAmount(t.applied)} · {t.calls} calls · {formatAmount(t.hours)} h</div>
+            <div className="muted small">Plan {t.planDone}/{t.planTotal} · applied {formatAmount(t.applied)} · {t.calls} calls · {formatNumber(t.hours)} h</div>
           )}
           {peek.projects.length > 0 && (
             <ul className="peek-projects">

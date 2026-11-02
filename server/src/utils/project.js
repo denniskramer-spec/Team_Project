@@ -7,7 +7,8 @@ const SUFFIX = { hour: '/hr', task: '/task', day: '/day', week: '/wk', month: '/
 
 // "$65/hr", "€1,200/mo", "R$500" — how a project's price is shown.
 export function formatPrice({ price = 0, currency = 'USD', priceUnit = 'hour' } = {}) {
-  const amount = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Number(price) || 0);
+  const value = Math.round((Number(price) || 0) * 100) / 100;
+  const amount = new Intl.NumberFormat('en-US', Number.isInteger(value) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
   return `${SYMBOLS[currency] ?? `${currency} `}${amount}${SUFFIX[priceUnit] ?? ''}`;
 }
 
