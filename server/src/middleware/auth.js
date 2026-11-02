@@ -13,12 +13,16 @@ export const TOKEN_COOKIE = 'token';
 const ALGORITHM = 'HS256';
 const VERIFY = { algorithms: [ALGORITHM] };
 
-export const cookieOptions = {
+// Secure whenever the request came over HTTPS (directly, or through a proxy
+// trusted with TRUST_PROXY). Not on plain HTTP: a browser drops a Secure
+// cookie there (except on localhost), so logging in from another computer
+// at http://<this machine's IP> would silently fail.
+export const cookieOptions = (req) => ({
   httpOnly: true,
   sameSite: 'lax',
-  secure: env.isProd,
+  secure: Boolean(req?.secure),
   path: '/',
-};
+});
 
 const UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86400 };
 // "7d", "12h", "3600" -> seconds.
@@ -54,7 +58,7 @@ export function signToken(user, session = {}) {
 export function setSessionCookie(res, user, session) {
   const token = signToken(user, session);
   const { exp } = jwt.decode(token);
-  res.cookie(TOKEN_COOKIE, token, { ...cookieOptions, maxAge: exp * 1000 - Date.now() });
+  res.cookie(TOKEN_COOKIE, token, { ...cookieOptions(res.req), maxAge: exp * 1000 - Date.now() });
 }
 
 // Ends the session this request's token belongs to (logout). Returns the

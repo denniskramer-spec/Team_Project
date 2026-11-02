@@ -175,7 +175,7 @@ router.post('/logout', async (req, res) => {
     req.user = await User.findById(ended.sub, 'name username role').lean();
   }
   req.audit = { action: 'auth.logout', details: null };
-  res.clearCookie(TOKEN_COOKIE, cookieOptions);
+  res.clearCookie(TOKEN_COOKIE, cookieOptions(req));
   res.json({ ok: true });
 });
 
