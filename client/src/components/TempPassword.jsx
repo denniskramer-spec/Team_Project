@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import Icon from './Icon.jsx';
+import { copyText } from '../clipboard.js';
 
 // Shows a generated password once, with a copy button.
 // `expiresHours`: the password stops working after that long (a reset).
@@ -10,7 +11,7 @@ export default function TempPassword({ title, username, password, expiresHours, 
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setCopied(true);
     } catch {
       setCopied(false);

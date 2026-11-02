@@ -342,6 +342,28 @@ Channel titles come from `GET /api/nav`, built per user in
 | `npm --prefix server run split-legacy-outcomes` | One-off: splits old team costs (outcomes with no member) into one share per member of their group, or of the whole team. Shows the plan; add `-- --apply` to change the data |
 | `npm run install:all` | Installs root, server and client dependencies |
 
+## Opening the app from other computers
+
+The client (`npm run dev`, port 3000) and the production server (`npm start`, port
+5000) listen on every network interface, so another laptop on the same network opens
+**http://&lt;this machine's IP&gt;:3000** (or `:5000`). `npm run dev` prints that
+address as *Network:*; `hostname -I` shows it too. If the page does not load:
+
+- **Firewall.** Allow the port: `sudo ufw allow 3000/tcp` (and `5000/tcp` for
+  `npm start`) on Ubuntu, or the inbound rule Windows offers for Node.
+- **Virtual machine.** A VM on NAT networking (VMware's default; its address looks
+  like `192.168.x.129` with the gateway on `.2`) can only be reached from the host
+  machine. Switch the VM's network adapter to **Bridged** so it gets an address on
+  the real network, or forward the port in VMware's *Virtual Network Editor* → NAT
+  settings → *Port forwarding* (host port 3000 → the VM's IP, port 3000), then open
+  http://&lt;the host's IP&gt;:3000 from other laptops.
+- **Different networks.** With Tailscale on both computers, use this machine's
+  Tailscale address (`tailscale ip -4`).
+
+Over plain HTTP browsers withhold some features from any address but localhost: copy
+buttons use a fallback, and desktop notifications are unavailable there (sounds and
+in-app alerts still work).
+
 ## Running in production
 
 ```
@@ -349,9 +371,11 @@ npm run build                      # builds the client into client/dist
 NODE_ENV=production npm start      # API + client on PORT (default 5000)
 ```
 
-One process serves everything. Put it behind HTTPS (the session cookie is marked
-`Secure` in production, so it is not sent over plain HTTP) and set `TRUST_PROXY=1`
-when a reverse proxy is in front. `CLIENT_ORIGIN` should be the public address.
+One process serves everything. Put it behind HTTPS and set `TRUST_PROXY=1` when a
+reverse proxy is in front, so the server sees that the request came over HTTPS: the
+session cookie is marked `Secure` whenever it does. Over plain HTTP (a team on a local
+network, see below) it is not, or browsers on other computers would drop it and
+logins would fail. `CLIENT_ORIGIN` should be the public address.
 
 ## API
 

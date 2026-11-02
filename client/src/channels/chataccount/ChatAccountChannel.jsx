@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDebounced, useLiveData } from '../../useLiveData.js';
 import { useToast } from '../../components/Toast.jsx';
+import { copyText } from '../../clipboard.js';
 import { formatDay } from '../../format.js';
 import Avatar from '../../components/Avatar.jsx';
 import Icon from '../../components/Icon.jsx';
@@ -32,7 +33,7 @@ export default function ChatAccountChannel({ title }) {
 
   const copy = async (text) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       toast('Copied');
     } catch {
       toast.error('Could not copy');
