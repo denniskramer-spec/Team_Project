@@ -53,9 +53,10 @@ npm run seed:demo -- --year   # add with either: also fills every day since 1 Ja
 ```
 
 `--year` adds this year's history up to the recent demo data: daily reports on
-weekdays, weekly and monthly plans, two to four incomes a week per member (about
-one in five received in another currency at that day's rate) and outcomes every
-month, so the month, quarter and year views all have numbers.
+weekdays with hours on the running projects, weekly and monthly plans, one to three
+client payments a week per member (about one in five received in another currency at
+that day's rate), each finished month's project hours paid by one income record, and
+outcomes every month, so the month, quarter and year views all have numbers.
 
 `--force` deletes every account except admins, and all reports, plans, tasks, income,
 outcome, chat and instructions. It only runs when `--confirm` names the database it

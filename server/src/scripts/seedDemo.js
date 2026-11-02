@@ -372,9 +372,11 @@ async function createOutcomes(people) {
 
 // --year: history from 1 January up to where the recent demo data starts,
 // so every month, quarter and the year itself have numbers to look at (and
-// to correct). Daily reports on weekdays (a few missed), weekly plans for
-// every week, monthly plans, a few incomes a week per member (some received
-// in another currency at that day's rate) and outcomes every month.
+// to correct). Daily reports on weekdays (a few missed) with hours on the
+// member's running projects, weekly plans for every week, monthly plans, a
+// few client payments a week per member (some received in another currency
+// at that day's rate), each finished month's project hours paid by one
+// income record for that project, and outcomes every month.
 // Recent reports and plans are left to the functions above, so none overlap.
 const YEAR_RATES = { EUR: 0.92, GBP: 0.78, CAD: 1.37, AUD: 1.52, BRL: 5.4 };
 const RECENT_DAYS = 5;    // daily reports and most income above
@@ -393,21 +395,70 @@ async function createYearHistory(people) {
   const days = [];
   for (const d = new Date(first); d <= lastDaily; d.setUTCDate(d.getUTCDate() + 1)) days.push(new Date(d));
 
-  // Daily reports.
+  // The running projects started early in the year, so the history has
+  // hours on them.
+  const running = await Task.find({ status: { $ne: 'done' } });
+  for (const [i, t] of running.entries()) {
+    t.startDate = new Date(first.getTime() + (i * 9 % 45) * 86400000);
+    await t.save();
+  }
+  const projectsOf = (user) => running.filter((t) => String(t.owner) === String(user._id));
+
+  // Daily reports, with the day's hours on each running project.
   const reports = [];
   for (const [index, user] of members.entries()) {
     for (const [n, d] of days.entries()) {
       if (!isWeekday(d) || Math.random() < 0.07) continue;
       const key = periodKey('daily', d);
       const period = parsePeriod('daily', key);
+      const work = projectsOf(user).filter((t) => t.startDate <= d).map((t, k) => {
+        const hours = rnd(1, 6);
+        return { task: t._id, text: pick(WORK, n + k * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit }, { hours }), paidBy: null };
+      });
       reports.push({
+        work, task: work[0]?.task,
         author: user._id, scope: 'personal', type: 'daily', period: key, group: user.group ?? null,
         periodStart: period.start, periodEnd: period.end,
         jobBid: rnd(1, 6), aiBid: rnd(0, 4), resumes: rnd(0, 6), forms: rnd(0, 4), biddingHours: rnd(1, 6),
-        income: 0, upcomingAmount: 0, note: pick(notes, index + n), sentAt: new Date(d.getTime() + rnd(5, 9) * 3600000),
+        income: 0, note: pick(notes, index + n), sentAt: new Date(d.getTime() + rnd(5, 9) * 3600000),
         createdAt: d, updatedAt: d,
       });
     }
+  }
+
+  // Each finished month's hours on a project are paid on the 3rd of the
+  // next month by one income record for that project; the latest month is
+  // still unpaid and shows as upcoming.
+  const incomes = [];
+  const lastPayday = day(-RECENT_DAYS);
+  const months = new Map();
+  for (const r of reports) {
+    for (const w of r.work) {
+      if (!w.amount) continue;
+      const key = `${r.author}|${w.task}|${r.period.slice(0, 7)}`;
+      if (!months.has(key)) months.set(key, []);
+      months.get(key).push(w);
+    }
+  }
+  for (const [key, entries] of months) {
+    const [author, taskId, month] = key.split('|');
+    const [y, m] = month.split('-').map(Number);
+    const payday = new Date(Date.UTC(y, m, 3, 12));
+    if (payday > lastPayday) continue;
+    const t = running.find((x) => String(x._id) === taskId);
+    const member = members.find((u) => String(u._id) === author);
+    const _id = new mongoose.Types.ObjectId();
+    const amount = cents(entries.reduce((sum, w) => sum + w.amount, 0));
+    entries.forEach((w) => { w.paidBy = _id; });
+    incomes.push({
+      _id, member: member._id, group: member.group ?? null, createdBy: people.lena._id, date: payday,
+      ...paid(amount, t.method, 0), currency: 'USD', originalAmount: amount, rate: 1,
+      from: t.name, task: t._id, note: `Hours for ${month}.`, createdAt: payday, updatedAt: payday,
+    });
+  }
+  for (const r of reports) {
+    r.upcomingAmount = cents(r.work.filter((w) => !w.paidBy).reduce((sum, w) => sum + (w.amount || 0), 0));
+    r.upcomingDate = r.upcomingAmount > 0 ? r.periodStart : null;
   }
   await Report.insertMany(reports, { ordered: false });
 
@@ -450,12 +501,11 @@ async function createYearHistory(people) {
   }
   await Plan.insertMany(plans, { ordered: false });
 
-  // Income: two to four payments a week per member. One in five arrived in
+  // Client payments: one to three a week per member. One in five arrived in
   // another currency, converted at that day's rate (kept on the record).
-  const incomes = [];
   for (const [i, member] of earners.entries()) {
     for (const [n, d] of days.entries()) {
-      if (Math.random() > 0.42) continue;
+      if (Math.random() > 0.3) continue;
       const usd = rnd(150, 2800);
       const method = pick(['paypal', 'wise', 'payoneer', 'usdt', 'upwork', 'bank'], i + n);
       const record = { member: member._id, group: member.group ?? null, createdBy: people.lena._id, date: d, from: pick(CLIENTS, i + n), createdAt: d, updatedAt: d };
