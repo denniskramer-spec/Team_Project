@@ -7,6 +7,7 @@ import Dropdown from '../../components/Dropdown.jsx';
 import Icon from '../../components/Icon.jsx';
 import EmojiPicker from '../../components/EmojiPicker.jsx';
 import { noteCopy } from '../../security/useCopyWatch.js';
+import { copyText } from '../../clipboard.js';
 import MessageText from './MessageText.jsx';
 import { formatClock } from '../../format.js';
 import { MESSAGE_MAX_CHARS } from '../../constants.js';
@@ -78,7 +79,7 @@ export default memo(function Message({ message: m, grouped, meId, canDelete, del
 
   const copyText = async () => {
     try {
-      await navigator.clipboard.writeText(m.content);
+      await copyText(m.content);
       noteCopy(m.content); // a button copy fires no copy event
       toast('Text copied');
     } catch {

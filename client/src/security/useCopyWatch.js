@@ -10,12 +10,13 @@ const MAX_TEXT = 5000;
 
 function copiedText(event) {
   const el = event.target instanceof Element ? event.target.closest('input, textarea') : null;
+  if (el?.dataset.copyHelper !== undefined) return ''; // copyText's fallback (clipboard.js)
   if (el && typeof el.selectionStart === 'number') return el.value.slice(el.selectionStart, el.selectionEnd);
   return window.getSelection()?.toString() ?? '';
 }
 
-// Also for copies made by a button (navigator.clipboard), which fire no
-// copy event.
+// Also for copies made by a button (copyText), which fire no copy event
+// the watch counts.
 export function noteCopy(value) {
   const text = String(value ?? '').slice(0, MAX_TEXT);
   if (!MAYBE.test(text)) return;
