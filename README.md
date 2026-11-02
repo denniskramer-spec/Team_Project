@@ -356,7 +356,15 @@ address as *Network:*; `hostname -I` shows it too. If the page does not load:
   machine. Switch the VM's network adapter to **Bridged** so it gets an address on
   the real network, or forward the port in VMware's *Virtual Network Editor* → NAT
   settings → *Port forwarding* (host port 3000 → the VM's IP, port 3000), then open
-  http://&lt;the host's IP&gt;:3000 from other laptops.
+  http://&lt;the host's IP&gt;:3000 from other laptops. The host's IP is the IPv4
+  address of its Wi-Fi or Ethernet adapter in `ipconfig`, not a *VMware Network
+  Adapter* or VPN one. If the link opens on the host but not on other laptops, the
+  host's own firewall is in the way: on a Windows host run, in an admin PowerShell,
+  `New-NetFirewallRule -DisplayName "Business Manager 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any`
+  (`Any`, since an office network is often classed as *Public*). A VPN on the host
+  (Astrill and the like) can also block local connections: allow LAN access in it,
+  or disconnect it. `Test-NetConnection <host IP> -Port 3000` on the other laptop
+  tells a blocked port from a network that cannot reach the host at all.
 - **Different networks.** With Tailscale on both computers, use this machine's
   Tailscale address (`tailscale ip -4`).
 
