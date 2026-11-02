@@ -1,6 +1,8 @@
 // Fills the database with a realistic team so every channel has something to show.
 //
 //   npm run seed:demo            — only if there are no members yet
+//   npm run seed:demo -- --year  — also fill every day since 1 January with
+//                                  reports, plans, income and outcome
 //   npm run seed:demo -- --force --confirm=<database name>
 //                                — DELETE every account except admins and all
 //                                  their data first, then seed
@@ -32,6 +34,7 @@ import { dmKey } from '../utils/chatPolicy.js';
 
 const PASSWORD = 'demo1234';
 const force = process.argv.includes('--force');
+const wholeYear = process.argv.includes('--year');
 const confirmed = process.argv.find((a) => a.startsWith('--confirm='))?.slice('--confirm='.length);
 
 const day = (offset) => {
@@ -367,6 +370,122 @@ async function createOutcomes(people) {
   console.log('Seeded 8 outcome records');
 }
 
+// --year: history from 1 January up to where the recent demo data starts,
+// so every month, quarter and the year itself have numbers to look at (and
+// to correct). Daily reports on weekdays (a few missed), weekly plans for
+// every week, monthly plans, a few incomes a week per member (some received
+// in another currency at that day's rate) and outcomes every month.
+// Recent reports and plans are left to the functions above, so none overlap.
+const YEAR_RATES = { EUR: 0.92, GBP: 0.78, CAD: 1.37, AUD: 1.52, BRL: 5.4 };
+const RECENT_DAYS = 5;    // daily reports and most income above
+const RECENT_WEEKS = 3;   // weekly plans above
+
+async function createYearHistory(people) {
+  const members = Object.values(people).filter((u) => ['member', 'boss'].includes(u.role) && u.status === 'active');
+  const earners = members.filter((u) => u.role === 'member');
+  const bosses = Object.values(people).filter((u) => u.role === 'boss');
+  const year = day(0).getUTCFullYear();
+  const first = new Date(Date.UTC(year, 0, 1, 12));
+  const lastDaily = day(-RECENT_DAYS);
+  const notes = ['Good day overall.', 'Waiting on client feedback.', 'Steady progress.', 'Slow day, two calls cancelled.', 'Strong day of bidding.'];
+  const cents = (n) => Math.round(n * 100) / 100;
+  const isWeekday = (d) => d.getUTCDay() !== 0 && d.getUTCDay() !== 6;
+  const days = [];
+  for (const d = new Date(first); d <= lastDaily; d.setUTCDate(d.getUTCDate() + 1)) days.push(new Date(d));
+
+  // Daily reports.
+  const reports = [];
+  for (const [index, user] of members.entries()) {
+    for (const [n, d] of days.entries()) {
+      if (!isWeekday(d) || Math.random() < 0.07) continue;
+      const key = periodKey('daily', d);
+      const period = parsePeriod('daily', key);
+      reports.push({
+        author: user._id, scope: 'personal', type: 'daily', period: key, group: user.group ?? null,
+        periodStart: period.start, periodEnd: period.end,
+        jobBid: rnd(1, 6), aiBid: rnd(0, 4), resumes: rnd(0, 6), forms: rnd(0, 4), biddingHours: rnd(1, 6),
+        income: 0, upcomingAmount: 0, note: pick(notes, index + n), sentAt: new Date(d.getTime() + rnd(5, 9) * 3600000),
+        createdAt: d, updatedAt: d,
+      });
+    }
+  }
+  await Report.insertMany(reports, { ordered: false });
+
+  // Weekly plans for every week before the recent ones, and monthly plans
+  // for every month so far (this month's still running).
+  const plans = [];
+  const firstWeek = periodKey('weekly', first);
+  const recentWeek = shiftPeriod('weekly', periodKey('weekly'), -(RECENT_WEEKS - 1));
+  const weeks = [];
+  for (let w = firstWeek; w < recentWeek; w = shiftPeriod('weekly', w, 1)) weeks.push(w);
+  for (const [index, user] of members.entries()) {
+    for (const [n, week] of weeks.entries()) {
+      const period = parsePeriod('weekly', week);
+      plans.push({
+        owner: user._id, scope: 'personal', type: 'weekly', period: week, group: user.group ?? null,
+        periodStart: period.start, periodEnd: period.end,
+        jobBid: rnd(6, 16), aiBid: rnd(2, 9), resumes: rnd(10, 30), forms: rnd(5, 15), biddingHours: rnd(15, 30),
+        income: rnd(20, 75) * 100, note: '', status: pick(['done', 'done', 'done', 'progress', 'not_done'], index + n),
+        statusUpdatedAt: period.end,
+      });
+    }
+    for (let m = 0; m <= day(0).getUTCMonth(); m += 1) {
+      const key = periodKey('monthly', new Date(Date.UTC(year, m, 15)));
+      const period = parsePeriod('monthly', key);
+      const current = m === day(0).getUTCMonth();
+      plans.push({
+        owner: user._id, scope: 'personal', type: 'monthly', period: key, group: user.group ?? null,
+        periodStart: period.start, periodEnd: period.end,
+        jobBid: rnd(30, 60), aiBid: rnd(10, 30), resumes: rnd(50, 120), forms: rnd(20, 60), biddingHours: rnd(70, 120),
+        income: rnd(90, 260) * 100, note: '', status: current ? 'progress' : pick(['done', 'done', 'not_done'], index + m),
+        statusUpdatedAt: current ? day(0) : period.end,
+      });
+    }
+  }
+  for (const boss of bosses) {
+    for (const week of weeks) {
+      const period = parsePeriod('weekly', week);
+      plans.push({ owner: boss._id, scope: 'group', type: 'weekly', period: week, group: boss.group, periodStart: period.start, periodEnd: period.end, jobBid: 30, aiBid: 12, resumes: 60, forms: 30, biddingHours: 80, income: 16000, note: 'Group target for the week.', status: 'done' });
+    }
+  }
+  await Plan.insertMany(plans, { ordered: false });
+
+  // Income: two to four payments a week per member. One in five arrived in
+  // another currency, converted at that day's rate (kept on the record).
+  const incomes = [];
+  for (const [i, member] of earners.entries()) {
+    for (const [n, d] of days.entries()) {
+      if (Math.random() > 0.42) continue;
+      const usd = rnd(150, 2800);
+      const method = pick(['paypal', 'wise', 'payoneer', 'usdt', 'upwork', 'bank'], i + n);
+      const record = { member: member._id, group: member.group ?? null, createdBy: people.lena._id, date: d, from: pick(CLIENTS, i + n), createdAt: d, updatedAt: d };
+      const foreign = Math.random() < 0.2 ? pick(Object.keys(YEAR_RATES), i + n) : null;
+      if (foreign) {
+        const rate = Math.round(YEAR_RATES[foreign] * (0.96 + Math.random() * 0.08) * 1e4) / 1e4;
+        const originalAmount = cents(usd * rate);
+        const amount = cents(originalAmount / rate);
+        Object.assign(record, paid(amount, method, n % 4 ? 0 : 20), { currency: foreign, originalAmount, rate, rateDate: periodKey('daily', d) });
+      } else {
+        Object.assign(record, paid(usd, method, n % 4 ? 0 : 20), { currency: 'USD', originalAmount: usd, rate: 1 });
+      }
+      incomes.push(record);
+    }
+  }
+  await Income.insertMany(incomes, { ordered: false });
+
+  // Outcome: five to ten a month across the team.
+  const outcomes = [];
+  for (const [n, d] of days.entries()) {
+    if (Math.random() > 0.25) continue;
+    const member = pick(earners, n);
+    const boss = bosses.find((b) => String(b.group) === String(member.group)) ?? people.lena;
+    outcomes.push({ member: member._id, group: member.group ?? null, createdBy: n % 2 ? boss._id : people.lena._id, date: d, amount: rnd(40, 1200), reason: pick(REASONS, n), comment: n % 5 === 0 ? 'Approved in the weekly meeting.' : '', createdAt: d, updatedAt: d });
+  }
+  await Outcome.insertMany(outcomes, { ordered: false });
+
+  console.log(`Seeded ${year} history: ${reports.length} daily reports, ${plans.length} plans, ${incomes.length} income and ${outcomes.length} outcome records`);
+}
+
 const RESIDENTS = [
   { owner: 'mina', name: 'Dyonatas Menegatti', country: 'Brazil', citizenship: 'Brazil', age: 31, source: 'Telegram group', via: 'Telegram', laptop: true, access: true, first: -3 },
   { owner: 'mina', name: 'Anderson Santos do Nascimento', country: 'Brazil', citizenship: 'Brazil', age: 27, source: 'Referral from Dyonatas', via: 'WhatsApp', laptop: true, access: true, first: -61 },
@@ -440,6 +559,7 @@ async function main() {
   const residents = await createResidentsAndAccounts(people);
   await createTasksAndIncome(people, residents);
   await createOutcomes(people);
+  if (wholeYear) await createYearHistory(people);
 
   console.log('\nDemo accounts (password: demo1234)');
   console.log('  lena   — team leader, sees everything');
