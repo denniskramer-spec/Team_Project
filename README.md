@@ -49,7 +49,13 @@ choose a new password at first login. Note that the Docker container and a local
 ```
 npm run seed:demo             # only when there are no members yet
 npm run seed:demo -- --force --confirm=<database name>   # DELETES everything first
+npm run seed:demo -- --year   # add with either: also fills every day since 1 January
 ```
+
+`--year` adds this year's history up to the recent demo data: daily reports on
+weekdays, weekly and monthly plans, two to four incomes a week per member (about
+one in five received in another currency at that day's rate) and outcomes every
+month, so the month, quarter and year views all have numbers.
 
 `--force` deletes every account except admins, and all reports, plans, tasks, income,
 outcome, chat and instructions. It only runs when `--confirm` names the database it
