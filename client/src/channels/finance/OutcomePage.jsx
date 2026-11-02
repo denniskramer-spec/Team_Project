@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../../components/Modal.jsx';
 import Lightbox, { ImageThumbs } from '../../components/Lightbox.jsx';
 import { useSort, Th } from '../../components/SortTable.jsx';
 import OutcomeForm from './OutcomeForm.jsx';
+import RecordSearch, { sumOf, useRecordSearch } from './RecordSearch.jsx';
 import FinanceColumns from './FinanceColumns.jsx';
 import FinancePage, { GroupTiles, MemberBars } from './FinancePage.jsx';
 import { useFinancePage } from './useFinancePage.js';
@@ -35,6 +36,10 @@ const COLUMNS = {
   ...ITEM_COLUMNS,
   who: (o) => nameOf(o.who),
 };
+// What the search box looks through, for one record.
+const searchable = (o) => [
+  o.date, o.who?.name, o.who?.note, o.who?.username, o.reason, o.comment, o.split?.label, o.amount, o.split?.total,
+];
 
 function ItemsTable({ items, money = formatAmount }) {
   const sorter = useSort(items, ITEM_COLUMNS);
@@ -70,7 +75,8 @@ export default function OutcomePage() {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState(null);
-  const sorter = useSort(data?.outcomes ?? EMPTY, COLUMNS);
+  const search = useRecordSearch(data?.outcomes ?? EMPTY, searchable);
+  const sorter = useSort(search.rows, COLUMNS);
 
   // The page stays mounted between deletes, so `busy` must always come back
   // down; the list itself refreshes through outcome:changed.
@@ -98,7 +104,7 @@ export default function OutcomePage() {
       )}
       body={(d) => (
         <OutcomeBody
-          data={d} group={page.period.group} currency={currency} sorter={sorter}
+          data={d} group={page.period.group} currency={currency} sorter={sorter} search={search}
           onEdit={setForm} onDelete={setConfirm} onImages={setLightbox}
         />
       )}
@@ -130,7 +136,7 @@ export default function OutcomePage() {
   );
 }
 
-function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages }) {
+function OutcomeBody({ data, group, currency, sorter, search, onEdit, onDelete, onImages }) {
   const { money } = currency;
   const p = data.period;
   const rows = data.chart.map((c) => ({ id: c.member.id, name: nameOf(c.member), values: { outcome: c.amount }, items: c.items, count: c.count, member: c.member }));
@@ -202,7 +208,10 @@ function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages
 
       {data.outcomes.length > 0 && (
         <section className="card">
-          <div className="report-section-head"><h3>Outcome records</h3></div>
+          <div className="report-section-head">
+            <h3>Outcome records</h3>
+            <RecordSearch search={search} noun="outcome" shown={search.rows.length} total={data.outcomes.length} />
+          </div>
           {shownOf(data.outcomes.length, data.count) && <p className="muted small list-note">{shownOf(data.outcomes.length, data.count)}</p>}
           <table className="table finance-table">
             <thead>
@@ -215,6 +224,9 @@ function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages
               </tr>
             </thead>
             <tbody>
+              {search.active && !sorter.rows.length && (
+                <tr><td colSpan={5} className="muted">No outcome matches "{search.query.trim()}".</td></tr>
+              )}
               {sorter.rows.map((o) => (
                 <tr key={o.id}>
                   <td data-label="Date"><DateTag value={o.date} utc /></td>
@@ -250,7 +262,9 @@ function OutcomeBody({ data, group, currency, sorter, onEdit, onDelete, onImages
               ))}
             </tbody>
             <tfoot>
-              <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{money(data.total)}</td><td /></tr>
+              {search.active
+                ? <tr><td className="strong">Matching</td><td colSpan={2} /><td className="num strong">{money(sumOf(search.rows, (o) => o.amount))}</td><td /></tr>
+                : <tr><td className="strong">Total</td><td colSpan={2} /><td className="num strong">{money(data.total)}</td><td /></tr>}
             </tfoot>
           </table>
         </section>

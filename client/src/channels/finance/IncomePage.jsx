@@ -9,6 +9,7 @@ import Icon from '../../components/Icon.jsx';
 import Lightbox, { ImageThumbs } from '../../components/Lightbox.jsx';
 import { useSort, Th } from '../../components/SortTable.jsx';
 import IncomeChart from './IncomeChart.jsx';
+import RecordSearch, { sumOf, useRecordSearch } from './RecordSearch.jsx';
 import IncomeForm from './IncomeForm.jsx';
 import FinancePage, { GroupTiles, MemberBars } from './FinancePage.jsx';
 import { useFinancePage } from './useFinancePage.js';
@@ -38,6 +39,13 @@ const COLUMNS = {
   project: (i) => i.task?.name ?? i.from ?? null,
   amount: { by: (i) => i.net, desc: true },
 };
+// What the search box looks through, for one record.
+const searchable = (i) => [
+  i.date, i.member?.name, i.member?.note, i.member?.username, i.task?.name, i.from, i.resident?.name, i.note,
+  i.methodLabel, i.currency, i.status, i.net, i.amount, i.originalAmount, i.feeAmount,
+];
+// A pending or rejected record counts in no total.
+const counts = (i) => !['pending', 'rejected'].includes(i.status);
 
 export default function IncomePage() {
   // Upcoming income comes from the daily reports, so they refresh the chart too.
@@ -45,13 +53,14 @@ export default function IncomePage() {
   const { data, currency } = page;
   const [lightbox, setLightbox] = useState(null);
   const [recording, setRecording] = useState(false);
-  const sorter = useSort(data?.incomes ?? EMPTY, COLUMNS);
+  const search = useRecordSearch(data?.incomes ?? EMPTY, searchable);
+  const sorter = useSort(search.rows, COLUMNS);
 
   return (
     <FinancePage
       page={page}
       noun="income"
-      body={(d) => <IncomeBody data={d} group={page.period.group} currency={currency} sorter={sorter} onImages={setLightbox} />}
+      body={(d) => <IncomeBody data={d} group={page.period.group} currency={currency} sorter={sorter} search={search} onImages={setLightbox} />}
       actions={data?.can.record && (
         <button className="btn primary finance-add" onClick={() => setRecording(true)}>
           <Icon name="plus" size={16} /> Record income
@@ -173,7 +182,7 @@ function ApprovalNote({ income, canApprove }) {
   );
 }
 
-function IncomeBody({ data, group, currency, sorter, onImages }) {
+function IncomeBody({ data, group, currency, sorter, search, onImages }) {
   const { money } = currency;
   const p = data.period;
   const perMember = data.perMember.map((m) => ({ ...m, amount: m.net ?? m.amount })).sort((a, b) => b.amount - a.amount);
@@ -201,7 +210,10 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
 
       {data.incomes.length > 0 && (
         <section className="card">
-          <div className="report-section-head"><h3>Income records</h3></div>
+          <div className="report-section-head">
+            <h3>Income records</h3>
+            <RecordSearch search={search} noun="income" shown={search.rows.length} total={data.incomes.length} />
+          </div>
           {shownOf(data.incomes.length, data.count) && <p className="muted small list-note">{shownOf(data.incomes.length, data.count)}</p>}
           {data.pending > 0 && (
             <p className="muted small list-note">
@@ -218,6 +230,9 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
               </tr>
             </thead>
             <tbody>
+              {search.active && !sorter.rows.length && (
+                <tr><td colSpan={4} className="muted">No income matches "{search.query.trim()}".</td></tr>
+              )}
               {sorter.rows.map((i) => (
                 <tr key={i.id} className={i.status && i.status !== 'approved' ? `income-${i.status}` : undefined}>
                   <td data-label="Date"><DateTag value={i.date} utc /></td>
@@ -253,7 +268,9 @@ function IncomeBody({ data, group, currency, sorter, onImages }) {
               ))}
             </tbody>
             <tfoot>
-              <tr><td className="strong">Total net</td><td colSpan={2} /><td className="num strong">{money(data.net)}</td></tr>
+              {search.active
+                ? <tr><td className="strong">Matching net</td><td colSpan={2} /><td className="num strong">{money(sumOf(search.rows.filter(counts), (i) => i.net))}</td></tr>
+                : <tr><td className="strong">Total net</td><td colSpan={2} /><td className="num strong">{money(data.net)}</td></tr>}
             </tfoot>
           </table>
         </section>
