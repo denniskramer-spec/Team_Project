@@ -1190,3 +1190,8 @@ code {
 /* Plan page: one block per group, the group's plan first */
 .plan-group + .plan-group { margin-top: 18px; }
 .plan-group-title { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
+/* Finance: the search box beside a record list's title. */
+.record-search { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; justify-content: flex-end; }
+.record-search .search { max-width: 300px; }
+.record-search .muted { margin-left: 0; order: -1; white-space: nowrap; }
