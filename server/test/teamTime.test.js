@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isDayStart, isTimeZone, setTeamDayStart, setTeamTimeZone, teamDayEnd, teamDayStart, teamNow,
-  teamReportReminder, teamTimeZone, teamToday,
+  isDayStart, isReminderMinutes, isTimeZone, setTeamDayStart, setTeamReminderMinutes, setTeamTimeZone,
+  teamDayEnd, teamDayStart, teamNow, teamReminderMinutes, teamReportReminder, teamTimeZone, teamToday,
 } from '../src/utils/teamTime.js';
 import { periodKey } from '../src/utils/period.js';
 
@@ -88,5 +88,25 @@ test('a day start keeps daylight saving in mind', () => {
     // UTC, while the start before it (24 Oct) was 04:00 UTC.
     assert.equal(teamDayEnd(new Date('2026-10-24T12:00:00Z')).toISOString(), '2026-10-25T05:00:00.000Z');
     assert.equal(teamToday(new Date('2026-10-25T04:30:00Z')).toISOString(), '2026-10-24T00:00:00.000Z');
+  }));
+});
+
+test('the report reminder time is a setting, and 0 turns it off', () => {
+  assert.ok(isReminderMinutes(0));
+  assert.ok(isReminderMinutes(45));
+  assert.ok(isReminderMinutes(720));
+  for (const bad of [-5, 721, 2.5, '30', null]) assert.ok(!isReminderMinutes(bad), String(bad));
+  assert.throws(() => setTeamReminderMinutes(-1));
+  assert.equal(teamReminderMinutes(), 30);
+  inZone('UTC', () => startingAt('06:00', () => {
+    const at = new Date('2026-11-03T01:00:00Z');
+    try {
+      setTeamReminderMinutes(90);
+      assert.equal(teamReportReminder(at).toISOString(), '2026-11-03T04:30:00.000Z');
+      setTeamReminderMinutes(0);
+      assert.equal(teamReportReminder(at), null);
+    } finally {
+      setTeamReminderMinutes(30);
+    }
   }));
 });

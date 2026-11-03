@@ -7,14 +7,15 @@
 // The team's day may start later than midnight (Admin -> Team settings,
 // "Day starts at"): with 06:00, 03:00 on Tuesday still belongs to Monday, and
 // Monday turns into Tuesday at 06:00. Members are reminded to send the daily
-// report REPORT_REMINDER_MINUTES before that.
+// report a set number of minutes before that (default 30, 0 = no reminder).
 //
 // Both are kept here in memory (one process serves the app): loaded from the
 // database at startup (models/Setting.js) and changed by an admin.
 
 export const DEFAULT_TIME_ZONE = 'UTC';
 export const DEFAULT_DAY_START = '00:00';
-export const REPORT_REMINDER_MINUTES = 30;
+export const DEFAULT_REMINDER_MINUTES = 30;
+export const MAX_REMINDER_MINUTES = 720;
 
 // An IANA name the runtime knows ("Europe/Berlin", "America/Sao_Paulo"...).
 export function isTimeZone(value) {
@@ -30,6 +31,17 @@ export function isTimeZone(value) {
 let zone = isTimeZone(process.env.TEAM_TIME_ZONE) ? process.env.TEAM_TIME_ZONE : DEFAULT_TIME_ZONE;
 let parts = null;
 let dayStartMs = 0;
+let reminderMinutes = DEFAULT_REMINDER_MINUTES;
+
+// Whole minutes before the day ends, 0 (no reminder) to 12 hours.
+export const isReminderMinutes = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_REMINDER_MINUTES;
+
+export const teamReminderMinutes = () => reminderMinutes;
+
+export function setTeamReminderMinutes(value) {
+  if (!isReminderMinutes(value)) throw new Error(`Not a reminder time: ${value}`);
+  reminderMinutes = value;
+}
 
 // "HH:MM", 24-hour clock.
 export function isDayStart(value) {
@@ -89,5 +101,7 @@ export function teamDayEnd(date = new Date()) {
   return new Date(guess);
 }
 
-// When members are reminded to send today's report.
-export const teamReportReminder = (date = new Date()) => new Date(teamDayEnd(date).getTime() - REPORT_REMINDER_MINUTES * 60000);
+// When members are reminded to send today's report (null: no reminder).
+export const teamReportReminder = (date = new Date()) => (
+  reminderMinutes ? new Date(teamDayEnd(date).getTime() - reminderMinutes * 60000) : null
+);

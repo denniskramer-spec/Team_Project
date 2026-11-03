@@ -20,8 +20,8 @@ function clockIn(zone, at = new Date()) {
 // Admin -> Team settings: the team's time zone and the time its day starts.
 // Together they decide which day is "today" for daily reports, plans,
 // Finance and Checkout, and when the day turns over. Records keep their
-// dates; only "today" moves. Members get a report reminder shortly before
-// the next day starts.
+// dates; only "today" moves. Members get a report reminder a set number of
+// minutes before the next day starts (0 turns it off).
 export default function TeamSettings() {
   const toast = useToast();
   const { data, error, reload } = useTeamSettings();
@@ -29,7 +29,9 @@ export default function TeamSettings() {
   const [busy, setBusy] = useState(false);
   const [dayStart, setDayStart] = useState('');
   useEffect(() => { if (data?.timeZone) setZone(data.timeZone); }, [data?.timeZone]);
+  const [reminder, setReminder] = useState('');
   useEffect(() => { if (data?.dayStart) setDayStart(data.dayStart); }, [data?.dayStart]);
+  useEffect(() => { if (data?.reminderMinutes !== undefined) setReminder(String(data.reminderMinutes)); }, [data?.reminderMinutes]);
   // The saved zone is always offered, even if this browser does not list it.
   const zones = useMemo(() => (data?.timeZone && !ZONES.includes(data.timeZone) ? [data.timeZone, ...ZONES] : ZONES), [data?.timeZone]);
 
@@ -54,8 +56,9 @@ export default function TeamSettings() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api('/settings/day-start', { method: 'PUT', body: { dayStart } });
-      toast(`The team's day now starts at ${dayStart}`);
+      const minutes = Number(reminder);
+      await api('/settings/day-start', { method: 'PUT', body: { dayStart, reminderMinutes: minutes } });
+      toast(`The day starts at ${dayStart}; ${minutes ? `reports remind ${minutes} min before` : 'no report reminder'}`);
       reload();
     } catch (err) {
       toast.error(err.message);
@@ -65,7 +68,7 @@ export default function TeamSettings() {
   };
 
   const changed = zone && zone !== data.timeZone;
-  const startChanged = dayStart && dayStart !== data.dayStart;
+  const startChanged = dayStart && reminder !== '' && (dayStart !== data.dayStart || Number(reminder) !== data.reminderMinutes);
   const short = (at) => new Date(at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
   return (
     <div className="page team-settings">
@@ -107,12 +110,14 @@ export default function TeamSettings() {
         <div className="report-section-head"><h3>Day starts at</h3></div>
         <p className="muted small">
           When one day turns into the next, on the team's clock ({data.timeZone}). With 06:00, work done at 03:00 still
-          counts for the day before. Everyone whose daily report is not sent gets a reminder
-          {' '}<strong>{data.reminderMinutes} minutes</strong> before the next day starts.
+          counts for the day before.
+          {data.reminderMinutes
+            ? <> Everyone whose daily report is not sent gets a reminder <strong>{data.reminderMinutes} minutes</strong> before the next day starts.</>
+            : <> The daily report reminder is <strong>turned off</strong>.</>}
         </p>
         <dl className="mini-stats team-zone-stats">
           <div><dt>Day starts at</dt><dd>{data.dayStart}</dd></div>
-          <div><dt>Report reminder · your time</dt><dd>{short(data.reminderAt)}</dd></div>
+          <div><dt>Report reminder · your time</dt><dd>{data.reminderAt ? short(data.reminderAt) : 'Off'}</dd></div>
           <div><dt>Next day starts · your time</dt><dd>{short(data.dayEndsAt)}</dd></div>
         </dl>
         {data.canManage ? (
@@ -121,8 +126,13 @@ export default function TeamSettings() {
               Start time
               <input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} required />
             </label>
+            <label>
+              Report reminder · minutes before
+              <input type="number" min="0" max="720" step="1" value={reminder} onChange={(e) => setReminder(e.target.value)} required />
+            </label>
+            <p className="muted small form-note">0 turns the reminder off. Up to 720 (12 hours).</p>
             <div>
-              <button className="btn primary" type="submit" disabled={!startChanged || busy}>{busy ? 'Saving...' : 'Save start time'}</button>
+              <button className="btn primary" type="submit" disabled={!startChanged || busy}>{busy ? 'Saving...' : 'Save'}</button>
             </div>
           </form>
         ) : (
