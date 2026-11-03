@@ -3,8 +3,9 @@ import { requireAuth } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../utils/httpError.js';
 import Setting from '../models/Setting.js';
 import {
-  REPORT_REMINDER_MINUTES, isDayStart, isTimeZone, setTeamDayStart, setTeamTimeZone,
-  teamDayEnd, teamDayStart, teamReportReminder, teamTimeZone, teamToday,
+  MAX_REMINDER_MINUTES, isDayStart, isReminderMinutes, isTimeZone, setTeamDayStart,
+  setTeamReminderMinutes, setTeamTimeZone, teamDayEnd, teamDayStart, teamReminderMinutes,
+  teamReportReminder, teamTimeZone, teamToday,
 } from '../utils/teamTime.js';
 import { settingsChanged } from '../socket/events.js';
 
@@ -21,17 +22,18 @@ const current = (user) => ({
   dayStart: teamDayStart(),
   dayEndsAt: teamDayEnd(),
   reminderAt: teamReportReminder(),
-  reminderMinutes: REPORT_REMINDER_MINUTES,
+  reminderMinutes: teamReminderMinutes(),
   canManage: canManage(user),
 });
 
-// Startup: the saved zone (otherwise TEAM_TIME_ZONE or UTC) and day start
-// (otherwise midnight).
+// Startup: the saved zone (otherwise TEAM_TIME_ZONE or UTC), day start
+// (otherwise midnight) and report reminder (otherwise 30 minutes).
 export async function loadSettings() {
-  const saved = await Setting.find({ key: { $in: ['timeZone', 'dayStart'] } }).lean();
+  const saved = await Setting.find({ key: { $in: ['timeZone', 'dayStart', 'reminderMinutes'] } }).lean();
   const value = (key) => saved.find((s) => s.key === key)?.value;
   if (isTimeZone(value('timeZone'))) setTeamTimeZone(value('timeZone'));
   if (isDayStart(value('dayStart'))) setTeamDayStart(value('dayStart'));
+  if (isReminderMinutes(value('reminderMinutes'))) setTeamReminderMinutes(value('reminderMinutes'));
 }
 
 const save = (key, value, user) => Setting.findOneAndUpdate(
@@ -56,14 +58,25 @@ router.put('/time-zone', async (req, res) => {
   res.json(current(req.user));
 });
 
-// PUT /api/settings/day-start { dayStart } — "HH:MM" on the team's clock:
-// when one day turns into the next. The report reminder moves with it.
+// PUT /api/settings/day-start { dayStart?, reminderMinutes? }
+//   dayStart         "HH:MM" on the team's clock: when one day turns into the next
+//   reminderMinutes  how long before that an unsent daily report alerts (0 = never)
 router.put('/day-start', async (req, res) => {
   if (!canManage(req.user)) throw forbidden('Only admins and the team leader change when the day starts');
-  const { dayStart } = req.body ?? {};
-  if (!isDayStart(dayStart)) throw badRequest('Give the time as HH:MM, for example 06:00');
-  await save('dayStart', dayStart, req.user);
-  setTeamDayStart(dayStart);
+  const { dayStart, reminderMinutes } = req.body ?? {};
+  if (dayStart === undefined && reminderMinutes === undefined) throw badRequest('Nothing to change');
+  if (dayStart !== undefined && !isDayStart(dayStart)) throw badRequest('Give the time as HH:MM, for example 06:00');
+  if (reminderMinutes !== undefined && !isReminderMinutes(reminderMinutes)) {
+    throw badRequest(`The reminder is a whole number of minutes from 0 to ${MAX_REMINDER_MINUTES}`);
+  }
+  if (dayStart !== undefined) {
+    await save('dayStart', dayStart, req.user);
+    setTeamDayStart(dayStart);
+  }
+  if (reminderMinutes !== undefined) {
+    await save('reminderMinutes', reminderMinutes, req.user);
+    setTeamReminderMinutes(reminderMinutes);
+  }
   settingsChanged();
   res.json(current(req.user));
 });

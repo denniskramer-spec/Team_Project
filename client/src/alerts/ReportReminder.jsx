@@ -13,7 +13,8 @@ import { playAlert } from './sound.js';
 const DISMISSED_KEY = 'bm.reportReminderDismissed';
 
 // "Send your daily report": from the reminder time (Admin -> Team settings,
-// 30 minutes before the team's next day starts) until the day ends, for
+// a set number of minutes before the team's next day starts; none when it is
+// 0) until the day ends, for
 // anyone whose report for today is not sent. It rings once, when it comes up.
 export default function ReportReminder() {
   const { data } = useReportStatus() ?? {};

@@ -259,7 +259,8 @@ router.get('/status', async (req, res) => {
     : planLines(previous?.planTomorrow).map((text) => ({ text, done: false }));
   res.json({
     // `end` is the real moment the team's day turns over, so the client
-    // can check again then; `remindAt` is when an unsent report alerts.
+    // can check again then; `remindAt` is when an unsent report alerts
+    // (null when the reminder is turned off).
     canWrite: true, period, start, end: teamDayEnd(), remindAt: teamReportReminder(),
     due: !mine?.sentAt, draft: Boolean(mine && !mine.sentAt), sentAt: mine?.sentAt ?? null, todayPlan,
   });
