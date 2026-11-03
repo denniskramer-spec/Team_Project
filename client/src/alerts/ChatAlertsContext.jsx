@@ -8,6 +8,7 @@ import { useAlerts } from './AlertsContext.jsx';
 import { playMessage } from './sound.js';
 import { notify, windowFocused } from './notify.js';
 import ChatPopups from './ChatPopups.jsx';
+import { setTabBadge } from './tabBadge.js';
 
 const ChatAlertsContext = createContext(null);
 const MAX_POPUPS = 3;
@@ -16,7 +17,7 @@ const APP_TITLE = 'Business Manager';
 // Tells the reader about chat messages they are not looking at, the way a
 // messenger does: a popup in the corner, a sound, a desktop notification
 // when the window is in the background, and the unread count in the tab
-// title. A message in the chat that is open and focused raises nothing.
+// title and on the tab's icon. A message in the chat that is open and focused raises nothing.
 export function ChatAlertsProvider({ children }) {
   const { user } = useAuth();
   const { settings } = useAlerts();
@@ -71,11 +72,13 @@ export function ChatAlertsProvider({ children }) {
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
   }, [dismissViewed]);
 
-  // The unread count in the tab title, like a messenger.
+  // The unread count in the tab title and as a badge on the tab's icon,
+  // like a messenger.
   const unread = counts.channels + counts.dms;
   useEffect(() => {
     document.title = unread > 0 ? `(${unread > 99 ? '99+' : unread}) ${APP_TITLE}` : APP_TITLE;
-    return () => { document.title = APP_TITLE; };
+    setTabBadge(unread);
+    return () => { document.title = APP_TITLE; setTabBadge(0); };
   }, [unread]);
 
   // A chat screen says while it is on screen, so it raises no popup, and
