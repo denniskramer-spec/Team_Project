@@ -99,7 +99,7 @@ export default function ChatChannel({ title }) {
   );
 
   return (
-    <div className="chat" onContextMenu={blockContextMenu} onMouseDown={keepSelectionOnRightClick}>
+    <div className="chat">
       <MessageList
         rows={rows}
         user={user}
@@ -137,18 +137,4 @@ export default function ChatChannel({ title }) {
       <ChatComposer titleKey={title.key} name={name} dm={dm} onSent={onSent} onTyping={typing.noteTyping} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} canBuzz={Boolean(dm) || ['leader', 'boss', 'admin'].includes(user.role)} />
     </div>
   );
-}
-
-// Right-click in the chat does nothing outside places that take input:
-// no browser menu, and the text selection stays as it is (a message's own
-// handler still opens its ⋯ menu). Text boxes and links keep the browser's.
-const NATIVE_MENU = 'input, textarea, select, [contenteditable="true"], a';
-const nativeMenu = (e) => e.target instanceof Element && e.target.closest(NATIVE_MENU);
-
-function blockContextMenu(e) {
-  if (!nativeMenu(e)) e.preventDefault();
-}
-
-function keepSelectionOnRightClick(e) {
-  if (e.button === 2 && !nativeMenu(e)) e.preventDefault();
 }
