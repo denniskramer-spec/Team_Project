@@ -475,3 +475,11 @@ button.member-row { width: 100%; border: 0; background: none; color: inherit; fo
   background: var(--warn-soft); font-size: 13px;
 }
 .desktop-bar > span { flex: 1 1 240px; }
+
+/* "Daily report due soon": above the Report due button, until sent. */
+.report-reminder {
+  position: fixed; right: 16px; bottom: 64px; z-index: 189;
+  width: min(360px, calc(100vw - 32px));
+}
+.report-reminder-card { border-left: 4px solid var(--warn); }
+.report-reminder-icon { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--warn); color: #fff; }
