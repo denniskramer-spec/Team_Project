@@ -17,10 +17,11 @@ const APP_TITLE = 'Business Manager';
 // Tells the reader about chat messages they are not looking at, the way a
 // messenger does: a popup in the corner, a sound, a desktop notification
 // when the window is in the background, and the unread count in the tab
-// title and on the tab's icon. A message in the chat that is open and focused raises nothing.
+// title and on the tab's icon (with unread instructions added). A message
+// in the chat that is open and focused raises nothing.
 export function ChatAlertsProvider({ children }) {
   const { user } = useAuth();
-  const { settings } = useAlerts();
+  const { settings, total: unreadInstructions = 0 } = useAlerts();
   const navigate = useNavigate();
   const openDm = useOpenDm();
   const [popups, setPopups] = useState([]);
@@ -72,14 +73,15 @@ export function ChatAlertsProvider({ children }) {
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
   }, [dismissViewed]);
 
-  // The unread count in the tab title and as a badge on the tab's icon,
-  // like a messenger.
+  // Unread chat messages plus unread instructions (the bell), in the tab
+  // title and as a badge on the tab's icon, like a messenger.
   const unread = counts.channels + counts.dms;
+  const inTab = active ? unread + unreadInstructions : 0;
   useEffect(() => {
-    document.title = unread > 0 ? `(${unread > 99 ? '99+' : unread}) ${APP_TITLE}` : APP_TITLE;
-    setTabBadge(unread);
+    document.title = inTab > 0 ? `(${inTab > 99 ? '99+' : inTab}) ${APP_TITLE}` : APP_TITLE;
+    setTabBadge(inTab);
     return () => { document.title = APP_TITLE; setTabBadge(0); };
-  }, [unread]);
+  }, [inTab]);
 
   // A chat screen says while it is on screen, so it raises no popup, and
   // the popups it already raised go.
