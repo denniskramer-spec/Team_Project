@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 // App-wide settings an admin changes from the app, one document per key
-// (today only `timeZone`, see utils/teamTime.js).
+// (`timeZone` and `dayStart`, see utils/teamTime.js).
 const settingSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true },
