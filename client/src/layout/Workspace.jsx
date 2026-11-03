@@ -12,6 +12,7 @@ import IdleLogout from '../security/IdleLogout.jsx';
 import CopyNotice from '../security/CopyNotice.jsx';
 import SecurityAlerts from '../alerts/SecurityAlerts.jsx';
 import IncomeAlerts from '../alerts/IncomeAlerts.jsx';
+import ReportReminder from '../alerts/ReportReminder.jsx';
 import BuzzListener from '../alerts/Buzz.jsx';
 import Header from './Header.jsx';
 import ChannelRail from './ChannelRail.jsx';
@@ -168,6 +169,7 @@ export default function Workspace() {
           Could not refresh the channels: {error} <button className="link" onClick={loadNav}>Try again</button>
         </div>
       )}
+      <ReportReminder />
       <ReportDue />
     </div>
     </ReportStatusProvider>
@@ -175,9 +177,10 @@ export default function Workspace() {
   );
 }
 
-// When the team's time zone changes, "today" may be another day: the page
-// on screen is drawn again from scratch so it loads the new current period.
+// When the team's time zone or day start changes, "today" may be another
+// day: the page on screen is drawn again from scratch so it loads the new
+// current period.
 function TeamDay({ children }) {
-  const zone = useTeamSettings()?.data?.timeZone ?? '';
-  return <Fragment key={zone}>{children}</Fragment>;
+  const { timeZone = '', dayStart = '' } = useTeamSettings()?.data ?? {};
+  return <Fragment key={`${timeZone} ${dayStart}`}>{children}</Fragment>;
 }

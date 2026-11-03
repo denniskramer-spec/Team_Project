@@ -8,7 +8,7 @@ import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
-import { teamDayEnd, teamNow } from '../utils/teamTime.js';
+import { teamDayEnd, teamNow, teamReportReminder } from '../utils/teamTime.js';
 import {
   canWritePersonal, readableAuthorFilter, readableReportFilter, canReadGroupReports, canReadTeam,
 } from '../utils/reportPolicy.js';
@@ -259,8 +259,8 @@ router.get('/status', async (req, res) => {
     : planLines(previous?.planTomorrow).map((text) => ({ text, done: false }));
   res.json({
     // `end` is the real moment the team's day turns over, so the client
-    // can check again then.
-    canWrite: true, period, start, end: teamDayEnd(),
+    // can check again then; `remindAt` is when an unsent report alerts.
+    canWrite: true, period, start, end: teamDayEnd(), remindAt: teamReportReminder(),
     due: !mine?.sentAt, draft: Boolean(mine && !mine.sentAt), sentAt: mine?.sentAt ?? null, todayPlan,
   });
 });

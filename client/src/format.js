@@ -20,24 +20,36 @@ export const formatDay = (value) => formatDate(value, { utc: true });
 // yyyy-mm-dd for <input type="date">.
 export const toDateInput = (value) => (value ? new Date(value).toISOString().slice(0, 10) : '');
 
-// The team's time zone (Admin -> Team settings), once known; until then
-// the browser's own. Set by TeamSettingsProvider.
+// The team's time zone and the time its day starts (Admin -> Team
+// settings), once known; until then the browser's own zone and midnight.
+// Set by TeamSettingsProvider.
 let teamZone = null;
-let teamDay = null;
-export function setTeamTimeZone(zone) {
+let teamClock = null;
+let dayStartMs = 0;
+export function setTeamDay(zone, dayStart = '00:00') {
+  const [h, m] = /^\d\d:\d\d$/.test(dayStart ?? '') ? dayStart.split(':').map(Number) : [0, 0];
+  dayStartMs = (h * 60 + m) * 60000;
   if (zone === teamZone) return;
   teamZone = zone || null;
-  // en-CA writes dates as yyyy-mm-dd.
-  teamDay = teamZone ? new Intl.DateTimeFormat('en-CA', { timeZone: teamZone, year: 'numeric', month: '2-digit', day: '2-digit' }) : null;
+  teamClock = teamZone
+    ? new Intl.DateTimeFormat('en-US', { timeZone: teamZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : null;
 }
 
 // Today as yyyy-mm-dd on the team's calendar, the same day the server calls
-// today. (toISOString gives the UTC day, which is already tomorrow in the
-// evening west of Greenwich and still yesterday in the morning east of it.)
+// today: the wall clock in the team's zone, moved back by the day's start
+// (with the day starting at 06:00, 03:00 is still yesterday). toISOString
+// alone would give the UTC day.
 export function todayInput() {
   const now = new Date();
-  if (teamDay) return teamDay.format(now);
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  let wall;
+  if (teamClock) {
+    const p = Object.fromEntries(teamClock.formatToParts(now).map(({ type, value }) => [type, Number(value)]));
+    wall = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  } else {
+    wall = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+  }
+  return new Date(wall - dayStartMs).toISOString().slice(0, 10);
 }
 
 export function isBirthdayToday(value) {
