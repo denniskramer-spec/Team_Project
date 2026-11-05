@@ -20,7 +20,6 @@ import MemberActions from './MemberActions.jsx';
 const COLUMNS = {
   member: (m) => m.name,
   username: (m) => m.username,
-  id: (m) => m.memberId,
   birthday: (m) => m.birthday ?? null,
   group: (m) => m.group?.name ?? null,
   role: (m) => ROLE_ORDER.indexOf(m.role),
@@ -70,7 +69,7 @@ export default function MemberChannel({ title }) {
           <Icon name="search" size={16} />
           <input
             type="search"
-            placeholder="Search name, username or ID"
+            placeholder="Search name or username"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search members"
@@ -106,7 +105,6 @@ export default function MemberChannel({ title }) {
             <tr>
               <Th sort={sorter} col="member">Member</Th>
               <Th sort={sorter} col="username" className="col-username">Username</Th>
-              <Th sort={sorter} col="id">ID</Th>
               <Th sort={sorter} col="birthday">Birthday</Th>
               <Th sort={sorter} col="group">Group</Th>
               <Th sort={sorter} col="role">Role</Th>
@@ -130,7 +128,6 @@ export default function MemberChannel({ title }) {
                   </div>
                 </td>
                 <td data-label="Username" className="muted cell-nowrap col-username">@{m.username}</td>
-                <td data-label="ID" className="cell-nowrap"><code>{m.memberId}</code></td>
                 <td data-label="Birthday">
                   <DateTag value={m.birthday} utc icon="cake" />
                   {isBirthdayToday(m.birthday) && <span className="bday" title="Birthday today!"><Icon name="cake" size={14} /></span>}

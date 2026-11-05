@@ -77,13 +77,13 @@ code {
 .cell-user { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .table .presence { border-color: var(--bg); }
 /* The member directory: residents take the spare width, so the short columns
-   (username, ID, the headers) must not be squeezed onto two lines, and a name
+   (username, the headers) must not be squeezed onto two lines, and a name
    breaks between words only. */
 .member-table th .sort-btn, .member-table .cell-nowrap { white-space: nowrap; }
 .member-table .cell-user { overflow-wrap: normal; }
 .member-table .username-inline { display: none; }
 /* Too narrow for a Username column: the username goes under the name. */
-@media (max-width: 1240px) {
+@media (max-width: 1160px) {
   .member-table .col-username { display: none; }
   .member-table .username-inline { display: block; }
 }
