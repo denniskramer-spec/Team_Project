@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canBuzzChannel, canFlagOffTopic, checkEmoji } from '../src/utils/chatPolicy.js';
+import { canBuzzChannel, canClearChat, canFlagOffTopic, checkEmoji } from '../src/utils/chatPolicy.js';
 
 const admin = { _id: 'admin1', role: 'admin' };
 const leader = { _id: 'lead1', role: 'leader' };
@@ -12,6 +12,13 @@ test('a whole channel is shaken by the leader, bosses and admins only', () => {
   assert.ok(canBuzzChannel(boss));
   assert.ok(canBuzzChannel(admin));
   assert.ok(!canBuzzChannel(member));
+});
+
+test('a whole chat is deleted by the leader and admins only', () => {
+  assert.ok(canClearChat(leader));
+  assert.ok(canClearChat(admin));
+  assert.ok(!canClearChat(boss), 'bosses cannot delete messages');
+  assert.ok(!canClearChat(member));
 });
 
 test('flagging a message as not work', () => {

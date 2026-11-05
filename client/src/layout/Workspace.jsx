@@ -102,10 +102,13 @@ export default function Workspace() {
   // A direct message that has no messages yet is not in the nav: the
   // conversation is listed from the person it was opened with (sent along in
   // the navigation state), until the first message puts it there for good.
+  // One deleted whole leaves the nav too: it keeps the name it was listed by.
+  const listedDms = useRef(new Map());
   const channel = useMemo(() => {
     const found = channels?.find((c) => c.key === channelKey);
+    if (found?.key === 'chat') found.titles.forEach((t) => { if (t.dm) listedDms.current.set(t.key, t.dm); });
     if (!found || found.key !== 'chat' || !isDmTitleKey(titleKey) || found.titles.some((t) => t.key === titleKey)) return found;
-    const peer = location.state?.peer;
+    const peer = location.state?.peer ?? listedDms.current.get(titleKey);
     const id = dmPeerId(titleKey);
     if (!/^[0-9a-f]{24}$/.test(id) || (peer && String(peer.id) !== id) || id === String(user?.id)) return found;
     const dm = peer ?? { id, name: DM_PLACEHOLDER_NAME, role: 'member', group: null };

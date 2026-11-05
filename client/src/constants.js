@@ -7,6 +7,7 @@ export const EVENTS = {
   CHAT_NEW: 'chat:new',
   CHAT_CHANGED: 'chat:changed',
   CHAT_DELETED: 'chat:deleted',
+  CHAT_CLEARED: 'chat:cleared',
   CHAT_TYPING: 'chat:typing',
   INSTRUCTION_NEW: 'instruction:new',
   INSTRUCTION_CHANGED: 'instruction:changed',

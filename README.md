@@ -282,7 +282,9 @@ Channel titles come from `GET /api/nav`, built per user in
   (this person's conversations, newest first, with the other person's avatar and
   presence; **+** starts one with anyone in the directory, and *Message* on a member
   in the side panel does the same). Authors edit their own messages; the leader
-  and admins can delete any. **A message in a chat you are not looking at** pops up
+  and admins can delete any, and **Delete chat** in the chat's head lets them delete
+  the whole chat (every message, for everyone, after a confirmation; each one is kept
+  under Security → Deleted records). **A message in a chat you are not looking at** pops up
   in the bottom-right corner like a messenger (author, chat or *Direct message*, the
   text), with a short sound; clicking it opens that chat. With desktop notifications
   on (Alerts tab), the same arrives as a system notification while the window is in

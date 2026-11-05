@@ -173,7 +173,8 @@ const plain = (doc) => (typeof doc.toObject === 'function'
 // layer calls it on its own for any delete a route did not announce.)
 //   docs    one document or a list
 //   model   the model's name ('Outcome', 'Task', ...)
-//   label   what to call the record(s) in the log (a name, a title, ...)
+//   label   what to call the record(s) in the log (a name, a title, ...),
+//           or a function giving each record its own
 //   reason  why, when the app removed it rather than a person
 export async function archiveDeleted(docs, req, { model, label = '', reason = '' }) {
   const ctx = currentAudit() ?? req?.auditCtx ?? null;
@@ -182,19 +183,26 @@ export async function archiveDeleted(docs, req, { model, label = '', reason = ''
   list.forEach((d) => ctx?.archived.add(String(d._id)));
   const by = actorOf(req?.user);
   const ip = req ? clientIp(req) : '';
+  const labelOf = (doc) => String(typeof label === 'function' ? label(doc) : label).slice(0, 200);
   const entries = await DeletedRecord.insertMany(list.map((doc) => {
     const snapshot = plain(doc);
     return {
-      model, recordId: doc._id, label: String(label).slice(0, 200), snapshot, files: filesOf(snapshot),
+      model, recordId: doc._id, label: labelOf(doc), snapshot, files: filesOf(snapshot),
       deletedBy: by, deletedAt: new Date(), ip, reason,
     };
   }));
-  entries.forEach((e, i) => ctx?.changes.push({ op: 'delete', model, id: list[i]._id, label: e.label, archived: e._id, ...(reason ? { reason } : {}) }));
+  // Every copy is kept; the log entry names the first ones and counts the
+  // rest, so deleting thousands at once does not outgrow one entry.
+  entries.forEach((e, i) => {
+    if (!ctx) return;
+    if (ctx.changes.length >= MAX_ITEMS) { ctx.more = (ctx.more ?? 0) + 1; return; }
+    ctx.changes.push({ op: 'delete', model, id: list[i]._id, label: e.label, archived: e._id, ...(reason ? { reason } : {}) });
+  });
   if (req) {
     req.audit = {
       ...req.audit,
       action: req.audit?.action ?? `${model.toLowerCase()}.delete`,
-      target: req.audit?.target ?? { model, id: list[0]._id, label: String(label).slice(0, 200) },
+      target: req.audit?.target ?? { model, id: list[0]._id, label: labelOf(list[0]) },
       details: { ...req.audit?.details, archived: [...(req.audit?.details?.archived ?? []), ...entries.map((e) => e._id)], records: (req.audit?.details?.records ?? 0) + list.length, ...(reason ? { reason } : {}) },
     };
   }
