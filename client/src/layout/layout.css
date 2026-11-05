@@ -420,6 +420,9 @@
   border-bottom: 1px solid var(--border);
 }
 .content-head h2 { margin: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A page's own buttons, at the right end of the head. */
+.content-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.content-head-actions:empty { display: none; }
 .content-body { flex: 1; overflow-y: auto; padding: clamp(12px, 2vw, 24px); }
 /* Text people type (names, notes, links) can hold one very long word. It
    breaks where it must rather than pushing the page wider than the window
@@ -548,6 +551,7 @@ select, input, textarea { max-width: 100%; }
   .crumb-label { max-width: 110px; }
   .live-label { display: none; }
   .live { margin-right: 2px; }
+  .head-action-label { display: none; }
   .footer { gap: 10px; padding: 0 10px; }
   .footer-copy, .footer-version { display: none; }
   .footer-status { gap: 10px; }

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../api.js';
 import { useAuth } from '../../auth/AuthContext.jsx';
 import Icon from '../../components/Icon.jsx';
 import { useToast } from '../../components/Toast.jsx';
 import Avatar from '../../components/Avatar.jsx';
+import { ConfirmDialog } from '../../components/Modal.jsx';
+import { canClearChat } from '../../roles.js';
 import { useWatchChat } from '../../alerts/ChatAlertsContext.jsx';
 import { windowFocused } from '../../alerts/notify.js';
 import { DM_PLACEHOLDER_NAME } from '../../constants.js';
@@ -17,13 +20,17 @@ import { DesktopAlertsBar } from '../../alerts/Buzz.jsx';
 
 // A channel (#general-chat, a group's chat, #finance-chat) or a direct
 // message (title key dm-<userId>, `title.dm` is the other person): the same
-// screen on the same API, with the name drawn differently.
-export default function ChatChannel({ title }) {
+// screen on the same API, with the name drawn differently. The leader and
+// admins get a "Delete chat" button in the head (`headSlot`) that removes
+// every message in the chat for everyone.
+export default function ChatChannel({ title, headSlot }) {
   const { user } = useAuth();
   const toast = useToast();
   const dm = title.dm ?? null;
   const [replyTo, setReplyTo] = useState(null); // the message being answered
   useEffect(() => setReplyTo(null), [title.key]);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   // The chat is read up to the newest message on screen, but only while the
   // reader is looking (a background tab keeps its unread count), and only
@@ -83,6 +90,20 @@ export default function ChatChannel({ title }) {
   }, [toast]);
   const jumpToBottom = () => { scroll.jumpToBottom(); markRead(); };
 
+  const clearChat = async () => {
+    setClearing(true);
+    try {
+      const { deleted, upTo } = await api(`/chat/${title.key}/messages`, { method: 'DELETE' });
+      chat.applyClear(upTo); // from the reply, not only via the socket
+      setConfirmClear(false);
+      toast(deleted ? `Chat deleted: ${deleted} message${deleted === 1 ? '' : 's'} removed` : 'This chat was already empty');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const rows = buildRows(messages, chat.lastReadAt, user.id);
   const empty = dm ? (
     <div className="chat-start">
@@ -132,6 +153,32 @@ export default function ChatChannel({ title }) {
           </>
         )}
       </div>
+
+      {canClearChat(user) && headSlot && createPortal(
+        <button
+          type="button"
+          className="btn small-btn danger-outline"
+          onClick={() => setConfirmClear(true)}
+          disabled={chat.loading || !messages.length}
+          aria-label="Delete whole chat"
+          title={messages.length ? 'Delete every message in this chat' : 'This chat has no messages'}
+        >
+          <Icon name="trash" size={15} />
+          <span className="head-action-label">Delete chat</span>
+        </button>,
+        headSlot,
+      )}
+      {confirmClear && (
+        <ConfirmDialog
+          title="Delete whole chat?"
+          message={`Every message in ${dm ? `your direct messages with ${name}` : `#${name}`} will disappear for everyone in this chat. The team leader and admins can still find them under Security → Deleted records.`}
+          confirmLabel="Delete chat"
+          danger
+          busy={clearing}
+          onConfirm={clearChat}
+          onClose={() => setConfirmClear(false)}
+        />
+      )}
 
       <DesktopAlertsBar />
       <ChatComposer titleKey={title.key} name={name} dm={dm} onSent={onSent} onTyping={typing.noteTyping} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} canBuzz={Boolean(dm) || ['leader', 'boss', 'admin'].includes(user.role)} />

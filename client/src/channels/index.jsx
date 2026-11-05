@@ -33,12 +33,14 @@ const REGISTRY = {
   settings: page(() => import('./settings/SettingsChannel.jsx')),
 };
 
-export default function ChannelContent({ channel, title }) {
+// `headSlot` is the element in the content head where a page may put its
+// own buttons (through a portal); null until the head is on screen.
+export default function ChannelContent({ channel, title, headSlot }) {
   const Component = REGISTRY[channel.key] || Placeholder;
   // key resets the page's state when switching titles.
   return (
     <Suspense fallback={<p className="muted small">Loading...</p>}>
-      <Component key={`${channel.key}/${title.key}`} channel={channel} title={title} />
+      <Component key={`${channel.key}/${title.key}`} channel={channel} title={title} headSlot={headSlot} />
     </Suspense>
   );
 }

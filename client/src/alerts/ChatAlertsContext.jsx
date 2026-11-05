@@ -65,6 +65,11 @@ export function ChatAlertsProvider({ children }) {
     }
   });
 
+  // A chat deleted whole takes its popups with it.
+  useSocketEvent(EVENTS.CHAT_CLEARED, ({ titleKey }) => setPopups((list) => (
+    list.some((p) => p.titleKey === titleKey) ? list.filter((p) => p.titleKey !== titleKey) : list
+  )));
+
   // Back in the window with that chat open: its popups have served.
   useEffect(() => {
     const onFocus = () => { if (windowFocused()) dismissViewed(); };

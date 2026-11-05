@@ -15,4 +15,7 @@ export const isManager = (user) => ['admin', 'leader'].includes(user?.role);
 // Bosses, the leader and admins still see chat messages a member deleted.
 export const seesDeletedMessages = (user) => ['boss', 'leader', 'admin'].includes(user?.role);
 
+// The leader and admins delete a whole chat, as they do any one message.
+export const canClearChat = (user) => ['leader', 'admin'].includes(user?.role);
+
 export const ownsRecords = (user) => ['member', 'boss'].includes(user?.role);

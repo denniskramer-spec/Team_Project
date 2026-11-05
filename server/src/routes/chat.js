@@ -6,7 +6,7 @@ import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, checkEmoji } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, canClearChat, checkEmoji } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { clean } from '../utils/validate.js';
@@ -22,6 +22,7 @@ router.use(requireAuth);
 const PAGE_SIZE = 50;
 const AUTHOR_FIELDS = 'name role username';
 const MAX_REACTIONS = 20; // different emoji on one message
+const CLEAR_BATCH = 500; // messages archived and removed at a time when a whole chat goes
 // What a message needs loaded to be sent to the client.
 const POPULATE = [
   { path: 'author', select: AUTHOR_FIELDS },
@@ -183,7 +184,7 @@ function sendChatEvent(event, channel, user, payloadFor) {
   const them = channel.other;
   dmEvent(event, String(user._id), payloadFor(`dm-${them._id}`, them));
   dmEvent(event, String(them._id), payloadFor(`dm-${me._id}`, me));
-  if (event === 'chat:new') { navChangedFor(user._id); navChangedFor(them._id); }
+  if (event === 'chat:new' || event === 'chat:cleared') { navChangedFor(user._id); navChangedFor(them._id); }
 }
 
 async function findMessage(req) {
@@ -268,6 +269,37 @@ router.delete('/messages/:id', async (req, res) => {
 
   sendChatEvent('chat:deleted', channel, req.user, (key) => ({ titleKey: key, id: message._id }));
   res.json({ ok: true });
+});
+
+// DELETE /api/chat/:titleKey/messages — deletes the whole chat: every
+// message in it goes, for everyone (the leader and admins only). Each one is
+// kept whole in the deleted records first, as when deleted on its own.
+router.delete('/:titleKey/messages', async (req, res) => {
+  const { titleKey } = req.params;
+  const channel = await resolveChannel(req.user, titleKey);
+  if (!canClearChat(req.user)) throw forbidden('Only the team leader and admins can delete a whole chat');
+  // Messages sent while this runs were not there to be deleted: they stay.
+  const upTo = new Date();
+  const target = (count) => ({ model: 'Message', label: `${titleKey}: whole chat (${count} message${count === 1 ? '' : 's'})` });
+  req.audit = { action: 'message.delete', target: target(0) };
+
+  let deleted = 0;
+  for (;;) {
+    const batch = await Message.find({ channelKey: channel.key, createdAt: { $lte: upTo } }).limit(CLEAR_BATCH);
+    if (!batch.length) break;
+    await archiveDeleted(batch, req, { model: 'Message', label: (m) => `${titleKey}: ${previewOf(m).slice(0, 80)}` });
+    const gone = await Message.deleteMany({ _id: { $in: batch.map((m) => m._id) } });
+    if (!gone.deletedCount) break; // someone else removed them meanwhile
+    deleted += gone.deletedCount;
+  }
+  req.audit = { ...req.audit, target: target(deleted) };
+
+  if (deleted) {
+    sendChatEvent('chat:cleared', channel, req.user, (key) => ({ titleKey: key, upTo }));
+    // Unread badges of a channel drop to nothing (a DM's two sides are told above).
+    if (channel.kind !== 'dm') chatEvent('nav:changed', channel);
+  }
+  res.json({ ok: true, deleted, upTo });
 });
 
 // POST /api/chat/:titleKey/read — everything up to now has been seen.

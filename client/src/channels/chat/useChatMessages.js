@@ -41,6 +41,13 @@ export function useChatMessages(titleKey, { onIncoming, onLoaded } = {}) {
       : prev.filter((m) => String(m.id) !== String(id))));
   }, [keepsDeleted]);
 
+  // The whole chat was deleted: everything sent up to then is gone.
+  const applyClear = useCallback((upTo) => {
+    olderLoaded.current = false;
+    setHasMore(false);
+    setMessages((prev) => prev.filter((m) => m.createdAt > upTo));
+  }, []);
+
   // The newest page (also after a reconnect). Older pages the reader already
   // loaded stay, unless so much arrived meanwhile that they no longer join up
   // with the new page: then they go and "Load older" comes back.
@@ -105,6 +112,9 @@ export function useChatMessages(titleKey, { onIncoming, onLoaded } = {}) {
   useSocketEvent(EVENTS.CHAT_DELETED, ({ titleKey: key, id, deletedAt }) => {
     if (key === titleKey) applyDelete(id, deletedAt);
   });
+  useSocketEvent(EVENTS.CHAT_CLEARED, ({ titleKey: key, upTo }) => {
+    if (key === titleKey) applyClear(upTo);
+  });
 
-  return { messages, hasMore, loading, loadingOlder, error, lastReadAt, peerName, load, loadOlder, append, applyChange, applyDelete };
+  return { messages, hasMore, loading, loadingOlder, error, lastReadAt, peerName, load, loadOlder, append, applyChange, applyDelete, applyClear };
 }

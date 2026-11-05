@@ -84,6 +84,10 @@ export function deleteModeFor(user, message) {
   return null;
 }
 
+// Deleting a whole chat removes every message in it for everyone: for those
+// who may delete any single message outright, the leader and admins.
+export const canClearChat = (user) => ['leader', 'admin'].includes(user.role);
+
 // One emoji, nothing else: a grapheme or two of pictographs (with skin
 // tones, joiners and variation selectors), never text.
 const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\u200D\uFE0F\u20E3#*0-9])+$/u;
