@@ -84,6 +84,8 @@ The admin account is left alone.
 | **Boss** | Leads one group: instructs it, writes the group report and plan, manages its members. |
 | **Member** | Writes their own reports and plans, registers projects, records income, chats. Sees only their own residents, chat accounts and projects; the Checkout and Member tabs are not shown to members, and their Projects, Residents and Chat accounts are gathered under a **Settings** channel at the foot of the rail, under Chat (see below). |
 
+People are shown by their **username** everywhere: chat, reports, plans, finance, instructions, popups and the navigation tree. The username is the team leader's to set (Member → Edit). The full name stays on the account and shows only where accounts are looked after: the member directory, Admin → Users & roles, sign-up approvals, the security log, and a person's own account menu and Account page.
+
 **Reading follows the hierarchy:** leader and admin see everything, a boss sees their
 own group, a member sees their own records. It is enforced on the server — an
 out-of-scope record answers 404, and the channel tree only offers what the role may open.
@@ -106,7 +108,7 @@ Capabilities live in `server/src/config/roles.js`; the per-record rules in
 | **Finance** | Income · Outcome · Total — then All · each group · each member | Income and outcome per member: date, amount, source or reason; totals per period and group |
 | **Chat** | general · each group · finance | Live chat, typing indicators, unread markers; messages take up to five images (the **+** button, a paste or a drop on the composer) and emoji from a searchable picker |
 | **Admin** | Approvals · Users & roles · Groups · Payment fees · Security | Sign-up approvals, role changes, group management, payment method fees, the security log and deleted records (admins and the team leader; bosses see Approvals only) |
-| **Settings** (members only) | Account — then Projects · Residents · Chat accounts | The rail is icon-only for every role (the channel's name flies out on hover, and a pill on the left marks the open channel); a member's Settings sits at its foot, with their own things in one place: their account (profile, password, theme, alerts) under *User settings*, and their records under *Your records*, on the same pages the other roles reach from the rail. Old links (`/task`, `/resident`, `/chataccount`) land on the right Settings page for a member. |
+| **Settings** (members only) | Account — then Projects · Residents · Chat accounts | The rail shows each channel as an icon with its name under it, for every role (the open channel is a tinted tile with a pill on the left); a member's Settings sits at its foot, with their own things in one place: their account (profile, password, theme, alerts) under *User settings*, and their records under *Your records*, on the same pages the other roles reach from the rail. Old links (`/task`, `/resident`, `/chataccount`) land on the right Settings page for a member. |
 
 **The title section is a tree, three levels deep** in the group-scoped channels:
 the report type or period (the title), then **All / each group** (`?g=`), then

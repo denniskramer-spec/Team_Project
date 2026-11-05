@@ -20,7 +20,7 @@ const RULES = [
 
 const lastSent = new Map();
 
-const whoOf = (e) => e.user?.name ?? (e.username || null) ?? (e.method === 'DB' ? e.userAgent || 'a database client' : null) ?? e.ip ?? 'someone';
+const whoOf = (e) => e.user?.username ?? e.user?.name ?? (e.username || null) ?? (e.method === 'DB' ? e.userAgent || 'a database client' : null) ?? e.ip ?? 'someone';
 
 // The alert an entry raises, or null.
 export function alertOf(entry) {

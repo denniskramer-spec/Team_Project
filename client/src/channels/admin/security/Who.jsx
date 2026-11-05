@@ -8,7 +8,7 @@ export default function Who({ user, username, outside = false }) {
   if (!user) return <span className="muted">{username ? `@${username}` : 'anonymous'}</span>;
   return (
     <span className="cell-user">
-      <Avatar name={user.name} role={user.role} size={22} />
+      <Avatar name={user.username ?? user.name} role={user.role} size={22} />
       <span><span className="strong">{user.name}</span> <span className="muted small">@{user.username}</span></span>
     </span>
   );

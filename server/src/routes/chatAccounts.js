@@ -14,6 +14,7 @@ import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
 import { fileInUse, imageUrl } from '../utils/fileRefs.js';
 import { chatAccountChanged } from '../socket/events.js';
+import { shownName } from '../utils/person.js';
 
 // Chat accounts: the Discord, Telegram and WhatsApp accounts members use and
 // the residents they talk to from them. Same role rules as residents.
@@ -32,7 +33,7 @@ const serialize = (a, user) => ({
   contacts: (a.contacts ?? []).filter((r) => r?._id).map(contact),
   status: a.status,
   screenshot: imageUrl(a.screenshot),
-  owner: a.owner?._id ? { id: a.owner._id, name: a.owner.name, role: a.owner.role } : null,
+  owner: a.owner?._id ? { id: a.owner._id, name: shownName(a.owner), role: a.owner.role } : null,
   group: a.group?._id ? { id: a.group._id, name: a.group.name, slug: a.group.slug } : null,
   createdAt: a.createdAt,
   canEdit: canManageFor(user, { _id: a.owner?._id ?? a.owner, group: a.group?._id ?? a.group }),
@@ -74,7 +75,7 @@ async function checkFields(req, current = null) {
 const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, { orSelf });
 
 const populate = (q) => q.populate([
-  { path: 'owner', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'contacts', select: 'name photo' },
+  { path: 'owner', select: 'name username role' }, { path: 'group', select: 'name slug' }, { path: 'contacts', select: 'name photo' },
 ]);
 
 // GET /api/chat-accounts?group=all|<slug>&member=<id>&q=text

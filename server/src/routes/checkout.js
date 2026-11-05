@@ -17,6 +17,7 @@ import { badRequest, notFound } from '../utils/httpError.js';
 import { person as personOf, parseDay } from '../utils/finance.js';
 import { earnedOf, upcomingOf } from '../utils/reportWork.js';
 import { formatPrice } from '../utils/project.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -93,7 +94,7 @@ router.get('/', async (req, res) => {
       ...scopeFilter(req.user, '_id'),
       status: 'active',
       role: { $in: ['member', 'boss'] },
-    }, '_id'), 'name role status group').populate('group', 'name slug').lean(),
+    }, '_id'), 'name username role status group').populate('group', 'name slug').lean(),
   ]);
 
   // Whoever else owns something counted here (an account since disabled, a
@@ -104,9 +105,9 @@ router.get('/', async (req, res) => {
     ...tasks.map((t) => t.owner), ...incomes.map((i) => i.member),
   ].map(String).filter((id) => !listed.has(id));
   const others = owners2.length
-    ? await User.find({ _id: { $in: [...new Set(owners2)] } }, 'name role status group').populate('group', 'name slug').lean()
+    ? await User.find({ _id: { $in: [...new Set(owners2)] } }, 'name username role status group').populate('group', 'name slug').lean()
     : [];
-  const people = [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
+  const people = [...current, ...others].sort((a, b) => shownName(a).localeCompare(shownName(b)));
 
   // A member's monthly plan already covers their weeks, so planned targets
   // count weekly plans only for members with no monthly plan in the period

@@ -1,5 +1,6 @@
 import { getIO } from './index.js';
 import { roomsFor } from '../utils/chatPolicy.js';
+import { shownName } from '../utils/person.js';
 
 // Real-time notifications that keep every open screen in sync.
 
@@ -108,8 +109,8 @@ export function incomeRecorded(income, recorder, bossIds = []) {
   const rooms = ['role:leader', ...bossIds.map((id) => `user:${id}`)];
   io.to(rooms).except(`user:${recorder._id}`).emit('income:recorded', {
     id: String(income._id),
-    member: { id: income.member?._id ?? income.member, name: income.member?.name ?? '' },
-    recorder: { id: recorder._id, name: recorder.name, role: recorder.role },
+    member: { id: income.member?._id ?? income.member, name: shownName(income.member) },
+    recorder: { id: recorder._id, name: shownName(recorder), role: recorder.role },
     amount: income.amount,
     currency: income.currency,
     originalAmount: income.originalAmount ?? income.amount,

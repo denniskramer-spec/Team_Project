@@ -15,20 +15,21 @@ import { chatLimit, buzzLimit } from '../middleware/limits.js';
 import { chatEvent, navChangedFor, dmEvent } from '../socket/events.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const PAGE_SIZE = 50;
-const AUTHOR_FIELDS = 'name role username';
+const AUTHOR_FIELDS = 'name username role';
 const MAX_REACTIONS = 20; // different emoji on one message
 const CLEAR_BATCH = 500; // messages archived and removed at a time when a whole chat goes
 // What a message needs loaded to be sent to the client.
 const POPULATE = [
   { path: 'author', select: AUTHOR_FIELDS },
-  { path: 'reactions.users', select: 'name' },
-  { path: 'offTopic.by', select: 'name' },
-  { path: 'replyTo', select: 'author content images deletedAt', populate: { path: 'author', select: 'name' } },
+  { path: 'reactions.users', select: 'name username' },
+  { path: 'offTopic.by', select: 'name username' },
+  { path: 'replyTo', select: 'author content images deletedAt', populate: { path: 'author', select: 'name username' } },
 ];
 
 // The message answered, as one line. A message since deleted (or hidden by
@@ -37,24 +38,24 @@ const POPULATE = [
 const replyOf = (r, id) => {
   if (!r) return id ? { id, deleted: true } : null;
   if (r.deletedAt) return { id: r._id, deleted: true };
-  return { id: r._id, authorName: r.author?.name ?? 'Deleted user', preview: previewOf(r).slice(0, 140) };
+  return { id: r._id, authorName: shownName(r.author) || 'Deleted user', preview: previewOf(r).slice(0, 140) };
 };
 
 const serialize = (m) => ({
   id: m._id,
   author: m.author?._id
-    ? { id: m.author._id, name: m.author.name, role: m.author.role, username: m.author.username }
+    ? { id: m.author._id, name: shownName(m.author), role: m.author.role, username: m.author.username }
     : null,
   content: m.content,
   images: (m.images ?? []).map(imageUrl),
   createdAt: m.createdAt,
   editedAt: m.editedAt,
   deletedAt: m.deletedAt ?? null,
-  offTopic: m.offTopic?.at ? { at: m.offTopic.at, by: m.offTopic.by?.name ?? 'Former member' } : null,
+  offTopic: m.offTopic?.at ? { at: m.offTopic.at, by: shownName(m.offTopic.by) || 'Former member' } : null,
   replyTo: replyOf(m.replyTo, m.populated?.('replyTo')),
   reactions: (m.reactions ?? []).filter((r) => r.users?.length).map((r) => ({
     emoji: r.emoji,
-    users: r.users.map((u) => ({ id: u._id ?? u, name: u.name ?? 'Former member' })),
+    users: r.users.map((u) => ({ id: u._id ?? u, name: shownName(u) || 'Former member' })),
   })),
 });
 
@@ -168,7 +169,7 @@ router.post('/:titleKey/buzz', buzzLimit, async (req, res) => {
   const at = new Date();
   sendChatEvent('chat:buzz', channel, req.user, (titleKey, peer) => ({
     titleKey, channelName: peer ? peer.name : channel.name, dm: channel.kind === 'dm',
-    from: { id: req.user._id, name: req.user.name, role: req.user.role }, at,
+    from: { id: req.user._id, name: shownName(req.user), role: req.user.role }, at,
   }));
   res.json({ ok: true });
 });
@@ -180,8 +181,8 @@ function sendChatEvent(event, channel, user, payloadFor) {
     chatEvent(event, channel, payloadFor(titleKeyFor(channel.key, channel.group?.slug)));
     return;
   }
-  const me = { _id: user._id, name: user.name };
-  const them = channel.other;
+  const me = { _id: user._id, name: shownName(user) };
+  const them = { _id: channel.other._id, name: shownName(channel.other) };
   dmEvent(event, String(user._id), payloadFor(`dm-${them._id}`, them));
   dmEvent(event, String(them._id), payloadFor(`dm-${me._id}`, me));
   if (event === 'chat:new' || event === 'chat:cleared') { navChangedFor(user._id); navChangedFor(them._id); }
@@ -330,7 +331,7 @@ export async function listDms(user) {
   const reads = await ChatRead.find({ user: user._id, channelKey: { $in: keys } }).lean();
   const readAt = new Map(reads.map((r) => [r.channelKey, r.lastReadAt]));
   const peerIds = latest.map((l) => dmPeerOf(l._id, me));
-  const peers = await User.find({ _id: { $in: peerIds } }, 'name role group status').populate('group', 'name').lean();
+  const peers = await User.find({ _id: { $in: peerIds } }, 'name username role group status').populate('group', 'name').lean();
   const peerOf = new Map(peers.map((p) => [String(p._id), p]));
   return Promise.all(latest.map(async (l) => {
     const peerId = dmPeerOf(l._id, me);
@@ -338,7 +339,7 @@ export async function listDms(user) {
     const unread = await Message.countDocuments({ channelKey: l._id, author: { $ne: user._id }, createdAt: { $gt: readAt.get(l._id) ?? user.createdAt }, ...deletedFilter(user) });
     return {
       titleKey: `dm-${peerId}`,
-      peer: { id: peerId, name: peer?.name ?? 'Former member', role: peer?.role ?? 'member', group: peer?.group?.name ?? null, active: peer?.status === 'active' },
+      peer: { id: peerId, name: shownName(peer) || 'Former member', role: peer?.role ?? 'member', group: peer?.group?.name ?? null, active: peer?.status === 'active' },
       last: { content: previewOf(l.last).slice(0, 120), at: l.last.createdAt, mine: String(l.last.author) === me },
       unread,
     };

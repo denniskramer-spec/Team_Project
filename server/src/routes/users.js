@@ -13,6 +13,7 @@ import { dmKey } from '../utils/chatPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { dmEvent } from '../socket/events.js';
 import { clean } from '../utils/validate.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -21,11 +22,11 @@ const USER_FIELDS = 'name username memberId role group birthday lastSeenAt';
 
 // Lightweight list of active members, used by the right-hand member panel.
 router.get('/directory', async (req, res) => {
-  const users = await User.find({ status: 'active' }, USER_FIELDS).populate('group', 'name slug').sort('name').lean();
+  const users = await User.find({ status: 'active' }, USER_FIELDS).populate('group', 'name slug').sort('username').lean();
   res.json({
     users: users.map((u) => ({
       id: u._id,
-      name: u.name,
+      name: shownName(u),
       username: u.username,
       memberId: u.memberId,
       role: u.role,
@@ -48,18 +49,18 @@ function daysUntil(date) {
 // GET /api/users/upcoming — birthdays in the next two weeks (everyone) and
 // project expiries in the next two weeks (within this role's scope).
 router.get('/upcoming', async (req, res) => {
-  const users = await User.find({ status: 'active', birthday: { $ne: null } }, 'name role birthday').lean();
+  const users = await User.find({ status: 'active', birthday: { $ne: null } }, 'name username role birthday').lean();
   const birthdays = users
-    .map((u) => ({ id: u._id, name: u.name, role: u.role, inDays: daysUntil(u.birthday) }))
+    .map((u) => ({ id: u._id, name: shownName(u), role: u.role, inDays: daysUntil(u.birthday) }))
     .filter((b) => b.inDays !== null && b.inDays <= 14)
     .sort((a, b) => a.inDays - b.inDays);
   // End dates are calendar days: counted from the team's today.
   const today = teamToday();
   const soon = new Date(today); soon.setUTCDate(soon.getUTCDate() + 14);
   const tasks = await Task.find({ ...scopeFilter(req.user, 'owner'), status: 'active', endDate: { $ne: null, $lte: soon } }, 'name endDate owner')
-    .populate('owner', 'name').sort('endDate').lean();
+    .populate('owner', 'name username').sort('endDate').lean();
   const expiries = tasks.map((t) => ({
-    id: t._id, name: t.name, owner: t.owner?.name ?? null,
+    id: t._id, name: t.name, owner: shownName(t.owner) || null,
     inDays: Math.round((new Date(t.endDate) - today) / 86400000),
   }));
   res.json({ birthdays, expiries });
@@ -72,7 +73,7 @@ router.get('/:id/peek', async (req, res) => {
   const member = await User.findOne({ _id: req.params.id, status: 'active' }, USER_FIELDS).populate('group', 'name slug').lean();
   if (!member) throw notFound('Member not found');
   const base = {
-    id: member._id, name: member.name, username: member.username, memberId: member.memberId, role: member.role,
+    id: member._id, name: shownName(member), username: member.username, memberId: member.memberId, role: member.role,
     group: member.group ? { id: member.group._id, name: member.group.name } : null,
     birthday: member.birthday ?? null, birthdayInDays: daysUntil(member.birthday), lastSeenAt: member.lastSeenAt ?? null,
     canSeeWork: canSeeMember(req.user, member) && ['member', 'boss'].includes(member.role),
@@ -111,7 +112,7 @@ router.get('/:id/peek', async (req, res) => {
 router.post('/:id/nudge', async (req, res) => {
   if (!canReadTeam(req.user)) throw forbidden('Only bosses, the leader and admins send reminders');
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Member not found');
-  const member = await User.findOne({ _id: req.params.id, status: 'active' }, 'name role group').lean();
+  const member = await User.findOne({ _id: req.params.id, status: 'active' }, 'name username role group').lean();
   if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
   if (String(member._id) === String(req.user._id)) throw badRequest('That is you');
   const content = typeof req.body.message === 'string' && clean(req.body.message).trim()
@@ -122,10 +123,10 @@ router.post('/:id/nudge', async (req, res) => {
   await ChatRead.touch(req.user._id, key, message.createdAt);
   const payload = (titleKey, channelName) => ({
     titleKey, channelName, dm: true,
-    message: { id: message._id, author: { id: req.user._id, name: req.user.name, role: req.user.role }, content, createdAt: message.createdAt, editedAt: null },
+    message: { id: message._id, author: { id: req.user._id, name: shownName(req.user), role: req.user.role }, content, createdAt: message.createdAt, editedAt: null },
   });
-  dmEvent('chat:new', String(member._id), payload(`dm-${req.user._id}`, req.user.name));
-  dmEvent('chat:new', String(req.user._id), payload(`dm-${member._id}`, member.name));
+  dmEvent('chat:new', String(member._id), payload(`dm-${req.user._id}`, shownName(req.user)));
+  dmEvent('chat:new', String(req.user._id), payload(`dm-${member._id}`, shownName(member)));
   res.status(201).json({ ok: true });
 });
 

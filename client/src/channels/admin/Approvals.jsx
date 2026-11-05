@@ -37,7 +37,7 @@ function PendingCard({ member, groups, canAssign, onDone }) {
   return (
     <li className="card pending-card">
       <div className="cell-user">
-        <Avatar name={member.name} role="member" size={40} />
+        <Avatar name={member.username} role="member" size={40} />
         <div>
           <div className="strong">{member.name}</div>
           <div className="muted small">@{member.username} · signed up {timeAgo(member.createdAt)}</div>

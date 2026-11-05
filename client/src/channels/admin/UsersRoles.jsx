@@ -157,7 +157,7 @@ export default function UsersRoles() {
               <tr key={u.id} className={u.status === 'disabled' ? 'is-disabled' : ''}>
                 <td data-label="User">
                   <div className="cell-user">
-                    <Avatar name={u.name} role={u.role} />
+                    <Avatar name={u.username} role={u.role} />
                     <div>
                       <div className="strong">{u.name}</div>
                       <div className="muted small">@{u.username} · {u.memberId}</div>

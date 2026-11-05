@@ -6,6 +6,7 @@ import { teamNow } from './teamTime.js';
 import { scopeFilter, canReadTeam, canSeeMember } from './visibility.js';
 import { visibleGroups, seesAllGroups } from './scope.js';
 import { badRequest, notFound } from './httpError.js';
+import { shownName } from './person.js';
 
 // Shared by the Finance routes (income, outcome, total): which period a
 // request asks for and whose records it may see.
@@ -107,10 +108,10 @@ export async function peopleInScope(user, { groupId, memberId }, recordOwners = 
   const listed = new Set(current.map((u) => String(u._id)));
   const missing = [...new Set(recordOwners.filter(Boolean).map(String))].filter((id) => !listed.has(id));
   const others = missing.length ? await User.find({ _id: { $in: missing } }, PERSON_FIELDS).lean() : [];
-  return [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
+  return [...current, ...others].sort((a, b) => shownName(a).localeCompare(shownName(b)));
 }
 
-export const PERSON_FIELDS = 'name role status group';
+export const PERSON_FIELDS = 'name username role status group';
 export const ownerId = (record, field) => record[field]?._id ?? record[field];
 
 // Records that belong to no group (their owner has none, or it was deleted).
@@ -167,7 +168,7 @@ export const scopeName = (user) => (canReadTeam(user) ? (user.role === 'boss' ? 
 const NOTES = { leader: 'team leader', admin: 'admin' };
 export const person = (m) => (m?._id ? {
   id: m._id,
-  name: m.name,
+  name: shownName(m),
   role: m.role,
   ...(m.status && m.status !== 'active' ? { note: 'disabled' } : NOTES[m.role] ? { note: NOTES[m.role] } : {}),
 } : null);

@@ -18,6 +18,7 @@ import { currentMethods, methodOf } from '../utils/payments.js';
 import { taskChanged } from '../socket/events.js';
 import { repriceTask, dropTaskWork } from '../utils/reportWork.js';
 import { workSummary } from '../utils/projectWork.js';
+import { shownName } from '../utils/person.js';
 
 // Projects (the model keeps its old name, Task): what a member works on,
 // with the day-by-day work log taken from their daily reports.
@@ -25,14 +26,14 @@ const router = Router();
 router.use(requireAuth);
 
 const POPULATE = [
-  { path: 'owner', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'resident', select: 'name photo' },
+  { path: 'owner', select: 'name username role' }, { path: 'group', select: 'name slug' }, { path: 'resident', select: 'name photo' },
 ];
 const populate = (q) => q.populate(POPULATE);
 
 const serialize = (t, user, work = {}) => ({
   id: t._id,
   name: t.name,
-  owner: t.owner?._id ? { id: t.owner._id, name: t.owner.name, role: t.owner.role } : null,
+  owner: t.owner?._id ? { id: t.owner._id, name: shownName(t.owner), role: t.owner.role } : null,
   group: t.group?._id ? { id: t.group._id, name: t.group.name, slug: t.group.slug } : null,
   source: t.source,
   resident: t.resident?._id ? { id: t.resident._id, name: t.resident.name, photo: imageUrl(t.resident.photo) } : null,
@@ -169,8 +170,8 @@ router.get('/assignees', async (req, res) => {
 
 // Residents a project can be for: the ones this user may see.
 router.get('/residents', async (req, res) => {
-  const residents = await Resident.find(scopeFilter(req.user, 'owner'), 'name owner').populate('owner', 'name').sort('name').lean();
-  res.json({ residents: residents.map((r) => ({ id: r._id, name: r.name, owner: r.owner?.name ?? null })) });
+  const residents = await Resident.find(scopeFilter(req.user, 'owner'), 'name owner').populate('owner', 'name username').sort('name').lean();
+  res.json({ residents: residents.map((r) => ({ id: r._id, name: r.name, owner: shownName(r.owner) || null })) });
 });
 
 router.post('/', async (req, res) => {

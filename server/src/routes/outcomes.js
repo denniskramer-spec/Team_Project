@@ -15,6 +15,7 @@ import { fileInUse } from '../utils/fileRefs.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { checkDay } from '../utils/validate.js';
 import { outcomeChanged } from '../socket/events.js';
+import { shownName } from '../utils/person.js';
 
 // Outcome: money going out, per member. A team or group outcome is split
 // equally into one record per member. Everyone sees the records in their
@@ -116,9 +117,9 @@ router.get('/', async (req, res) => {
 // Members this user can record outcome for.
 router.get('/members', async (req, res) => {
   if (!canRecordOutcome(req.user)) return res.json({ members: [] });
-  const users = await User.find(assignableFilter(req.user), 'name role group')
-    .populate('group', 'name').sort('name').lean();
-  res.json({ members: users.map((u) => ({ id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null })) });
+  const users = await User.find(assignableFilter(req.user), 'name username role group')
+    .populate('group', 'name').sort('username').lean();
+  res.json({ members: users.map((u) => ({ id: u._id, name: shownName(u), role: u.role, group: u.group?.name ?? null })) });
 });
 
 // POST /api/outcomes/upload — multipart `images` files; returns the

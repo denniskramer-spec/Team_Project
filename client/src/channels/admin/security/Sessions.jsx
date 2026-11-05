@@ -35,7 +35,7 @@ export default function Sessions() {
       <div className="toolbar sessions-row">
         <select value={user} onChange={(e) => { setUser(e.target.value); setConfirm(false); }} aria-label="Account">
           <option value="">{loading ? 'Loading accounts...' : 'Choose an account'}</option>
-          {users.map((u) => <option key={u.id} value={u.id}>{u.name} · @{u.username}</option>)}
+          {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
         {!confirm && <button type="button" className="btn" disabled={!user} onClick={() => setConfirm(true)}>Sign out everywhere</button>}
         {confirm && (

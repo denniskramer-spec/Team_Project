@@ -22,6 +22,7 @@ import { reportChanged, taskWorkChanged } from '../socket/events.js';
 import { earnedOf } from '../utils/reportWork.js';
 import { saveReport } from '../utils/reportDraft.js';
 import { groupSummary, planLines, sumOf, writerContext } from '../utils/reportSummary.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -98,13 +99,13 @@ async function resolveWork(req, scope) {
 }
 
 const POPULATE = [
-  { path: 'author', select: 'name role' }, { path: 'group', select: 'name slug' },
+  { path: 'author', select: 'name username role' }, { path: 'group', select: 'name slug' },
   { path: 'task', select: 'name status' }, { path: 'work.task', select: 'name status' },
 ];
 
 const serialize = (r) => (r ? {
   id: r._id,
-  author: r.author?._id ? { id: r.author._id, name: r.author.name, role: r.author.role } : null,
+  author: r.author?._id ? { id: r.author._id, name: shownName(r.author), role: r.author.role } : null,
   group: r.group?._id ? { id: r.group._id, name: r.group.name, slug: r.group.slug } : null,
   scope: r.scope,
   type: r.type,
@@ -183,7 +184,7 @@ router.get('/', async (req, res) => {
     authorFilter._id = member._id;
   }
 
-  const current = await User.find(authorFilter, 'name role status group memberId')
+  const current = await User.find(authorFilter, 'name username role status group memberId')
     .populate('group', 'name slug').lean();
 
   // Every personal report of the day in this role's scope, also one written
@@ -197,9 +198,9 @@ router.get('/', async (req, res) => {
   const listed = new Set(current.map((m) => String(m._id)));
   const otherIds = personalReports.map((r) => String(r.author?._id ?? r.author)).filter((id) => !listed.has(id));
   const others = otherIds.length
-    ? await User.find({ _id: { $in: otherIds } }, 'name role status group memberId').populate('group', 'name slug').lean()
+    ? await User.find({ _id: { $in: otherIds } }, 'name username role status group memberId').populate('group', 'name slug').lean()
     : [];
-  const members = [...current, ...others].sort((a, b) => a.name.localeCompare(b.name));
+  const members = [...current, ...others].sort((a, b) => shownName(a).localeCompare(shownName(b)));
 
   const byAuthor = new Map(personalReports.map((r) => [String(r.author?._id ?? r.author), r]));
   const rows = members.map((m) => ({
@@ -271,15 +272,15 @@ router.get('/status', async (req, res) => {
 router.get('/today', async (req, res) => {
   if (!canReadGroupReports(req.user)) return res.json({ rows: [] });
   const period = periodKey('daily');
-  const members = await User.find({ ...readableAuthorFilter(req.user), status: 'active', role: { $in: ['member', 'boss'] }, _id: { $ne: req.user._id } }, 'name role group')
-    .populate('group', 'name').sort('name').lean();
+  const members = await User.find({ ...readableAuthorFilter(req.user), status: 'active', role: { $in: ['member', 'boss'] }, _id: { $ne: req.user._id } }, 'name username role group')
+    .populate('group', 'name').sort('username').lean();
   const reports = await Report.find({ scope: 'personal', type: 'daily', period, author: { $in: members.map((m) => m._id) } }, 'author sentAt updatedAt').lean();
   const byAuthor = new Map(reports.map((r) => [String(r.author), r]));
   res.json({
     period,
     rows: members.map((m) => {
       const r = byAuthor.get(String(m._id));
-      return { id: m._id, name: m.name, role: m.role, group: m.group?.name ?? null, state: r?.sentAt ? 'sent' : r ? 'draft' : 'missing', at: r?.sentAt ?? r?.updatedAt ?? null };
+      return { id: m._id, name: shownName(m), role: m.role, group: m.group?.name ?? null, state: r?.sentAt ? 'sent' : r ? 'draft' : 'missing', at: r?.sentAt ?? r?.updatedAt ?? null };
     }),
   });
 });

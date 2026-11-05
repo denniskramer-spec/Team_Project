@@ -58,7 +58,7 @@ code {
   color: #fff;
   background: var(--bad);
 }
-.rail-badge { position: absolute; right: -4px; top: -4px; margin: 0; border: 2px solid var(--surface); height: 20px; }
+.rail-badge { position: absolute; right: -10px; top: -7px; margin: 0; border: 2px solid var(--surface); height: 20px; }
 
 /* ---------- Table ---------- */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
