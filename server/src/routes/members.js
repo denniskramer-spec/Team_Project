@@ -156,7 +156,7 @@ router.post('/', requireCapability('addMembers'), async (req, res) => {
   res.status(201).json({ member: serialize(user, req.user), tempPassword: generated ? password : undefined });
 });
 
-// PATCH /api/members/:id — name, birthday, and (admin/leader) group.
+// PATCH /api/members/:id — name, birthday, and (admin/leader) group and username.
 router.patch('/:id', async (req, res) => {
   const target = await findTarget(req.params.id);
   const perms = permissionsFor(req.user, target);
@@ -167,6 +167,17 @@ router.patch('/:id', async (req, res) => {
     target.name = checkName(req.body.name);
   }
   if (req.body.birthday !== undefined) target.birthday = parseBirthday(req.body.birthday);
+
+  // The username is what they log in with: the leader (or an admin) sets it.
+  if (req.body.username !== undefined) {
+    requireFields(req.body, ['username']);
+    const username = checkUsername(req.body.username);
+    if (username !== target.username) {
+      if (!perms.changeUsername) throw forbidden('Only the team leader can change a username');
+      if (await User.exists({ username, _id: { $ne: target._id } })) throw conflict('That username is already taken');
+      target.username = username;
+    }
+  }
 
   let groupChanged = false;
   if (req.body.group !== undefined) {

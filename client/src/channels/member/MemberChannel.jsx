@@ -19,6 +19,7 @@ import MemberActions from './MemberActions.jsx';
 // Section 3 for the Member channel: the directory for "All" or one group.
 const COLUMNS = {
   member: (m) => m.name,
+  username: (m) => m.username,
   id: (m) => m.memberId,
   birthday: (m) => m.birthday ?? null,
   group: (m) => m.group?.name ?? null,
@@ -104,6 +105,7 @@ export default function MemberChannel({ title }) {
           <thead>
             <tr>
               <Th sort={sorter} col="member">Member</Th>
+              <Th sort={sorter} col="username" className="col-username">Username</Th>
               <Th sort={sorter} col="id">ID</Th>
               <Th sort={sorter} col="birthday">Birthday</Th>
               <Th sort={sorter} col="group">Group</Th>
@@ -122,11 +124,13 @@ export default function MemberChannel({ title }) {
                       <div className={`strong role-text-${m.role}`}>
                         {m.name} {String(m.id) === String(user.id) && <span className="muted small">(you)</span>}
                       </div>
-                      <div className="muted small">@{m.username}</div>
+                      {/* Shown instead of the Username column where the window is too narrow for it. */}
+                      <div className="muted small username-inline">@{m.username}</div>
                     </div>
                   </div>
                 </td>
-                <td data-label="ID"><code>{m.memberId}</code></td>
+                <td data-label="Username" className="muted cell-nowrap col-username">@{m.username}</td>
+                <td data-label="ID" className="cell-nowrap"><code>{m.memberId}</code></td>
                 <td data-label="Birthday">
                   <DateTag value={m.birthday} utc icon="cake" />
                   {isBirthdayToday(m.birthday) && <span className="bday" title="Birthday today!"><Icon name="cake" size={14} /></span>}
