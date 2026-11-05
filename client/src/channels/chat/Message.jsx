@@ -77,7 +77,7 @@ export default memo(function Message({ message: m, grouped, meId, canDelete, del
     }
   };
 
-  const copyText = async () => {
+  const copyMessage = async () => {
     try {
       await copyText(m.content);
       noteCopy(m.content); // a button copy fires no copy event
@@ -109,7 +109,7 @@ export default memo(function Message({ message: m, grouped, meId, canDelete, del
 
   const menuItems = [
     { label: 'Reply', icon: 'reply', hidden: deleted, onClick: () => onReply(m) },
-    { label: 'Copy text', icon: 'copy', hidden: deleted || !m.content, onClick: copyText },
+    { label: 'Copy text', icon: 'copy', hidden: deleted || !m.content, onClick: copyMessage },
     { label: m.offTopic ? 'Remove not-work flag' : 'Flag as not work', icon: 'flag', hidden: !canFlag, onClick: () => flag(!m.offTopic) },
     { label: 'Edit', icon: 'edit', hidden: !canEdit, onClick: () => { setDraft(m.content); setEditing(true); } },
     { label: 'Delete', icon: 'trash', danger: true, hidden: !canDelete, onClick: () => setConfirm(true) },
