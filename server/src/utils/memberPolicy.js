@@ -21,6 +21,8 @@ export function permissionsFor(actor, target) {
   return {
     edit: manage || self,
     changeGroup: manage && ['admin', 'leader'].includes(actor.role),
+    // The login name is the leader's (or an admin's) to set, never the member's own.
+    changeUsername: manage && ['admin', 'leader'].includes(actor.role),
     resetPassword: manage && !self,
     disable: manage && !self && ['admin', 'leader'].includes(actor.role),
     changeRole: ['admin', 'leader'].includes(actor.role) && !self,

@@ -27,6 +27,9 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
 
   const canPickGroup = editing ? member.permissions.changeGroup : isManager(user);
   const canPickRole = !editing && isManager(user);
+  // The username is set when the member is added; afterwards only the leader
+  // (or an admin) may change it.
+  const canSetUsername = editing ? member.permissions.changeUsername : true;
   // A typed temporary password follows the same rules as any password.
   const passwordOk = !form.password || passwordValid(form.password);
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
@@ -40,6 +43,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
       if (editing) {
         const body = { name: form.name, birthday: form.birthday || null };
         if (canPickGroup) body.group = form.group || null;
+        if (canSetUsername) body.username = form.username;
         result = await api(`/members/${member.id}`, { method: 'PATCH', body });
       } else {
         const body = { name: form.name, username: form.username, birthday: form.birthday || null };
@@ -76,7 +80,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
           Full name
           <input value={form.name} onChange={set('name')} maxLength={60} required />
         </label>
-        {!editing && (
+        {canSetUsername && (
           <label>
             Username
             <input
@@ -85,8 +89,12 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
               maxLength={30}
               pattern="[A-Za-z0-9_.]{3,30}"
               title="3-30 characters: letters, numbers, _ or ."
+              autoComplete="off"
               required
             />
+            {editing && form.username.trim().toLowerCase() !== member.username && (
+              <span className="form-help">{member.name} will log in with this username from now on.</span>
+            )}
           </label>
         )}
         <div className="row">

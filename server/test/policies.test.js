@@ -28,11 +28,15 @@ test('who manages whom', () => {
 
 test('per-row permissions', () => {
   assert.deepEqual(permissionsFor(memberA, memberA), {
-    edit: true, changeGroup: false, resetPassword: false, disable: false, changeRole: false,
+    edit: true, changeGroup: false, changeUsername: false, resetPassword: false, disable: false, changeRole: false,
   });
   assert.equal(permissionsFor(admin, admin).changeRole, false); // not your own role
   assert.equal(permissionsFor(bossA, memberA).disable, false); // bosses don't disable
   assert.equal(permissionsFor(leader, memberB).changeGroup, true);
+  // Usernames are the leader's to set: not a boss's, not the member's own.
+  assert.equal(permissionsFor(leader, memberB).changeUsername, true);
+  assert.equal(permissionsFor(leader, leader).changeUsername, true);
+  assert.equal(permissionsFor(bossA, memberA).changeUsername, false);
 });
 
 test('pending sign-ups each approver sees', () => {
