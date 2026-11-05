@@ -104,7 +104,7 @@ router.get('/', async (req, res) => {
   if (scope.owner) residentFilter.owner = scope.owner;   // a member: only themselves
   if (scope.group) residentFilter.group = scope.group;   // a boss: their group
   // Each one is sent in full (a name chip each, the record behind a click).
-  const residents = await Resident.find(residentFilter).populate('owner', 'name role').populate('group', 'name slug').sort('name');
+  const residents = await Resident.find(residentFilter).populate('owner', 'name username role').populate('group', 'name slug').sort('name');
   const byOwner = new Map();
   residents.forEach((r) => {
     const key = String(r.owner?._id ?? r.owner);

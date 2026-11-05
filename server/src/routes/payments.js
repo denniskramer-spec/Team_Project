@@ -6,6 +6,7 @@ import { checkOptionalAmount } from '../utils/validate.js';
 import { currentMethods, methodOf, setFee } from '../utils/payments.js';
 import { refreshFees } from '../utils/feeRefresh.js';
 import { feesChanged } from '../socket/events.js';
+import { shownName } from '../utils/person.js';
 
 // Payment methods and their current fees. Everyone reads them; admins and
 // the team leader set the ones no public source publishes, and can run the
@@ -27,7 +28,7 @@ router.patch('/fees/:key', async (req, res) => {
   const feePercent = checkOptionalAmount(req.body.feePercent, 'Fee %');
   if (feePercent > 100) throw badRequest('Fee % must be 100 or less');
   const feeFixed = checkOptionalAmount(req.body.feeFixed, 'Fixed fee');
-  await setFee(method.key, { feePercent, feeFixed, source: 'manual', detail: `Set by ${req.user.name}` });
+  await setFee(method.key, { feePercent, feeFixed, source: 'manual', detail: `Set by ${shownName(req.user)}` });
   feesChanged();
   res.json({ methods: currentMethods() });
 });

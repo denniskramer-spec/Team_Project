@@ -15,6 +15,7 @@ import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord 
 import { planChanged } from '../socket/events.js';
 import { planStatus, targetsOf } from '../utils/planStatus.js';
 import { teamNow } from '../utils/teamTime.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -47,7 +48,7 @@ function checkFields(body) {
 
 const serialize = (p, user, achieved = null) => ({
   id: p._id,
-  owner: p.owner?._id ? { id: p.owner._id, name: p.owner.name, role: p.owner.role } : null,
+  owner: p.owner?._id ? { id: p.owner._id, name: shownName(p.owner), role: p.owner.role } : null,
   group: p.group?._id ? { id: p.group._id, name: p.group.name, slug: p.group.slug } : null,
   scope: p.scope,
   type: p.type,
@@ -77,18 +78,18 @@ router.get('/', async (req, res) => {
   const base = { type, period: period.key };
 
   const [mine, myGroupPlan, found] = await Promise.all([
-    Plan.findOne({ ...base, owner: req.user._id, scope: 'personal' }).populate('owner', 'name role').populate('group', 'name slug'),
+    Plan.findOne({ ...base, owner: req.user._id, scope: 'personal' }).populate('owner', 'name username role').populate('group', 'name slug'),
     canPlanGroup(req.user)
-      ? findGroupRecord(Plan, { ...base, group: req.user.group }).populate('owner', 'name role').populate('group', 'name slug')
+      ? findGroupRecord(Plan, { ...base, group: req.user.group }).populate('owner', 'name username role').populate('group', 'name slug')
       : null,
-    Plan.find({ ...base, ...readable }).populate('owner', 'name role').populate('group', 'name slug').sort('scope'),
+    Plan.find({ ...base, ...readable }).populate('owner', 'name username role').populate('group', 'name slug').sort('scope'),
   ]);
 
   // Who is expected to have a plan, so "no plan yet" can be shown.
   const memberFilter = { status: 'active', role: { $in: ['member', 'boss'] } };
   if (readable.group) memberFilter.group = readable.group;
   if (readable.owner) memberFilter._id = readable.owner;
-  const members = await User.find(memberFilter, 'name role group').populate('group', 'name slug').sort('name').lean();
+  const members = await User.find(memberFilter, 'name username role group').populate('group', 'name slug').sort('username').lean();
 
   const personal = found.filter((p) => p.scope === 'personal');
   const plans = [...personal, ...latestPerGroup(found.filter((p) => p.scope === 'group'))];
@@ -149,7 +150,7 @@ router.get('/', async (req, res) => {
     plans: plans.map((p) => serialize(p, req.user, achievedOf(p))),
     missing: members
       .filter((m) => !byOwner.has(String(m._id)))
-      .map((m) => ({ id: m._id, name: m.name, role: m.role, group: m.group ? { name: m.group.name, slug: m.group.slug } : null })),
+      .map((m) => ({ id: m._id, name: shownName(m), role: m.role, group: m.group ? { name: m.group.name, slug: m.group.slug } : null })),
     counts,
     totals,
     achievedTotals,
@@ -179,7 +180,7 @@ router.put('/', async (req, res) => {
       { ...fields, group: req.user.group ?? null },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
-  await plan.populate('owner', 'name role');
+  await plan.populate('owner', 'name username role');
   await plan.populate('group', 'name slug');
 
   planChanged(req.user, plan);
@@ -190,7 +191,7 @@ async function findOwnPlan(req) {
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Plan not found');
   // A plan outside this role's scope looks like it does not exist.
   const plan = await Plan.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'owner') })
-    .populate('owner', 'name role').populate('group', 'name slug');
+    .populate('owner', 'name username role').populate('group', 'name slug');
   if (!plan) throw notFound('Plan not found');
   const allowed = plan.scope === 'group'
     ? canChangeGroupRecord(req.user, plan)

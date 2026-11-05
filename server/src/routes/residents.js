@@ -80,7 +80,7 @@ async function checkFields(body, partial = false) {
 // leader and admins for anyone.
 const resolveOwner = (req, { orSelf = false } = {}) => resolveRecordOwner(req, req.body.owner, { orSelf });
 
-const populate = (q) => q.populate([{ path: 'owner', select: 'name role' }, { path: 'group', select: 'name slug' }]);
+const populate = (q) => q.populate([{ path: 'owner', select: 'name username role' }, { path: 'group', select: 'name slug' }]);
 
 // GET /api/residents?group=all|<slug>&member=<id>&q=text
 router.get('/', async (req, res) => {

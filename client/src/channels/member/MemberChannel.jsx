@@ -117,7 +117,7 @@ export default function MemberChannel({ title }) {
               <tr key={m.id} className={m.status === 'disabled' ? 'is-disabled' : ''}>
                 <td data-label="Member">
                   <div className="cell-user">
-                    <Avatar name={m.name} role={m.role} online={m.status === 'active' ? online.has(m.id) : undefined} />
+                    <Avatar name={m.username} role={m.role} online={m.status === 'active' ? online.has(m.id) : undefined} />
                     <div>
                       <div className={`strong role-text-${m.role}`}>
                         {m.name} {String(m.id) === String(user.id) && <span className="muted small">(you)</span>}

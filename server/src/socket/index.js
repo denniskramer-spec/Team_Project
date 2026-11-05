@@ -4,6 +4,7 @@ import { dbState } from '../config/db.js';
 import { loadSession, TOKEN_COOKIE } from '../middleware/auth.js';
 import { resolveChannel, roomsFor } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
+import { shownName } from '../utils/person.js';
 
 // Number of open sockets per user id. A user is online while this is > 0
 // (they may have several tabs open).
@@ -66,7 +67,7 @@ export function initSocket(httpServer) {
       socket.data.jti = session.payload.jti ?? null;
       socket.data.user = {
         id: String(user._id),
-        name: user.name,
+        name: shownName(user),
         role: user.role,
         group: user.group ? String(user.group) : null,
       };

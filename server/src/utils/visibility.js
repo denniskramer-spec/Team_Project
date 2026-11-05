@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { seesAllGroups, visibleGroups } from './scope.js';
 import { notFound } from './httpError.js';
+import { shownName } from './person.js';
 
 // Shared role rules for records that belong to one member (tasks, income):
 //   team leader, admin : everything
@@ -89,6 +90,6 @@ export async function narrowScope(req, field) {
 // The members this user may pick as the owner of a new record, as the
 // forms list them.
 export async function assignableMembers(user) {
-  const users = await User.find(assignableFilter(user), 'name role group').populate('group', 'name').sort('name').lean();
-  return users.map((u) => ({ id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null }));
+  const users = await User.find(assignableFilter(user), 'name username role group').populate('group', 'name').sort('username').lean();
+  return users.map((u) => ({ id: u._id, name: shownName(u), role: u.role, group: u.group?.name ?? null }));
 }

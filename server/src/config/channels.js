@@ -1,5 +1,6 @@
 import { visibleGroups } from '../utils/scope.js';
 import { canUseFinanceChat } from '../utils/chatPolicy.js';
+import { shownName } from '../utils/person.js';
 
 // Builds the navigation tree (section 1 -> section 2) for one user.
 // Titles are computed from live data, so new groups, members and tasks show up
@@ -18,7 +19,7 @@ const sum = (counts) => Object.values(counts).reduce((a, b) => a + b, 0);
 
 const memberChild = (m) => ({
   key: `m-${m._id}`,
-  name: m.name,
+  name: shownName(m),
   role: m.role,
   queryKey: 'm',
   queryValue: String(m._id),

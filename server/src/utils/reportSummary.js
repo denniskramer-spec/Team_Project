@@ -6,6 +6,7 @@ import { parsePeriod } from './period.js';
 import { formatPrice } from './project.js';
 import { earnedOf } from './reportWork.js';
 import { goalsOf } from './dailyGoal.js';
+import { shownName } from './person.js';
 
 // The numbers behind the Dashboard (routes/reports.js): what a set of daily
 // reports adds up to, a group's day, and what the report form needs.
@@ -42,7 +43,7 @@ export function groupSummary(group, personalReports, expected) {
     projectsWritten: reports.reduce((n, r) => n + (r.work ?? []).filter((w) => w.text?.trim()).length, 0),
     hours: reports.reduce((n, r) => n + (r.work ?? []).reduce((h, w) => h + (w.hours || 0), 0), 0),
     calls: reports.reduce((n, r) => n + (r.calls ?? []).length, 0),
-    issues: reports.filter((r) => r.issues).map((r) => ({ member: r.author?.name ?? '?', text: r.issues })),
+    issues: reports.filter((r) => r.issues).map((r) => ({ member: shownName(r.author) || '?', text: r.issues })),
   };
 }
 

@@ -8,6 +8,7 @@ import { requireFields, clean, escapeRegex } from '../utils/validate.js';
 import { badRequest, notFound, conflict } from '../utils/httpError.js';
 import { clearGroupFromRecords } from '../utils/moveRecords.js';
 import { directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/', async (req, res) => {
       { $match: { status: 'active', group: { $ne: null } } },
       { $group: { _id: '$group', count: { $sum: 1 } } },
     ]),
-    User.find({ role: 'boss', status: 'active' }, 'name group').lean(),
+    User.find({ role: 'boss', status: 'active' }, 'name username group').lean(),
   ]);
   const countBy = Object.fromEntries(counts.map((c) => [String(c._id), c.count]));
   res.json({
@@ -37,7 +38,7 @@ router.get('/', async (req, res) => {
       name: g.name,
       slug: g.slug,
       memberCount: countBy[String(g._id)] || 0,
-      bosses: bosses.filter((b) => String(b.group) === String(g._id)).map((b) => ({ id: b._id, name: b.name })),
+      bosses: bosses.filter((b) => String(b.group) === String(g._id)).map((b) => ({ id: b._id, name: shownName(b) })),
     })),
   });
 });

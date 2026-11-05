@@ -23,10 +23,10 @@ export default function AccountPage() {
     <div className="page account-page">
       <section className="card">
         <div className="account-head">
-          <Avatar name={user.name} role={user.role} size={56} />
+          <Avatar name={user.username} role={user.role} size={56} />
           <div className="account-who">
-            <h2>{user.name}</h2>
-            <div className="muted small">@{user.username}</div>
+            <h2>{user.username}</h2>
+            <div className="muted small">{user.name}</div>
             <RoleBadge role={user.role} group={user.group} />
           </div>
           <button className="btn small-btn" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> Edit profile</button>

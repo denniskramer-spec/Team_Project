@@ -281,7 +281,7 @@ router.post('/users/:id/sign-out', async (req, res) => {
   // The answer goes out first, so this session's own cookie (if it is the
   // one being ended) is not refused before the client hears why.
   res.on('finish', () => setTimeout(() => sessionChanged(String(user._id), { disconnect: true }), 500));
-  res.json({ ok: true, user: { id: user._id, name: user.name } });
+  res.json({ ok: true, user: { id: user._id, name: user.username } });
 });
 
 export default router;

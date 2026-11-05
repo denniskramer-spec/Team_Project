@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { alertOf, raiseSecurityAlert } from '../src/utils/securityAlerts.js';
 
-const user = { id: 'u1', name: 'Lena', username: 'lena' };
+const user = { id: 'u1', name: 'Lena Fischer', username: 'lena' };
 
 test('dangerous entries raise an alert, ordinary ones do not', () => {
   assert.equal(alertOf({ action: 'copy.sensitive', flags: ['sensitive-copy'], user, ip: '1.2.3.4' }).kind, 'copy');
@@ -15,7 +15,8 @@ test('dangerous entries raise an alert, ordinary ones do not', () => {
 
 test('the alert names who and where', () => {
   const a = alertOf({ action: 'copy.sensitive', flags: ['sensitive-copy'], user, ip: '1.2.3.4', target: { label: '/finance/incomes' } });
-  assert.equal(a.text, 'Lena · /finance/incomes · from 1.2.3.4');
+  // People are named by their username, also here.
+  assert.equal(a.text, 'lena · /finance/incomes · from 1.2.3.4');
   assert.equal(alertOf({ action: 'database.read', flags: ['outside-app'], method: 'DB', userAgent: 'MongoDB Compass' }).text, 'MongoDB Compass');
 });
 

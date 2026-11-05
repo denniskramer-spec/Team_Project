@@ -32,9 +32,9 @@ function UserMenu() {
   return (
     <div className="user-menu" ref={ref}>
       <button className={`user-chip ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu">
-        <Avatar name={user.name} role={user.role} size={30} />
+        <Avatar name={user.username} role={user.role} size={30} />
         <span className="user-chip-text">
-          <span className="user-chip-name">{user.name}</span>
+          <span className="user-chip-name">{user.username}</span>
           <span className="user-chip-role">{ROLE_LABELS[user.role] ?? user.role}</span>
         </span>
         <Icon name="chevronDown" size={16} className="user-chip-caret" />
@@ -42,10 +42,11 @@ function UserMenu() {
       {open && (
         <div className="menu" role="menu">
           <div className="menu-profile">
-            <Avatar name={user.name} role={user.role} size={44} />
+            <Avatar name={user.username} role={user.role} size={44} />
             <div>
-              <strong>{user.name}</strong>
-              <div className="muted small">@{user.username}</div>
+              <strong>{user.username}</strong>
+              {/* Their own full name: everyone else sees the username only. */}
+              <div className="muted small">{user.name}</div>
               <RoleBadge role={user.role} group={user.group} />
             </div>
           </div>

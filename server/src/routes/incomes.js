@@ -24,9 +24,14 @@ import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome, canWithdraw
 import { archiveDeleted } from '../utils/audit.js';
 import { settleTaskWork } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
+
+// Who approved a record or checked its variance is kept with the name they
+// had then; a list read looks their current username up instead.
+const REVIEWERS = [{ path: 'reviewedBy.user', select: 'username' }, { path: 'varianceCheckedBy.user', select: 'username' }];
 
 const serialize = (i) => ({
   id: i._id,
@@ -54,14 +59,14 @@ const serialize = (i) => ({
   // Set when the amount was far from what the reported work expected.
   variance: i.variancePercent === null || i.variancePercent === undefined ? null : {
     expected: i.expected, percent: i.variancePercent, reason: i.varianceReason,
-    checkedBy: (i.varianceCheckedBy ?? []).map((c) => ({ id: c.user, name: c.name, at: c.at })),
+    checkedBy: (i.varianceCheckedBy ?? []).map((c) => ({ id: c.user?._id ?? c.user, name: c.user?.username ?? c.name, at: c.at })),
   },
   // pending: a member's own record, waiting for the team leader or their
   // boss; it counts nowhere until approved. Older records have no status
   // and count.
   status: i.status ?? 'approved',
   createdBy: i.createdBy ?? null,
-  reviewedBy: i.reviewedBy?.user ? { id: i.reviewedBy.user, name: i.reviewedBy.name, at: i.reviewedBy.at } : null,
+  reviewedBy: i.reviewedBy?.user ? { id: i.reviewedBy.user._id ?? i.reviewedBy.user, name: i.reviewedBy.user.username ?? i.reviewedBy.name, at: i.reviewedBy.at } : null,
   rejectReason: i.rejectReason ?? '',
   createdAt: i.createdAt,
 });
@@ -172,7 +177,8 @@ router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
   const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
-    .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name').lean();
+    .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name')
+    .populate(REVIEWERS).lean();
 
   // Totals overall and per member, for the summary: received and net. Only
   // real income counts: records waiting for approval (or rejected) are
@@ -248,9 +254,9 @@ router.get('/upcoming', async (req, res) => {
 
 // Members this user can record income for.
 router.get('/members', async (req, res) => {
-  const users = await User.find(assignableFilter(req.user), 'name role group')
-    .populate('group', 'name').sort('name').lean();
-  res.json({ members: users.map((u) => ({ id: u._id, name: u.name, role: u.role, group: u.group?.name ?? null })) });
+  const users = await User.find(assignableFilter(req.user), 'name username role group')
+    .populate('group', 'name').sort('username').lean();
+  res.json({ members: users.map((u) => ({ id: u._id, name: shownName(u), role: u.role, group: u.group?.name ?? null })) });
 });
 
 // POST /api/incomes/upload — multipart `images` files; returns the
@@ -301,7 +307,7 @@ router.post('/', async (req, res) => {
     status: needsApproval(req.user) ? 'pending' : 'approved',
     ...varianceFields,
   }).save();
-  await income.populate([{ path: 'member', select: 'name role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
+  await income.populate([{ path: 'member', select: 'name username role' }, { path: 'group', select: 'name slug' }, { path: 'task', select: 'name' }, { path: 'resident', select: 'name' }]);
 
   // Real income for a project settles the unpaid work reported on it: those
   // days stop counting as upcoming (their reports are recomputed and the
@@ -350,7 +356,7 @@ async function pendingIncome(req) {
 router.post('/:id/approve', async (req, res) => {
   const income = await pendingIncome(req);
   income.status = 'approved';
-  income.reviewedBy = { user: req.user._id, name: req.user.name, at: new Date() };
+  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
   await income.save();
   const settled = await settleFor(income);
   incomeChanged(income);
@@ -366,7 +372,7 @@ router.post('/:id/reject', async (req, res) => {
   const income = await pendingIncome(req);
   income.status = 'rejected';
   income.rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
-  income.reviewedBy = { user: req.user._id, name: req.user.name, at: new Date() };
+  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
   await income.save();
   incomeChanged(income);
   varianceRaised(income.group);
@@ -399,7 +405,7 @@ router.post('/:id/check', async (req, res) => {
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' } });
   if (!income) throw notFound('Income record not found');
   if (!income.varianceCheckedBy.some((c) => String(c.user) === String(req.user._id))) {
-    income.varianceCheckedBy.push({ user: req.user._id, name: req.user.name, at: new Date() });
+    income.varianceCheckedBy.push({ user: req.user._id, name: shownName(req.user), at: new Date() });
     await income.save();
     navChangedFor(req.user._id);
     incomeChanged(income);

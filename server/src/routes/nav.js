@@ -37,8 +37,8 @@ router.get('/', requireAuth, async (req, res) => {
   const dms = await listDms(req.user);
 
   // Members shown under each group in the tree.
-  const members = await User.find({ status: 'active', role: { $in: ['member', 'boss'] } }, 'name role group')
-    .sort('name').lean();
+  const members = await User.find({ status: 'active', role: { $in: ['member', 'boss'] } }, 'name username role group')
+    .sort('username').lean();
 
   // Project names become titles under the Projects channel (most recent first).
   const tasks = await Task.find(scopeFilter(req.user, 'owner'), 'name status')

@@ -1,5 +1,6 @@
 import { canManageFor } from './visibility.js';
 import { imageUrl } from './fileRefs.js';
+import { shownName } from './person.js';
 
 // How a resident is shown: the record for the Residents channel and the
 // one-line sentence the Member directory lists under each member.
@@ -33,7 +34,7 @@ export const serializeResident = (r, user) => ({
   accessType: r.accessType ?? '',
   sharePercent: r.sharePercent ?? 0,
   notes: r.notes,
-  owner: r.owner?._id ? { id: r.owner._id, name: r.owner.name, role: r.owner.role } : null,
+  owner: r.owner?._id ? { id: r.owner._id, name: shownName(r.owner), role: r.owner.role } : null,
   group: r.group?._id ? { id: r.group._id, name: r.group.name, slug: r.group.slug } : null,
   sentence: residentSentence(r),
   createdAt: r.createdAt,

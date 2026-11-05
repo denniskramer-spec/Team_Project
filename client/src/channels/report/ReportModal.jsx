@@ -202,7 +202,7 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
         <div className="modal-body rm-body">
           <div className="rm-sheet">
             <div>
-              <h2 className="rm-title">Daily report — {user.name}</h2>
+              <h2 className="rm-title">Daily report — {user.username}</h2>
               <div className="muted small">{period.label}{period.isCurrent ? ' · today' : ''}</div>
             </div>
             {error && <div className="alert error">{error}</div>}

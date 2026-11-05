@@ -14,12 +14,13 @@ import { clean } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { instructionLimit, urgentLimit } from '../middleware/limits.js';
 import { instructionEvent, navChangedFor } from '../socket/events.js';
+import { shownName } from '../utils/person.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const PAGE_SIZE = 30;
-const AUTHOR_FIELDS = 'name role username';
+const AUTHOR_FIELDS = 'name username role';
 
 // The member a direct instruction is for, if the caller may address them.
 async function resolveRecipient(req, id) {
@@ -76,11 +77,11 @@ function serialize(instr, user, countRecipients) {
     target: instr.target,
     group: instr.group?._id ? { id: instr.group._id, name: instr.group.name, slug: instr.group.slug } : null,
     recipient: instr.recipient?._id
-      ? { id: instr.recipient._id, name: instr.recipient.name, role: instr.recipient.role }
+      ? { id: instr.recipient._id, name: shownName(instr.recipient), role: instr.recipient.role }
       : null,
     titleKey: instr.target === 'group' ? instr.group?.slug : 'all',
     author: instr.author?._id
-      ? { id: instr.author._id, name: instr.author.name, role: instr.author.role, username: instr.author.username }
+      ? { id: instr.author._id, name: shownName(instr.author), role: instr.author.role, username: instr.author.username }
       : null,
     title: instr.title,
     content: instr.content,
@@ -103,8 +104,8 @@ function socketPayload(instr) {
     titleKey: instr.target === 'group' ? instr.group?.slug : 'all',
     groupName: instr.group?.name ?? null,
     recipientId: instr.recipient?._id ?? instr.recipient ?? null,
-    recipientName: instr.recipient?.name ?? null,
-    author: { id: instr.author._id, name: instr.author.name, role: instr.author.role },
+    recipientName: shownName(instr.recipient) || null,
+    author: { id: instr.author._id, name: shownName(instr.author), role: instr.author.role },
     title: instr.title,
     preview: instr.content.slice(0, 200),
     priority: instr.priority,
@@ -117,7 +118,7 @@ async function findVisible(req) {
   const instr = await Instruction.findById(req.params.id)
     .populate('author', AUTHOR_FIELDS)
     .populate('group', 'name slug')
-    .populate('recipient', 'name role');
+    .populate('recipient', 'name username role');
   if (!instr || !canView(req.user, instr)) throw notFound('Instruction not found');
   return instr;
 }
@@ -155,7 +156,7 @@ router.get('/', async (req, res) => {
     .limit(PAGE_SIZE + 1)
     .populate('author', AUTHOR_FIELDS)
     .populate('group', 'name slug')
-    .populate('recipient', 'name role');
+    .populate('recipient', 'name username role');
   // Recipient counts are only for read receipts, which most users never see.
   const count = items.some((i) => canSeeReceipts(req.user, i)) ? await audienceIndex() : () => 0;
   res.json({
@@ -169,7 +170,7 @@ router.get('/unread', async (req, res) => {
   const filter = unreadFilter(req.user);
   const [items, total] = await Promise.all([
     Instruction.find(filter).sort({ createdAt: -1 }).limit(50)
-      .populate('author', AUTHOR_FIELDS).populate('group', 'name slug').populate('recipient', 'name role'),
+      .populate('author', AUTHOR_FIELDS).populate('group', 'name slug').populate('recipient', 'name username role'),
     Instruction.countDocuments(filter),
   ]);
   res.json({ total, instructions: items.map(socketPayload) });
@@ -208,7 +209,7 @@ router.post('/', requireCapability('sendInstructions'), instructionLimit, urgent
   }).save();
   await instr.populate('author', AUTHOR_FIELDS);
   await instr.populate('group', 'name slug');
-  await instr.populate('recipient', 'name role');
+  await instr.populate('recipient', 'name username role');
 
   instructionEvent('instruction:new', instr, socketPayload(instr));
   res.status(201).json({ instruction: serialize(instr, req.user, await audienceIndex()) });
@@ -263,18 +264,18 @@ router.post('/read-all', async (req, res) => {
 router.get('/:id/reads', async (req, res) => {
   const instr = await findVisible(req);
   if (!canSeeReceipts(req.user, instr)) throw forbidden();
-  const audience = await User.find(audienceFilter(instr), 'name role group status')
+  const audience = await User.find(audienceFilter(instr), 'name username role group status')
     .populate('group', 'name').lean();
   const readAt = new Map(instr.readBy.map((r) => [String(r.user), r.at]));
   // Readers who have since left the audience (moved group, disabled).
   const listed = new Set(audience.map((u) => String(u._id)));
   const gone = [...readAt.keys()].filter((id) => !listed.has(id));
   const former = gone.length
-    ? await User.find({ _id: { $in: gone } }, 'name role group status').populate('group', 'name').lean()
+    ? await User.find({ _id: { $in: gone } }, 'name username role group status').populate('group', 'name').lean()
     : [];
   const row = (u, left) => ({
     id: u._id,
-    name: u.name,
+    name: shownName(u),
     role: u.role,
     group: u.group?.name ?? null,
     readAt: readAt.get(String(u._id)) ?? null,
