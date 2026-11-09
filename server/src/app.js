@@ -47,7 +47,15 @@ app.disable('x-powered-by');
 // camera, microphone or location; and, in production over HTTPS, to keep
 // using HTTPS for a year. API answers carry a policy that lets nothing
 // run; the page itself gets its own in the static handler below.
+// Behind a reverse proxy that is not declared (TRUST_PROXY=0), every user
+// looks like the proxy: one shared allowance for the login limits, one
+// address in the security log, and no Secure cookies. Said once, in the log.
+let proxyWarned = false;
 app.use((req, res, next) => {
+  if (!env.trustProxy && !proxyWarned && req.get('x-forwarded-for')) {
+    proxyWarned = true;
+    console.warn(`Requests carry X-Forwarded-For (${req.get('x-forwarded-for')}) but TRUST_PROXY is 0: set TRUST_PROXY=1 in server/.env when a reverse proxy is in front, or every user shares its address for rate limits and the security log.`);
+  }
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
