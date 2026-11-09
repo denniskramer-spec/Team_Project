@@ -8,8 +8,8 @@ import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { scopeFilter, canReadTeam, canSeeMember, assignableFilter } from '../utils/visibility.js';
 import {
-  financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName,
-  person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
+  financeScope, inPeriod, peopleInScope, perGroupSums, groupList, groupTiles, scopeName,
+  person as personOf, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { checkAmount, checkDay, checkText, isId } from '../utils/validate.js';
@@ -19,7 +19,7 @@ import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, incomeRecorded, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
 import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
-import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
+import { REAL_INCOME, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
 import { settleTaskWork, shareOf, unpaidWorkOf } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 import { shownName } from '../utils/person.js';
@@ -105,6 +105,29 @@ async function resolveTask(req, member) {
   return task._id;
 }
 
+// What an income record leaves the member, as an aggregation expression:
+// the same rule as netOf (older records without a fee count in full).
+const NET_EXPR = { $cond: [{ $in: [{ $type: '$net' }, ['missing', 'null']] }, { $cond: [{ $eq: [{ $type: '$feeAmount' }, 'missing'] }, '$amount', 0] }, '$net'] };
+// One record as a person's details list it.
+const ITEM = { id: '$_id', date: '$date', amount: '$amount', net: NET_EXPR, task: '$task', from: '$from', note: { $ifNull: ['$note', ''] } };
+
+// Sum, net, count and the newest DETAIL_LIMIT records per member, over
+// every real income record the filter matches, without loading them all.
+async function incomePerMember(filter) {
+  const rows = await Income.aggregate([
+    { $match: filter },
+    { $group: { _id: '$member', amount: { $sum: '$amount' }, net: { $sum: NET_EXPR }, count: { $sum: 1 }, items: { $topN: { n: DETAIL_LIMIT, sortBy: { date: -1, createdAt: -1 }, output: ITEM } } } },
+  ]);
+  const taskIds = [...new Set(rows.flatMap((r) => r.items.map((i) => i.task)).filter(Boolean).map(String))];
+  const tasks = new Map((taskIds.length ? await Task.find({ _id: { $in: taskIds } }, 'name').lean() : []).map((t) => [String(t._id), t.name]));
+  return new Map(rows.map((r) => [String(r._id), {
+    amount: r.amount,
+    net: r.net,
+    count: r.count,
+    items: r.items.map((i) => ({ ...i, task: i.task && tasks.has(String(i.task)) ? { id: i.task, name: tasks.get(String(i.task)) } : null })),
+  }]));
+}
+
 // Planned vs real income per member, for the Finance chart.
 //   planned  : for a week, the member's weekly plan; for longer periods their
 //              monthly plans, or their weekly plans when they have no monthly ones
@@ -112,15 +135,14 @@ async function resolveTask(req, member) {
 //   upcoming : what the member's reports say is due inside this period (by the
 //              upcoming date), whenever the report was written
 // Members with nothing recorded still get a row, so the chart shows who is behind.
-async function incomeChart(user, period, { groupId, memberId }, byMember, incomes) {
+async function incomeChart(user, period, { groupId, memberId }, people, byMember) {
   const planFilter = { ...scopeFilter(user, 'owner'), scope: 'personal', periodStart: inPeriod(period) };
   const reportFilter = { ...scopeFilter(user, 'author'), scope: 'personal', upcomingAmount: { $gt: 0 }, upcomingDate: inPeriod(period) };
   if (groupId) { planFilter.group = groupId; reportFilter.group = groupId; }
   if (memberId) { planFilter.owner = memberId; reportFilter.author = memberId; }
   if (period.type === 'weekly') planFilter.type = 'weekly';
 
-  const [people, plans, reports] = await Promise.all([
-    peopleInScope(user, { groupId, memberId }, incomes.map((i) => ownerId(i, 'member'))),
+  const [plans, reports] = await Promise.all([
     Plan.find(planFilter, 'owner type income').lean(),
     Report.find(reportFilter, 'author upcomingAmount upcomingDate upcomingNote task periodStart')
       .populate('task', 'name').sort({ upcomingDate: 1, periodStart: -1 }).lean(),
@@ -133,29 +155,17 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
     const planned = (monthly.length ? monthly : ownPlans).reduce((sum, p) => sum + (p.income || 0), 0);
     const ownReports = reports.filter((r) => String(r.author) === id);
     const upcoming = ownReports.reduce((sum, r) => sum + (r.upcomingAmount || 0), 0);
-
-    // Each income record: when it came in, from which task (or client) and how much.
-    const own = incomes.filter((i) => String(i.member?._id ?? i.member) === id);
-    const incomeItems = own
-      .slice(0, DETAIL_LIMIT)
-      .map((i) => ({
-        id: i._id,
-        date: i.date,
-        amount: i.amount,
-        net: netOf(i),
-        task: i.task?._id ? { id: i.task._id, name: i.task.name } : null,
-        from: i.from,
-        note: i.note || '',
-      }));
+    const own = byMember.get(id);
 
     return {
       member: personOf(person),
-      incomeCount: own.length,
+      incomeCount: own?.count ?? 0,
       planned,
-      actual: byMember.get(id)?.amount ?? 0,
-      actualNet: byMember.get(id)?.net ?? 0,
+      actual: own?.amount ?? 0,
+      actualNet: own?.net ?? 0,
       upcoming,
-      incomeItems,
+      // Each income record: when it came in, from which task (or client) and how much.
+      incomeItems: own?.items ?? [],
       // What is still expected, with the day it is due and the task it belongs to.
       upcomingItems: ownReports.filter((r) => r.upcomingAmount > 0).map((r) => ({
         amount: r.upcomingAmount,
@@ -173,27 +183,34 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
 // another period; ?type=range&from=&to= picks any duration (see utils/finance.js).
 router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
-
-  const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
-    .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name')
-    .populate(REVIEWERS).lean();
-
-  // Totals overall and per member, for the summary: received and net. Only
-  // real income counts: records waiting for approval (or rejected) are
-  // listed, not summed.
-  const real = incomes.filter(isRealIncome);
   const cents = (n) => Math.round(n * 100) / 100;
-  const byMember = perMember(real);
-  for (const [key, entry] of perMember(real.map((i) => ({ ...i, amount: netOf(i) })))) byMember.get(key).net = cents(entry.amount);
-  const total = cents(real.reduce((sum, i) => sum + i.amount, 0));
-  const raw = real.reduce((acc, i) => ({
-    fees: acc.fees + (i.feeAmount || 0),
-    residents: acc.residents + (i.residentAmount || 0),
-    net: acc.net + netOf(i),
-  }), { fees: 0, residents: 0, net: 0 });
-  const sums = { fees: cents(raw.fees), residents: cents(raw.residents), net: cents(raw.net) };
 
-  const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, real);
+  // The newest records are listed; the totals and the per-member figures
+  // are summed in the database, so a long period never loads every record.
+  // Only real income counts: records waiting for approval (or rejected) are
+  // listed, not summed.
+  const real = { ...filter, ...REAL_INCOME };
+  const [incomes, count, pendingCount, sums, perMemberSums] = await Promise.all([
+    Income.find(filter).sort({ date: -1, createdAt: -1 }).limit(LIST_LIMIT)
+      .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name')
+      .populate(REVIEWERS).lean(),
+    Income.countDocuments(filter),
+    Income.countDocuments({ ...filter, status: 'pending' }),
+    Income.aggregate([
+      { $match: real },
+      { $group: { _id: null, amount: { $sum: '$amount' }, fees: { $sum: { $ifNull: ['$feeAmount', 0] } }, residents: { $sum: { $ifNull: ['$residentAmount', 0] } }, net: { $sum: NET_EXPR } } },
+    ]).then((r) => r[0] ?? { amount: 0, fees: 0, residents: 0, net: 0 }),
+    incomePerMember(real),
+  ]);
+  const total = cents(sums.amount);
+  const people = await peopleInScope(req.user, { groupId, memberId }, [...perMemberSums.keys()]);
+  const byMember = new Map();
+  for (const [id, entry] of perMemberSums) {
+    const person = people.find((p) => String(p._id) === id);
+    byMember.set(id, { member: personOf(person), amount: entry.amount, count: entry.count, net: cents(entry.net) });
+  }
+
+  const chart = await incomeChart(req.user, period, { groupId, memberId }, people, perMemberSums);
 
   const sumFor = await perGroupSums(Income, req.user, allowed, period, { net: true, where: REAL_INCOME });
   const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
@@ -205,13 +222,13 @@ router.get('/', async (req, res) => {
   res.json({
     period,
     // The newest records; `count` is how many there are in all.
-    incomes: incomes.slice(0, LIST_LIMIT).map((i) => serialize(i)),
-    count: incomes.length,
-    pending: incomes.filter((i) => i.status === 'pending').length,
+    incomes: incomes.map((i) => serialize(i)),
+    count,
+    pending: pendingCount,
     total,
-    fees: sums.fees,
-    residents: sums.residents,
-    net: sums.net,
+    fees: cents(sums.fees),
+    residents: cents(sums.residents),
+    net: cents(sums.net),
     methods: currentMethods(),
     perMember: [...byMember.values()].sort((a, b) => b.amount - a.amount),
     perGroup,

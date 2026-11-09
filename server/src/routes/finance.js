@@ -7,8 +7,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { forbidden } from '../utils/httpError.js';
 import { currentRates, refreshRates, refreshIfStale } from '../utils/exchange.js';
 import {
-  financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, who, whoKey,
-  ownerId, PERSON_FIELDS, LIST_LIMIT, LIMITS,
+  financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, who, whoKeyExpr,
+  PERSON_FIELDS, LIST_LIMIT, LIMITS,
 } from '../utils/finance.js';
 
 // Total: income and outcome side by side for one period, and the history
@@ -43,21 +43,29 @@ router.post('/rates/refresh', refreshLimiter, async (req, res) => {
 router.get('/total', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
-  const [incomes, outcomes] = await Promise.all([
-    Income.find({ ...filter, ...REAL_INCOME }).populate('member', PERSON_FIELDS).populate('task', 'name').lean(),
-    Outcome.find(filter).populate('member', PERSON_FIELDS).populate('group', 'name slug').lean(),
+  // The sums per person come from the database; only the newest records
+  // are loaded, for the history, so a long period never loads them all.
+  const real = { ...filter, ...REAL_INCOME };
+  const newest = { date: -1, createdAt: -1 };
+  const sumsBy = (Model, match, key) => Model.aggregate([{ $match: match }, { $group: { _id: key, amount: { $sum: '$amount' }, count: { $sum: 1 } } }])
+    .then((rows) => new Map(rows.map((r) => [String(r._id), r])));
+  const [incomeBy, outcomeBy, incomes, outcomes] = await Promise.all([
+    sumsBy(Income, real, '$member'),
+    sumsBy(Outcome, filter, whoKeyExpr),
+    Income.find(real).sort(newest).limit(LIST_LIMIT * 2).populate('member', PERSON_FIELDS).populate('task', 'name').lean(),
+    Outcome.find(filter).sort(newest).limit(LIST_LIMIT * 2).populate('member', PERSON_FIELDS).populate('group', 'name slug').lean(),
   ]);
-  const people = await peopleInScope(req.user, { groupId, memberId }, [...incomes, ...outcomes].map((r) => ownerId(r, 'member')));
+  const people = await peopleInScope(req.user, { groupId, memberId }, [...incomeBy.keys(), ...outcomeBy.keys()].filter((k) => !k.startsWith('team:')));
 
-  const income = sum(incomes);
-  const outcome = sum(outcomes);
+  const income = sum([...incomeBy.values()]);
+  const outcome = sum([...outcomeBy.values()]);
 
   // One column per person. Team costs (no member) count in the totals and
   // the history, not in the chart.
   const chart = people.map((p) => {
     const id = String(p._id);
-    const inn = sum(incomes.filter((i) => whoKey(i) === id));
-    const out = sum(outcomes.filter((o) => whoKey(o) === id));
+    const inn = sum([incomeBy.get(id) ?? { amount: 0 }]);
+    const out = sum([outcomeBy.get(id) ?? { amount: 0 }]);
     return { member: person(p), income: inn, outcome: out, net: inn - out };
   });
 
@@ -88,7 +96,7 @@ router.get('/total', async (req, res) => {
     income,
     outcome,
     net: income - outcome,
-    counts: { income: incomes.length, outcome: outcomes.length },
+    counts: { income: [...incomeBy.values()].reduce((n, r) => n + r.count, 0), outcome: [...outcomeBy.values()].reduce((n, r) => n + r.count, 0) },
     chart,
     // The newest records; `counts` says how many there are in all.
     history: history.slice(0, LIST_LIMIT * 2),

@@ -183,6 +183,9 @@ export const teamPerson = (group) => ({
 });
 export const who = (r) => person(r.member) ?? teamPerson(r.group);
 export const whoKey = (r) => (r.member ? String(r.member._id ?? r.member) : `team:${r.group?._id ?? r.group ?? 'all'}`);
+// The same key as an aggregation expression: the member's id, or the
+// team cost's 'team:<group id>' / 'team:all' as text.
+export const whoKeyExpr = { $ifNull: ['$member', { $concat: ['team:', { $ifNull: [{ $toString: '$group' }, 'all'] }] }] };
 
 // Sum and count per member (team costs included as their own entries), sorted by amount.
 export function perMember(records) {
