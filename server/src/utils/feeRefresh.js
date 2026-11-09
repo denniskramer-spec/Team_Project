@@ -14,6 +14,11 @@ const SAMPLE_USD = 1000;
 const BTC_TX_VBYTES = 140;
 const TRX_PER_USDT_TRANSFER = 13.4;
 const TIMEOUT_MS = 10000;
+// What a fetched fee may be: a percent of the amount, and a fixed part no
+// bigger than a large wire fee. A source answering with something else
+// (a changed API, a bad day) keeps the last good value.
+const MAX_PERCENT = 20;
+const MAX_FIXED = 200;
 
 async function getJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json', 'user-agent': 'business-manager fee refresh' } });
@@ -56,6 +61,9 @@ export async function refreshFees() {
     try {
       const fee = await run();
       if (!Number.isFinite(fee.feePercent) || !Number.isFinite(fee.feeFixed)) throw new Error('no usable number');
+      if (fee.feePercent < 0 || fee.feePercent > MAX_PERCENT || fee.feeFixed < 0 || fee.feeFixed > MAX_FIXED) {
+        throw new Error(`implausible fee ${fee.feePercent}% + ${fee.feeFixed}, kept the last one`);
+      }
       await setFee(key, { ...fee, source: 'auto', checkedAt: now });
       results[key] = fee;
     } catch (err) {

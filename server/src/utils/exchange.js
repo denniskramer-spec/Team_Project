@@ -19,6 +19,11 @@ const TIMEOUT_MS = 10000;
 const REFRESH_EVERY_MS = 60 * 60 * 1000;
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const OTHERS = CURRENCIES.filter((c) => c !== BASE);
+// How much of a currency one base unit may buy: outside this, the source
+// answered nonsense (a decimal shift, a swapped pair) and the last good
+// rates are kept.
+const MIN_RATE = 1e-4;
+const MAX_RATE = 1e4;
 
 let current = { base: BASE, rates: { [BASE]: 1 }, source: '', rateDate: '', fetchedAt: null };
 
@@ -45,6 +50,7 @@ async function fetchRates() {
       for (const c of OTHERS) {
         const r = Number(rates?.[c]);
         if (!Number.isFinite(r) || r <= 0) throw new Error(`no rate for ${c}`);
+        if (r < MIN_RATE || r > MAX_RATE) throw new Error(`implausible rate for ${c}: ${r}`);
         picked[c] = round(r);
       }
       return { rates: picked, source: s.name, rateDate: rateDate || '' };
