@@ -20,7 +20,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const today = () => new Date().toISOString().slice(0, 10);
 
 let mongod; let server; let base; let mongoose;
-let User; let Group; let AuditLog; let Report; let ExchangeRate;
+let User; let Group; let AuditLog; let ExchangeRate;
 const people = {};
 
 // A logged-in client: every call carries the session cookie.
@@ -62,7 +62,6 @@ before(async () => {
   ({ default: User } = await import('../src/models/User.js'));
   ({ default: Group } = await import('../src/models/Group.js'));
   ({ default: AuditLog } = await import('../src/models/AuditLog.js'));
-  ({ default: Report } = await import('../src/models/Report.js'));
   ({ default: ExchangeRate } = await import('../src/models/ExchangeRate.js'));
   await (await import('../src/routes/settings.js')).loadSettings();
   await ExchangeRate.create({ base: 'USD', rates: { EUR: 0.8 }, source: 'test', rateDate: today(), fetchedAt: new Date() });
