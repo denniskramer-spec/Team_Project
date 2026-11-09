@@ -36,16 +36,14 @@ function checkFields(body) {
   const num = (key, label) => { if (body[key] !== undefined) fields[key] = checkOptionalAmount(body[key], label); };
   const count = (key, label) => { if (body[key] !== undefined) fields[key] = checkCount(body[key], label); };
   const text = (key, label, max = 2000) => { if (body[key] !== undefined) fields[key] = checkText(body[key], label, max); };
-  count('jobBid', 'Job bids'); count('aiBid', 'AI training bids'); num('income', 'Income'); num('upcomingAmount', 'Upcoming amount');
+  // What a report earned and what is still upcoming follow from its work
+  // entries (utils/reportDraft.js), never from typed figures.
+  count('jobBid', 'Job bids'); count('aiBid', 'AI training bids');
   count('resumes', 'Résumés tailored'); count('forms', 'Forms filled'); num('biddingHours', 'Time bidding');
   count('contacted', 'Contacted'); count('replies', 'Replies'); count('agreed', 'Agreed to work with us');
   if (fields.biddingHours > 24) throw badRequest('Time bidding is in hours, at most 24');
   text('upcomingNote', 'Upcoming note'); text('note', 'Note'); text('bidNote', 'Bid note'); text('contactNote', 'Candidate note');
   text('channels', 'Channels', 300); text('residentsUpdate', 'Residents update'); text('issues', 'Issues'); text('planTomorrow', 'Plan for tomorrow');
-  if (body.upcomingDate !== undefined) {
-    const value = body.upcomingDate;
-    fields.upcomingDate = value === null || value === '' ? null : checkDay(value, 'the upcoming date');
-  }
   if (body.todayPlan !== undefined) {
     fields.todayPlan = checkList(body.todayPlan, "Today's plan", 100)
       .map((item) => ({ text: checkText(item?.text, 'Plan item', 300), done: item?.done === true }))
@@ -89,12 +87,13 @@ async function resolveWork(req, scope) {
     if (text || hours || count) entries.set(id, { text, hours, count });
   }
   if (!entries.size) return [];
-  const own = await Task.find({ _id: { $in: [...entries.keys()] }, owner: req.user._id }, 'price priceUnit resident').populate('resident', 'sharePercent').lean();
+  const own = await Task.find({ _id: { $in: [...entries.keys()] }, owner: req.user._id }, 'price priceUnit currency resident').populate('resident', 'sharePercent').lean();
   if (own.length !== entries.size) throw badRequest('That project belongs to someone else');
   const byId = new Map(own.map((t) => [String(t._id), t]));
   return [...entries].map(([task, { text, hours, count }]) => {
     const t = byId.get(task);
-    return { task, text, hours, count, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit, residentPercent: t.resident?.sharePercent ?? 0 }, { hours, count }) };
+    // Priced in the project's currency and kept in the base, like repriceTask.
+    return { task, text, hours, count, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit, currency: t.currency, residentPercent: t.resident?.sharePercent ?? 0 }, { hours, count }) };
   });
 }
 

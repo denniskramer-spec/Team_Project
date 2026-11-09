@@ -315,7 +315,7 @@ async function createTasksAndIncome(people, residents) {
     for (const [back, report] of reports.entries()) {
       report.work = running
         .filter((t, n) => !(back === 0 && n === 1 && i % 2 === 0))
-        .map((t, n) => { const hours = rnd(1, 6); return { task: t._id, text: pick(WORK, back + n * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit }, { hours }) }; });
+        .map((t, n) => { const hours = rnd(1, 6); return { task: t._id, text: pick(WORK, back + n * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit, currency: t.currency }, { hours }) }; });
       report.task = running[0]._id;
       // The hours reported are what the day is worth: the upcoming amount.
       const earned = report.work.reduce((sum, w) => sum + (w.amount || 0), 0);
@@ -413,7 +413,7 @@ async function createYearHistory(people) {
       const period = parsePeriod('daily', key);
       const work = projectsOf(user).filter((t) => t.startDate <= d).map((t, k) => {
         const hours = rnd(1, 6);
-        return { task: t._id, text: pick(WORK, n + k * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit }, { hours }), paidBy: null };
+        return { task: t._id, text: pick(WORK, n + k * 2), hours, amount: workEarnings({ price: t.price, priceUnit: t.priceUnit, currency: t.currency }, { hours }), paidBy: null };
       });
       reports.push({
         work, task: work[0]?.task,
