@@ -52,7 +52,8 @@ export function raiseSecurityAlert(entry, now = Date.now()) {
   if (lastSent.size > 1000) {
     for (const [key, at] of lastSent) if (now - at >= REPEAT_MS) lastSent.delete(key);
   }
-  const { key, ...payload } = alert;
+  const payload = { ...alert };
+  delete payload.key;
   getIO()?.to(ROOMS).emit('security:alert', payload);
   return true;
 }

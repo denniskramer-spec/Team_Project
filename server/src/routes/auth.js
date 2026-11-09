@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import bcrypt from 'bcryptjs';
@@ -8,9 +7,7 @@ import {
   requireAuth, revokeToken, setSessionCookie, TOKEN_COOKIE, cookieOptions,
 } from '../middleware/auth.js';
 import { ipBucket } from '../middleware/limits.js';
-import {
-  requireFields, checkUsername, checkPassword, checkName, parseBirthday,
-} from '../utils/validate.js';
+import { requireFields, checkUsername, checkPassword, checkName, parseBirthday, isId } from '../utils/validate.js';
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
 import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/events.js';
 import { disconnectSession } from '../socket/index.js';
@@ -101,7 +98,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
 
   let group = null;
   if (req.body.group) {
-    if (!mongoose.isValidObjectId(req.body.group) || !(await Group.exists({ _id: req.body.group }))) {
+    if (!isId(req.body.group) || !(await Group.exists({ _id: req.body.group }))) {
       throw badRequest('Unknown group');
     }
     group = req.body.group;

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Report from '../models/Report.js';
 import Task from '../models/Task.js';
@@ -12,7 +11,7 @@ import { teamNow, teamToday } from '../utils/teamTime.js';
 import { dmKey } from '../utils/chatPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
 import { dmEvent } from '../socket/events.js';
-import { clean } from '../utils/validate.js';
+import { clean, isId } from '../utils/validate.js';
 import { shownName } from '../utils/person.js';
 
 const router = Router();
@@ -69,7 +68,7 @@ router.get('/upcoming', async (req, res) => {
 // GET /api/users/:id/peek — one member at a glance. Everyone sees the
 // basics; the day's report and projects follow the usual scope rules.
 router.get('/:id/peek', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Member not found');
+  if (!isId(req.params.id)) throw notFound('Member not found');
   const member = await User.findOne({ _id: req.params.id, status: 'active' }, USER_FIELDS).populate('group', 'name slug').lean();
   if (!member) throw notFound('Member not found');
   const base = {
@@ -111,7 +110,7 @@ router.get('/:id/peek', async (req, res) => {
 // reminding them that today's report is due.
 router.post('/:id/nudge', async (req, res) => {
   if (!canReadTeam(req.user)) throw forbidden('Only bosses, the leader and admins send reminders');
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Member not found');
+  if (!isId(req.params.id)) throw notFound('Member not found');
   const member = await User.findOne({ _id: req.params.id, status: 'active' }, 'name username role group').lean();
   if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
   if (String(member._id) === String(req.user._id)) throw badRequest('That is you');

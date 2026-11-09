@@ -98,3 +98,12 @@ test('counts are whole numbers and lists have a size limit', async () => {
   assert.throws(() => checkDay(tomorrow, 'the joined date', { pastOnly: true }), { status: 400 });
   assert.ok(checkDay(tomorrow, 'a start date') instanceof Date);
 });
+
+test('a record id is the text of an ObjectId, nothing else', async () => {
+  const { isId } = await import('../src/utils/validate.js');
+  assert.equal(isId('a'.repeat(24)), true);
+  assert.equal(isId('507f1f77bcf86cd799439011'), true);
+  for (const bad of [5, 12345678901, { id: 'x'.repeat(12) }, 'x'.repeat(12), null, undefined, '', 'zz'.repeat(12), { $ne: null }]) {
+    assert.equal(isId(bad), false, String(bad));
+  }
+});

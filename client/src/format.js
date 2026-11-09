@@ -3,7 +3,6 @@
 
 // Short numeric date in the browser's own order: 23/11/1989 in Portugal or
 // the UK, 11/23/1989 in the US.
-const pad = (n) => String(n).padStart(2, '0');
 export function formatDate(value, { utc = false } = {}) {
   if (!value) return '—';
   const d = new Date(value);

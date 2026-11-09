@@ -1,7 +1,7 @@
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { canManageFor } from './visibility.js';
 import { badRequest, notFound } from './httpError.js';
+import { isId } from './validate.js';
 
 // Tasks, income, outcome, residents and chat accounts belong to the people who do the work:
 // members and bosses. The leader and admins record them for others, never
@@ -21,7 +21,7 @@ export async function resolveRecordOwner(req, value, { orSelf = false } = {}) {
     if (!ownsRecords(req.user)) throw badRequest('Choose the member this is for');
     return req.user;
   }
-  if (!mongoose.isValidObjectId(value)) throw badRequest('Unknown member');
+  if (!isId(value)) throw badRequest('Unknown member');
   const owner = await User.findById(value);
   if (!owner || !canManageFor(req.user, owner)) throw notFound('Member not found');
   if (owner.status !== 'active' || !ownsRecords(owner)) throw badRequest('Unknown member');

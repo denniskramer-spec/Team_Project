@@ -1,9 +1,8 @@
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { canRecordOutcome, canManageOutcome } from './visibility.js';
 import { badRequest, forbidden } from './httpError.js';
-import { checkAmount, checkText } from './validate.js';
+import { checkAmount, checkText, isId } from './validate.js';
 import { ownsRecords } from './recordOwner.js';
 
 // Who an outcome is for, from the request body:
@@ -20,7 +19,7 @@ export async function resolveTarget(req) {
     const filter = { status: 'active', role: { $in: ['member', 'boss'] } };
     let group = null;
     if (req.body.group) {
-      if (!mongoose.isValidObjectId(req.body.group)) throw badRequest('Unknown group');
+      if (!isId(req.body.group)) throw badRequest('Unknown group');
       group = await Group.findById(req.body.group);
       if (!group) throw badRequest('Unknown group');
       if (!canManageOutcome(req.user, { _id: null, group: group._id })) throw forbidden('You cannot record costs for that group');
@@ -33,7 +32,7 @@ export async function resolveTarget(req) {
     return { members, group: group?._id ?? null, label: group ? `${group.name} team` : 'Whole team' };
   }
 
-  if (!mongoose.isValidObjectId(req.body.member)) throw badRequest('Choose a member');
+  if (!isId(req.body.member)) throw badRequest('Choose a member');
   const member = await User.findById(req.body.member);
   if (!member || member.status !== 'active' || !ownsRecords(member)) throw badRequest('Unknown member');
   if (!canManageOutcome(req.user, member)) throw forbidden('You cannot record outcome for that member');

@@ -10,7 +10,6 @@ import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { teamNow } from '../utils/teamTime.js';
 import { achievedFor, planStatus } from '../utils/planStatus.js';
-import mongoose from 'mongoose';
 import { scopeFilter, canReadTeam, canSeeMember } from '../utils/visibility.js';
 import { visibleGroups } from '../utils/scope.js';
 import { badRequest, notFound } from '../utils/httpError.js';
@@ -18,6 +17,7 @@ import { person as personOf, parseDay } from '../utils/finance.js';
 import { earnedOf, upcomingOf } from '../utils/reportWork.js';
 import { formatPrice } from '../utils/project.js';
 import { shownName } from '../utils/person.js';
+import { isId } from '../utils/validate.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -63,7 +63,7 @@ router.get('/', async (req, res) => {
   }
   let memberId = null;
   if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
     if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
     memberId = member._id;
   }

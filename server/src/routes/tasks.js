@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Task, { TASK_STATES, PRICE_UNITS, CURRENCIES } from '../models/Task.js';
 import Report from '../models/Report.js';
 import Resident from '../models/Resident.js';
@@ -9,7 +8,7 @@ import {
   scopeFilter, canManageFor, canReadTeam, visibleRecord, assignableMembers, scopeName,
 } from '../utils/visibility.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay, checkText, searchRegex } from '../utils/validate.js';
+import { checkDay, checkText, searchRegex, isId } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { parsePeriod } from '../utils/period.js';
 import { checkPrice, formatPrice, workLines } from '../utils/project.js';
@@ -76,7 +75,7 @@ async function resolveResident(req, ownerId) {
   const value = req.body.resident;
   if (value === undefined) return undefined;
   if (value === null || value === '') return null;
-  if (typeof value !== 'string' || !mongoose.isValidObjectId(value)) throw badRequest('Unknown resident');
+  if (typeof value !== 'string' || !isId(value)) throw badRequest('Unknown resident');
   const resident = await Resident.findOne({ ...scopeFilter(req.user, 'owner'), _id: value }, '_id owner').lean();
   if (!resident) throw badRequest('Unknown resident');
   if (String(resident.owner) !== String(ownerId)) throw badRequest("That resident belongs to someone else: a project is for its owner's own resident");
@@ -196,7 +195,7 @@ router.post('/', async (req, res) => {
 });
 
 async function findTask(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Project not found');
+  if (!isId(req.params.id)) throw notFound('Project not found');
   const task = await populate(Task.findById(req.params.id));
   if (!task) throw notFound('Project not found');
   // Out of scope projects look like they do not exist.

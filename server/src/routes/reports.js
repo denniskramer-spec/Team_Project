@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Report, { CALL_RESULTS } from '../models/Report.js';
 import Task from '../models/Task.js';
 import { workEarnings } from '../utils/payments.js';
@@ -15,7 +14,7 @@ import {
 import { visibleGroups } from '../utils/scope.js';
 import { canSeeMember } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkOptionalAmount, checkCount, checkDay, checkList, checkText } from '../utils/validate.js';
+import { checkOptionalAmount, checkCount, checkList, checkText, isId } from '../utils/validate.js';
 import { canChangeGroupRecord } from '../utils/groupRecords.js';
 import { person as personOf } from '../utils/finance.js';
 import { reportChanged, taskWorkChanged } from '../socket/events.js';
@@ -65,7 +64,7 @@ function checkFields(body) {
 // The task a personal report is about must belong to the author.
 async function resolveTask(req, scope) {
   if (!req.body.task || scope !== 'personal') return null;
-  if (!mongoose.isValidObjectId(req.body.task)) throw badRequest('Unknown task');
+  if (!isId(req.body.task)) throw badRequest('Unknown task');
   const task = await Task.findById(req.body.task);
   if (!task || String(task.owner) !== String(req.user._id)) throw badRequest('That task belongs to someone else');
   return task._id;
@@ -79,7 +78,7 @@ async function resolveWork(req, scope) {
   const entries = new Map();
   for (const item of checkList(req.body.work, 'Work', 200)) {
     const id = String(item?.task ?? '');
-    if (!mongoose.isValidObjectId(id)) throw badRequest('Unknown project');
+    if (!isId(id)) throw badRequest('Unknown project');
     const text = checkText(item?.text, 'Work', 2000);
     const hours = checkOptionalAmount(item?.hours, 'Hours');
     if (hours > 24) throw badRequest('Hours on a project are at most 24');
@@ -178,7 +177,7 @@ router.get('/', async (req, res) => {
   };
   if (groupFilter) authorFilter.group = groupFilter;
   if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
     if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
     authorFilter._id = member._id;
   }
@@ -341,7 +340,7 @@ router.put('/', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Report not found');
+  if (!isId(req.params.id)) throw notFound('Report not found');
   const report = await Report.findById(req.params.id);
   if (!report) throw notFound('Report not found');
   const allowed = report.scope === 'group'

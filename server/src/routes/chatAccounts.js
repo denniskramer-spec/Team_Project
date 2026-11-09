@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import ChatAccount, { STATUSES } from '../models/ChatAccount.js';
 import Resident from '../models/Resident.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -8,7 +7,7 @@ import {
   scopeFilter, canManageFor, canReadTeam, visibleRecord, narrowScope, assignableMembers, scopeName,
 } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay, checkList, searchRegex } from '../utils/validate.js';
+import { checkDay, checkList, searchRegex, isId } from '../utils/validate.js';
 import { checkPlatform, checkAccountName, checkPhone, PLATFORM_NAMES } from '../utils/chatAccount.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
@@ -44,7 +43,7 @@ const contactFilter = (user) => scopeFilter(user, 'owner');
 
 async function checkContacts(user, list) {
   const ids = [...new Set(checkList(list, 'Contacts', 200).map(String))];
-  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw badRequest('Unknown resident');
+  if (ids.some((id) => !isId(id))) throw badRequest('Unknown resident');
   if (!ids.length) return [];
   const found = await Resident.find({ ...contactFilter(user), _id: { $in: ids } }, '_id').lean();
   if (found.length !== ids.length) throw badRequest('Unknown resident');
@@ -129,7 +128,7 @@ router.post('/', async (req, res) => {
 });
 
 async function findAccount(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Chat account not found');
+  if (!isId(req.params.id)) throw notFound('Chat account not found');
   const account = await populate(ChatAccount.findById(req.params.id));
   if (!account) throw notFound('Chat account not found');
   // Accounts outside this role's scope look like they do not exist.

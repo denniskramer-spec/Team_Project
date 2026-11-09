@@ -8,7 +8,7 @@ import { canManage } from '../utils/memberPolicy.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { actorOf } from '../utils/audit.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
-import { searchRegex } from '../utils/validate.js';
+import { searchRegex, isId } from '../utils/validate.js';
 import { outsideWatchStatus } from '../utils/outsideWatch.js';
 import {
   sessionChanged, directoryChanged, navChanged, approvalsChanged, taskChanged, residentChanged, chatAccountChanged,
@@ -71,7 +71,7 @@ function logFilter(query) {
     and.push(KINDS[query.kind]);
   }
   if (query.user) {
-    if (!mongoose.isValidObjectId(query.user)) throw badRequest('Unknown user');
+    if (!isId(query.user)) throw badRequest('Unknown user');
     and.push({ 'user.id': query.user });
   }
   const rx = searchRegex(query.q);
@@ -207,7 +207,7 @@ router.get('/deleted', async (req, res) => {
 // GET /api/security/deleted/:id — one deleted record, whole. Reading it is
 // written to the log.
 router.get('/deleted/:id', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Deleted record not found');
+  if (!isId(req.params.id)) throw notFound('Deleted record not found');
   const d = await DeletedRecord.findById(req.params.id).lean();
   if (!d) throw notFound('Deleted record not found');
   req.audit = { action: 'security.deleted.view', target: { model: d.model, id: d.recordId, label: d.label } };
@@ -237,7 +237,7 @@ function announceRestored(model, doc) {
 // marked restored; the restore itself goes in the log. Refused when a
 // record with that id exists again or the entry was already restored.
 router.post('/deleted/:id/restore', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Deleted record not found');
+  if (!isId(req.params.id)) throw notFound('Deleted record not found');
   const d = await DeletedRecord.findById(req.params.id).lean();
   if (!d) throw notFound('Deleted record not found');
   if (d.restoredAt) throw conflict(`Already restored by ${d.restoredBy?.name ?? 'someone'} on ${new Date(d.restoredAt).toLocaleString()}`);
@@ -270,7 +270,7 @@ router.post('/deleted/:id/restore', async (req, res) => {
 // account, on every device: tokens issued before now stop working and
 // their sockets are dropped. The person logs in again with their password.
 router.post('/users/:id/sign-out', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('User not found');
+  if (!isId(req.params.id)) throw notFound('User not found');
   const user = await User.findById(req.params.id);
   if (!user) throw notFound('User not found');
   const self = String(user._id) === String(req.user._id);

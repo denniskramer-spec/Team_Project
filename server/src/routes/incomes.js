@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import mongoose from 'mongoose';
 import Income from '../models/Income.js';
 import Task from '../models/Task.js';
 import Resident from '../models/Resident.js';
@@ -13,7 +12,7 @@ import {
   person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
-import { checkAmount, checkDay, checkText } from '../utils/validate.js';
+import { checkAmount, checkDay, checkText, isId } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
@@ -92,7 +91,7 @@ const resolveMember = (req) => resolveRecordOwner(req, req.body.member, {
 // The resident the income relates to must belong to the member it is for.
 async function resolveResident(req, member) {
   if (!req.body.resident) return null;
-  if (!mongoose.isValidObjectId(req.body.resident)) throw badRequest('Unknown resident');
+  if (!isId(req.body.resident)) throw badRequest('Unknown resident');
   const resident = await Resident.findOne({ _id: req.body.resident, owner: member._id });
   if (!resident) throw badRequest('That resident belongs to someone else');
   return resident;
@@ -100,7 +99,7 @@ async function resolveResident(req, member) {
 
 async function resolveTask(req, member) {
   if (!req.body.task) return null;
-  if (!mongoose.isValidObjectId(req.body.task)) throw badRequest('Unknown task');
+  if (!isId(req.body.task)) throw badRequest('Unknown task');
   const task = await Task.findById(req.body.task);
   if (!task || String(task.owner) !== String(member._id)) throw badRequest('That task belongs to someone else');
   return task._id;
@@ -244,7 +243,7 @@ async function upcomingFor(taskId, ownerId) {
 // Work is priced in the base currency, whatever the project is priced in,
 // so `amount` comes with `currency` and the form records it in that.
 router.get('/upcoming', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
+  if (!isId(req.query.task)) throw badRequest('Unknown project');
   // Only a project this role may see: a member their own, a boss their group's.
   const task = await Task.findOne({ ...scopeFilter(req.user, 'owner'), _id: req.query.task }, 'owner name').lean();
   if (!task) throw badRequest('Unknown project');
@@ -258,7 +257,7 @@ router.get('/upcoming', async (req, res) => {
 router.get('/unpaid', async (req, res) => {
   let memberId = req.user._id;
   if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
     if (!member || (String(member._id) !== String(req.user._id) && !canSeeMember(req.user, member))) throw notFound('Member not found');
     memberId = member._id;
   }
@@ -366,7 +365,7 @@ const bossesOf = async (groupId) => (groupId
 // approves) cannot both take effect. Returns the decided record.
 async function decidePending(req, status, extra = {}) {
   if (!canApproveIncome(req.user)) throw forbidden('Only the team leader and bosses approve income');
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  if (!isId(req.params.id)) throw notFound('Income record not found');
   const scope = scopeFilter(req.user, 'member');
   const income = await Income.findOneAndUpdate(
     { _id: req.params.id, ...scope, status: 'pending' },
@@ -407,7 +406,7 @@ router.post('/:id/reject', async (req, res) => {
 // while it still waits for approval. It never counted, so it is removed,
 // kept in Deleted Records like any other delete.
 router.post('/:id/withdraw', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  if (!isId(req.params.id)) throw notFound('Income record not found');
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
   if (!income) throw notFound('Income record not found');
   if (!canWithdrawIncome(req.user, income)) throw badRequest('Only your own income still waiting for approval can be withdrawn');
@@ -426,7 +425,7 @@ router.post('/:id/withdraw', async (req, res) => {
 // checked it is the one change an income record takes after it is made.
 router.post('/:id/check', async (req, res) => {
   if (!canCheckVariance(req.user)) throw forbidden('Only the team leader and bosses check income');
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  if (!isId(req.params.id)) throw notFound('Income record not found');
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' } });
   if (!income) throw notFound('Income record not found');
   if (!income.varianceCheckedBy.some((c) => String(c.user) === String(req.user._id))) {

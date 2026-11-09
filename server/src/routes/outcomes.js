@@ -13,7 +13,7 @@ import { resolveTarget, shares, checkMoneyFields, inScope } from '../utils/outco
 import { imageUpload, describeUpload, checkImages, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
 import { fileInUse } from '../utils/fileRefs.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay } from '../utils/validate.js';
+import { checkDay, isId } from '../utils/validate.js';
 import { outcomeChanged } from '../socket/events.js';
 import { shownName } from '../utils/person.js';
 
@@ -157,7 +157,7 @@ router.post('/', async (req, res) => {
 });
 
 async function findOutcome(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Outcome not found');
+  if (!isId(req.params.id)) throw notFound('Outcome not found');
   const outcome = await populate(Outcome.findById(req.params.id));
   if (!outcome || !inScope(req.user, outcome)) throw notFound('Outcome not found');
   if (!canManageOutcome(req.user, { _id: outcome.member?._id, group: outcome.group?._id ?? outcome.group })) {

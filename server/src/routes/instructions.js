@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Instruction from '../models/Instruction.js';
 import Group from '../models/Group.js';
 import User from '../models/User.js';
@@ -10,7 +9,7 @@ import {
   canSendTo, canModify, canView, canSeeReceipts, audienceFilter, unreadFilter, isRecipient,
 } from '../utils/instructionPolicy.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { clean } from '../utils/validate.js';
+import { clean, isId } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { instructionLimit, urgentLimit } from '../middleware/limits.js';
 import { instructionEvent, navChangedFor } from '../socket/events.js';
@@ -24,11 +23,11 @@ const AUTHOR_FIELDS = 'name username role';
 
 // The member a direct instruction is for, if the caller may address them.
 async function resolveRecipient(req, id) {
-  if (!mongoose.isValidObjectId(id)) throw notFound('Member not found');
+  if (!isId(id)) throw notFound('Member not found');
   const member = await User.findById(id).populate('group', 'name slug');
   if (!member || member.status !== 'active') throw notFound('Member not found');
   const allowed = ['leader', 'admin'].includes(req.user.role)
-    || (req.user.role === 'boss' && String(member.group?._id ?? member.group) === String(req.user.group))
+    || (req.user.role === 'boss' && Boolean(req.user.group) && String(member.group?._id ?? member.group) === String(req.user.group))
     || String(member._id) === String(req.user._id);
   if (!allowed) throw notFound('Member not found');
   return member;
@@ -114,7 +113,7 @@ function socketPayload(instr) {
 }
 
 async function findVisible(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Instruction not found');
+  if (!isId(req.params.id)) throw notFound('Instruction not found');
   const instr = await Instruction.findById(req.params.id)
     .populate('author', AUTHOR_FIELDS)
     .populate('group', 'name slug')
@@ -185,7 +184,7 @@ router.post('/', requireCapability('sendInstructions'), instructionLimit, urgent
   let group = null;
   let recipient = null;
   if (target === 'group') {
-    if (!mongoose.isValidObjectId(req.body.group)) throw badRequest('Choose a group');
+    if (!isId(req.body.group)) throw badRequest('Choose a group');
     group = await Group.findById(req.body.group);
     if (!group) throw badRequest('Unknown group');
   }
