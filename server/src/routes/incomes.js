@@ -7,12 +7,12 @@ import Plan from '../models/Plan.js';
 import Report from '../models/Report.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
-import { scopeFilter, canReadTeam, assignableFilter } from '../utils/visibility.js';
+import { scopeFilter, canReadTeam, canSeeMember, assignableFilter } from '../utils/visibility.js';
 import {
   financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName,
   person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
-import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { checkAmount, checkDay, checkText } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
@@ -21,8 +21,7 @@ import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/p
 import { incomeChanged, incomeRecorded, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
 import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
 import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
-import { archiveDeleted } from '../utils/audit.js';
-import { settleTaskWork } from '../utils/reportWork.js';
+import { settleTaskWork, shareOf, unpaidWorkOf } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 import { shownName } from '../utils/person.js';
 
@@ -252,6 +251,20 @@ router.get('/upcoming', async (req, res) => {
   res.json({ project: { id: task._id, name: task.name }, currency: currentRates().base, ...(await upcomingFor(task._id, task.owner)) });
 });
 
+// GET /api/incomes/unpaid?member=<id> — what all of a person's reported
+// work still expects, over every project (their own when no member is
+// given): the form warns when income is recorded with no project while
+// work waits to be paid.
+router.get('/unpaid', async (req, res) => {
+  let memberId = req.user._id;
+  if (req.query.member) {
+    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    if (!member || (String(member._id) !== String(req.user._id) && !canSeeMember(req.user, member))) throw notFound('Member not found');
+    memberId = member._id;
+  }
+  res.json({ currency: currentRates().base, ...(await unpaidWorkOf(memberId)) });
+});
+
 // Members this user can record income for.
 router.get('/members', async (req, res) => {
   const users = await User.find(assignableFilter(req.user), 'name username role group')
@@ -282,13 +295,19 @@ router.post('/', async (req, res) => {
   const task = taskId ? await Task.findById(taskId, 'name').lean() : null;
   // Far from what the reported work expected: a reason is required, and the
   // team leader and the member's boss are told (see utils/incomeVariance.js).
-  const expected = taskId ? (await upcomingFor(taskId, member._id)).amount : 0;
+  // Income for no project while reported work waits to be paid is compared
+  // with all of that work, and always needs the reason: it may be for a
+  // project after all, which then stays upcoming for nothing.
+  const expected = taskId ? (await upcomingFor(taskId, member._id)).amount : (await unpaidWorkOf(member._id)).amount;
   const variance = varianceOf(fields.amount, payment.residentPercent, expected);
+  const unlinked = !taskId && expected > 0;
   let varianceFields = {};
-  if (variance.outside) {
+  if (variance.outside || unlinked) {
     const reason = checkText(req.body.varianceReason, 'Reason', 500);
     if (!reason) {
-      throw badRequest(`This is ${Math.abs(variance.percent)}% ${variance.percent > 0 ? 'more' : 'less'} than the ${currentRates().base} ${expected} the reported work expected: say why in the reason`);
+      throw badRequest(unlinked
+        ? `This income is for no project, but the reported work still expects ${currentRates().base} ${expected}: pick the project it pays for, or say in the reason why it is not for one`
+        : `This is ${Math.abs(variance.percent)}% ${variance.percent > 0 ? 'more' : 'less'} than the ${currentRates().base} ${expected} the reported work expected: say why in the reason`);
     }
     varianceFields = { expected, variancePercent: variance.percent, varianceReason: reason };
   }
@@ -316,7 +335,7 @@ router.post('/', async (req, res) => {
   const settled = income.status === 'approved' ? await settleFor(income) : 0;
 
   incomeChanged(income);
-  if (variance.outside) varianceRaised(income.group?._id ?? income.group);
+  if (variance.outside || unlinked) varianceRaised(income.group?._id ?? income.group);
   // The team leader and the member's boss hear of income a member or a boss records.
   if (['member', 'boss'].includes(req.user.role)) incomeRecorded(income, req.user, await bossesOf(income.group?._id ?? income.group));
   req.audit = {
@@ -331,7 +350,8 @@ async function settleFor(income) {
   const taskId = income.task?._id ?? income.task;
   if (!taskId) return 0;
   const memberId = income.member?._id ?? income.member;
-  const settled = await settleTaskWork(taskId, memberId, income._id);
+  // The member's share of it pays for the oldest unpaid days it covers.
+  const settled = await settleTaskWork(taskId, memberId, income._id, shareOf(income));
   taskWorkChanged(memberId, income.group?._id ?? income.group ?? null);
   return settled;
 }
@@ -340,24 +360,30 @@ const bossesOf = async (groupId) => (groupId
   ? (await User.find({ role: 'boss', status: 'active', group: groupId }, '_id').lean()).map((u) => u._id)
   : []);
 
-// A pending record the team leader (or the member's boss) is deciding on.
-async function pendingIncome(req) {
+// A pending record the team leader (or the member's boss) decides on: it
+// moves to `status` in one write that only lands while it is still pending,
+// so two decisions at the same moment (an approve and a reject, two
+// approves) cannot both take effect. Returns the decided record.
+async function decidePending(req, status, extra = {}) {
   if (!canApproveIncome(req.user)) throw forbidden('Only the team leader and bosses approve income');
   if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
-  const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
-  if (!income) throw notFound('Income record not found');
-  if (income.status !== 'pending') throw badRequest(`This income was already ${income.status}`);
-  return income;
+  const scope = scopeFilter(req.user, 'member');
+  const income = await Income.findOneAndUpdate(
+    { _id: req.params.id, ...scope, status: 'pending' },
+    { status, reviewedBy: { user: req.user._id, name: shownName(req.user), at: new Date() }, ...extra },
+    { new: true },
+  );
+  if (income) return income;
+  const found = await Income.findOne({ _id: req.params.id, ...scope }, 'status').lean();
+  if (!found) throw notFound('Income record not found');
+  throw badRequest(`This income was already ${found.status ?? 'approved'}`);
 }
 
 // POST /api/incomes/:id/approve — the team leader or the member's boss
 // accepts it: from now on it counts, and it settles the project's reported
 // work. varianceRaised: the Finance badges of the leader and the boss change.
 router.post('/:id/approve', async (req, res) => {
-  const income = await pendingIncome(req);
-  income.status = 'approved';
-  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
-  await income.save();
+  const income = await decidePending(req, 'approved');
   const settled = await settleFor(income);
   incomeChanged(income);
   varianceRaised(income.group);
@@ -369,11 +395,8 @@ router.post('/:id/approve', async (req, res) => {
 // boss turns it down.
 // It stays listed, as history, and never counts.
 router.post('/:id/reject', async (req, res) => {
-  const income = await pendingIncome(req);
-  income.status = 'rejected';
-  income.rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
-  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
-  await income.save();
+  const rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
+  const income = await decidePending(req, 'rejected', { rejectReason });
   incomeChanged(income);
   varianceRaised(income.group);
   req.audit = { action: 'incomes.reject', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` }, details: { reason: income.rejectReason } };
@@ -388,9 +411,11 @@ router.post('/:id/withdraw', async (req, res) => {
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
   if (!income) throw notFound('Income record not found');
   if (!canWithdrawIncome(req.user, income)) throw badRequest('Only your own income still waiting for approval can be withdrawn');
-  req.audit = { action: 'incomes.withdraw' };
-  await archiveDeleted(income, req, { model: 'Income', label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` });
-  await Income.deleteOne({ _id: income._id });
+  req.audit = { action: 'incomes.withdraw', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` } };
+  // Only while it still waits: a decision landing meanwhile wins (the data
+  // layer keeps the copy of what it removes).
+  const gone = await Income.deleteOne({ _id: income._id, status: 'pending' });
+  if (!gone.deletedCount) throw conflict('This income was just approved or rejected');
   incomeChanged(income);
   varianceRaised(income.group);
   res.json({ ok: true });
