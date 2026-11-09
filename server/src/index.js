@@ -14,6 +14,7 @@ import { loadSettings } from './routes/settings.js';
 import { startOutsideWatch } from './utils/outsideWatch.js';
 import { scheduleFeeRefresh } from './utils/feeRefresh.js';
 import { loadRates, scheduleRateRefresh } from './utils/exchange.js';
+import { scheduleRetention } from './utils/retention.js';
 
 // A bug in one handler should be logged, not end the process for everyone.
 process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
@@ -38,6 +39,7 @@ connectDB(env.mongoUri)
     startOutsideWatch().catch((err) => console.error('Outside watch failed to start:', err.message));
     scheduleFeeRefresh();
     scheduleRateRefresh();
+    scheduleRetention();
     sweep();
     setInterval(sweep, 60 * 60 * 1000).unref();
   })
