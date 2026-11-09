@@ -104,7 +104,7 @@ Capabilities live in `server/src/config/roles.js`; the per-record rules in
 | **Projects** | All projects · each project name | What each member works on: title, source, the resident it is for, price (per hour, per task, month, fixed...), payment method, start and expiry dates, status, notes — and a day-by-day work log taken from the daily reports |
 | **Residents** | All · each group · each member (a member sees "My residents") | People a member is in touch with: photo, name, country, citizenship, age, source, first contact, laptop and remote access, their share of the income (divide %), notes — each owned by one member |
 | **Chat accounts** | All · each group · each member (a member sees "My accounts") | The Discord, Telegram and WhatsApp accounts a member uses, the residents they talk to from each, and whether the account is active or suspended (with a screenshot) |
-| **Member** | All · each group · each member | Directory with a **Username** column (and each member's residents in one line); add members, reset passwords, disable accounts. The team leader (or an admin) can change a member's username under *Edit*; the member then logs in with the new one |
+| **Member** | All · each group · each member | Directory with a **Username** column (and each member's residents in one line); add members, reset passwords, disable accounts. The team leader (or an admin) can change a member's username under *Edit*; the member then logs in with the new one. An admin's password is reset by another admin only (a reset hands the account to whoever did it for a day). Passwords are at least 10 characters with a digit |
 | **Finance** | Income · Outcome · Total — then All · each group · each member | Income and outcome per member: date, amount, source or reason; totals per period and group |
 | **Chat** | general · each group · finance | Live chat, typing indicators, unread markers; messages take up to five images (the **+** button, a paste or a drop on the composer) and emoji from a searchable picker |
 | **Admin** | Approvals · Users & roles · Groups · Payment fees · Security | Sign-up approvals, role changes, group management, payment method fees, the security log and deleted records (admins and the team leader; bosses see Approvals only) |
@@ -193,8 +193,12 @@ Channel titles come from `GET /api/nav`, built per user in
   table shows "received EUR 92" under the base amount. Income records are history and
   cannot be changed afterwards (screenshots of the payment can be attached). Each record
   names the project: when one is picked the form shows what its reported work still expects
-  to be paid (with a button to use that amount), and recording the income **settles** those
-  days, so they stop counting as upcoming on the project and in the chart. It also
+  to be paid (with a button to use that amount), and recording the income **settles** the
+  days it pays for, oldest first (all of them when the member's share is within 5 % of
+  their total; an instalment leaves the rest upcoming). A settled day keeps its hours and
+  amount when the report is saved again. Income recorded with **no project** while
+  reported work is still unpaid needs a reason and is flagged for the leader and the
+  boss like any other variance. It also
   names the **payment method** (PayPal, Payoneer, Wise, USDT, Bitcoin, Upwork, bank wire,
   bank transfer, cash) with its **fee**, which nobody types in: it is the method's current rate from
   **Admin → Payment fees**, where Wise, Bitcoin and USDT fees refresh every day from public
@@ -222,8 +226,11 @@ Channel titles come from `GET /api/nav`, built per user in
     Plain page views are not logged. For every
     change the data layer itself writes down each record created, edited or removed,
     with each edited field's old and new value, whichever screen did it (passwords are
-    never written). A login from an address the account has never used before is
-    flagged **new address**. The log can be filtered (outside the app, changes,
+    never written, and neither is the text of chat messages: a message is logged as
+    sent, edited or deleted, never quoted). A login from an address the account has
+    never used before is flagged **new address**; a login with a password someone
+    reset is flagged **reset password** and raises an alert. Requests made without a
+    session are logged only when refused, and without their body. The log can be filtered (outside the app, changes,
     deletions, restores, logins, failed & refused, admin actions, flagged), searched by name,
     username, address or path, and exported as CSV (the export itself is logged).
   - **Deleted records**: everything anyone deletes — an outcome, a project, a resident,
@@ -257,7 +264,9 @@ Channel titles come from `GET /api/nav`, built per user in
 
   Both collections are append-only: the app has no code path that edits or removes an
   entry, the data layer refuses update and delete operations on them, and nothing in them
-  expires. Income records were already unchangeable. The server also sends a
+  expires unless `AUDIT_RETENTION_DAYS` / `DELETED_RETENTION_DAYS` is set in `server/.env`
+  (then entries older than that are removed once a day, and the removal is logged).
+  Income records were already unchangeable. The server also sends a
   Content-Security-Policy (only its own scripts and styles run, the page cannot be
   framed), a Permissions-Policy (no camera, microphone or location) and, over HTTPS in
   production, Strict-Transport-Security.
@@ -339,7 +348,8 @@ Channel titles come from `GET /api/nav`, built per user in
 | `npm run db` | Only the set-up step: makes sure MongoDB is running (Docker container or local `mongod`) |
 | `npm run build` | Production build of the client into `client/dist` |
 | `npm start` | Runs the API; with `NODE_ENV=production` it also serves the built client (see below) |
-| `npm test` | Server unit tests (periods, permission rules, outcome splits) |
+| `npm test` | Server tests: the pure helpers (periods, permission rules, outcome splits) and the routes end to end on an in-memory MongoDB (`server/test/api.test.js`; uses `/usr/bin/mongod` when there is one, downloads a binary otherwise) |
+| `npm run lint` | eslint on server and client (undefined names, unused bindings); CI runs it too |
 | `npm run seed:demo` | Fills the database with the demo team (see above) |
 | `npm --prefix server run reset-password -- <user>` | Gives one account a temporary password (printed) to change at next login. To set a chosen one, pass it as `RESET_PASSWORD=...` (add `--no-must-change` to keep it) |
 | `npm --prefix server run dedupe-group-records` | One-off: keeps the newest group report and group plan per group and period where several bosses each saved one, and updates the database indexes. Shows the plan; add `-- --apply` to change the data |
@@ -466,7 +476,12 @@ client/
 - Changing a password logs out that user's other sessions; disabling an account logs
   them out immediately. Logging out also closes that session's live connection.
 - Ten wrong passwords lock **that username from that network** for 15 minutes;
-  other people on the same network can still log in.
+  other people on the same network can still log in. An address whose requests keep
+  being refused (no session, no permission, no such route: 300 in 15 minutes) is told
+  to wait, so nobody fills the security log from outside.
+- The app runs as **one process**: rate limits, who is online and the chat typing
+  state live in memory, so a restart starts them afresh and two instances behind one
+  load balancer would not share them.
 - Uploaded images live in `server/uploads` (or `UPLOADS_DIR`). Images no record uses
   are removed after a day, so each database needs its own folder.
 - Sound, message popups and desktop notifications are switched on per person in the
