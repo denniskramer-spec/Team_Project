@@ -7,7 +7,7 @@ import { isCommonPassword } from './commonPasswords.js';
 // query would then cast; only text is one here.
 export const isId = (value) => typeof value === 'string' && mongoose.isValidObjectId(value);
 
-export const PASSWORD_MIN = 8;
+export const PASSWORD_MIN = 10;
 
 export const USERNAME_RULE = /^[a-z0-9_.]{3,30}$/;
 

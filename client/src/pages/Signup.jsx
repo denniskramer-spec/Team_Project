@@ -81,7 +81,7 @@ export default function Signup() {
         </div>
         <label>
           Password
-          <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} minLength={8} maxLength={128} required />
+          <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} minLength={10} maxLength={128} required />
         </label>
         <PasswordRules password={form.password} />
         <label>
