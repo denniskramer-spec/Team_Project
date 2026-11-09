@@ -15,6 +15,7 @@ const RULES = [
   { kind: 'outside-write', test: (e) => e.flags?.includes('outside-write'), title: 'Data changed directly in the database, outside the app' },
   { kind: 'outside', test: (e) => e.flags?.includes('outside-app'), title: 'Someone is reading the database directly, outside the app' },
   { kind: 'copy', test: (e) => e.flags?.includes('sensitive-copy'), title: 'Bank or card details were copied' },
+  { kind: 'reset-login', test: (e) => e.action === 'auth.login' && e.flags?.includes('reset-login'), title: 'Login with a reset password' },
   { kind: 'new-ip', test: (e) => e.action === 'auth.login' && e.flags?.includes('new-ip'), title: 'Login from an address this account never used' },
 ];
 
@@ -34,7 +35,9 @@ export function alertOf(entry) {
     title: rule.title,
     text: [who, where, entry.ip ? `from ${entry.ip}` : ''].filter(Boolean).join(' · '),
     at: entry.at ?? new Date(),
-    key: `${rule.kind}:${entry.user?.id ?? entry.username ?? ''}:${entry.ip ?? ''}:${entry.userAgent ?? ''}`,
+    // The same person's repeats are held back whatever their browser says
+    // it is: a header the sender chooses cannot buy a fresh alert.
+    key: `${rule.kind}:${entry.user?.id ?? entry.username ?? ''}:${entry.ip ?? ''}:${entry.method === 'DB' ? entry.userAgent ?? '' : ''}`,
   };
 }
 
