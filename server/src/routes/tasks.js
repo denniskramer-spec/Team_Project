@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   scopeFilter, canManageFor, canReadTeam, visibleRecord, assignableMembers, scopeName,
 } from '../utils/visibility.js';
-import { badRequest, forbidden, notFound } from '../utils/httpError.js';
+import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { checkDay, checkText, searchRegex } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { parsePeriod } from '../utils/period.js';
@@ -69,18 +69,21 @@ function checkDates(body, current = {}) {
   return { startDate: start, endDate: end };
 }
 
-// The resident a project is for: one the caller may see, or none.
-async function resolveResident(req) {
+// The resident a project is for: one of the project owner's own, or none.
+// The owner's share of the work and the resident's part of the income are
+// both worked out from it, so it has to be the same person's resident.
+async function resolveResident(req, ownerId) {
   const value = req.body.resident;
   if (value === undefined) return undefined;
   if (value === null || value === '') return null;
   if (typeof value !== 'string' || !mongoose.isValidObjectId(value)) throw badRequest('Unknown resident');
-  const resident = await Resident.findOne({ ...scopeFilter(req.user, 'owner'), _id: value }, '_id').lean();
+  const resident = await Resident.findOne({ ...scopeFilter(req.user, 'owner'), _id: value }, '_id owner').lean();
   if (!resident) throw badRequest('Unknown resident');
+  if (String(resident.owner) !== String(ownerId)) throw badRequest("That resident belongs to someone else: a project is for its owner's own resident");
   return resident._id;
 }
 
-async function checkFields(req) {
+async function checkFields(req, ownerId) {
   const { body } = req;
   const fields = { ...checkPrice(body) };
   if (body.name !== undefined) {
@@ -92,7 +95,7 @@ async function checkFields(req) {
     if (body.method !== '' && body.method !== null && !methodOf(body.method)) throw badRequest('Unknown payment method');
     fields.method = body.method || '';
   }
-  const resident = await resolveResident(req);
+  const resident = await resolveResident(req, ownerId);
   if (resident !== undefined) fields.resident = resident;
   if (body.status !== undefined) {
     if (!TASK_STATES.includes(body.status)) throw badRequest('Status is active, paused or done');
@@ -176,7 +179,7 @@ router.get('/residents', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const owner = await resolveOwner(req, { orSelf: true });
-  const fields = await checkFields(req);
+  const fields = await checkFields(req, owner._id);
   if (!fields.name) throw badRequest('Give the project a title');
 
   const task = await new Task({
@@ -202,10 +205,11 @@ async function findTask(req) {
 }
 
 // GET /api/tasks/:id/log — the day-by-day work on one project, newest first,
-// from the owner's daily reports.
+// from the daily reports of whoever reported on it (an earlier owner's days
+// are part of its history too).
 router.get('/:id/log', async (req, res) => {
   const task = await findTask(req);
-  const reports = await Report.find({ scope: 'personal', type: 'daily', author: task.owner._id, 'work.task': task._id }, 'period work updatedAt')
+  const reports = await Report.find({ scope: 'personal', type: 'daily', 'work.task': task._id }, 'period work updatedAt')
     .sort({ periodStart: -1 }).lean();
   const log = reports.flatMap((r) => {
     const entry = (r.work ?? []).find((w) => String(w.task) === String(task._id));
@@ -221,12 +225,20 @@ router.patch('/:id', async (req, res) => {
   const task = await findTask(req);
   if (!mayManage(req.user, task)) throw forbidden('You cannot change this project');
   const priceBefore = `${task.price}|${task.priceUnit}|${task.resident?._id ?? ''}`;
-  Object.assign(task, await checkFields(req));
+  const owner = req.body.owner !== undefined ? await resolveOwner(req) : null;
+  if (owner && String(owner._id) !== String(task.owner._id)) {
+    // The owner's reported days on it are theirs to be paid for; they
+    // cannot follow the project to someone else.
+    const unpaid = await Report.exists({ author: task.owner._id, scope: 'personal', type: 'daily', work: { $elemMatch: { task: task._id, paidBy: null, amount: { $gt: 0 } } } });
+    if (unpaid) throw conflict(`${shownName(task.owner)} still has unpaid reported work on this project: record the income for it first, or make a new project for the new owner`);
+    // A resident stays with its owner: the new owner picks their own.
+    if (task.resident && req.body.resident === undefined) task.resident = null;
+  }
+  Object.assign(task, await checkFields(req, owner?._id ?? task.owner._id));
   if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
     Object.assign(task, checkDates(req.body, task));
   }
-  if (req.body.owner !== undefined) {
-    const owner = await resolveOwner(req);
+  if (owner) {
     task.owner = owner._id;
     task.group = owner.group ?? null;
   }
