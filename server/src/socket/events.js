@@ -7,14 +7,32 @@ import { shownName } from '../utils/person.js';
 // Member list / right panel should reload.
 export const directoryChanged = () => getIO()?.emit('directory:changed');
 
+// Every 'nav:changed' makes each listener load the whole channel tree
+// again (a few dozen queries each). The same rooms are told at most once
+// a second: the first change goes out at once, the ones that follow in
+// that second are folded into one more.
+const NAV_HOLD_MS = 1000;
+const navHeld = new Map(); // rooms -> { again }
+export function tellNav(rooms = []) {
+  const io = getIO();
+  if (!io) return;
+  const key = [...rooms].sort().join('|');
+  const held = navHeld.get(key);
+  if (held) { held.again = true; return; }
+  (rooms.length ? io.to(rooms) : io).emit('nav:changed');
+  const state = { again: false };
+  navHeld.set(key, state);
+  setTimeout(() => { navHeld.delete(key); if (state.again) tellNav(rooms); }, NAV_HOLD_MS).unref?.();
+}
+
 // Channel tree (groups, badges, ...) should reload, for everyone or one user.
-export const navChanged = () => getIO()?.emit('nav:changed');
-export const navChangedFor = (userId) => getIO()?.to(`user:${userId}`).emit('nav:changed');
+export const navChanged = () => tellNav();
+export const navChangedFor = (userId) => tellNav([`user:${userId}`]);
 // Only the people who approve sign-ups show a pending count.
 // An income far from what the reported work expected: the badge of the team
 // leader and of the boss of the member's group changes.
-export const varianceRaised = (groupId) => getIO()?.to(['role:leader', ...(groupId ? [`group:${groupId}`] : [])]).emit('nav:changed');
-export const approvalsChanged = () => getIO()?.to(['role:admin', 'role:leader', 'role:boss']).emit('nav:changed');
+export const varianceRaised = (groupId) => tellNav(['role:leader', ...(groupId ? [`group:${groupId}`] : [])]);
+export const approvalsChanged = () => tellNav(['role:admin', 'role:leader', 'role:boss']);
 // A payment fee changed, by hand or by the daily refresh: fee tables reload.
 export const feesChanged = () => getIO()?.emit('fees:changed');
 // The team time zone changed: "today" may be another day for everyone.
@@ -72,7 +90,7 @@ export function taskChanged(task) {
   const io = getIO();
   if (!io) return;
   io.to(ownerRooms(task, 'owner')).emit('task:changed', { id: task._id });
-  io.to(ownerRooms(task, 'owner')).emit('nav:changed');
+  tellNav(ownerRooms(task, 'owner'));
 }
 
 // A member's daily work changed (a report was saved, a resident removed):
@@ -118,7 +136,7 @@ export function incomeRecorded(income, recorder, bossIds = []) {
     status: income.status,
     at: income.createdAt ?? new Date(),
   });
-  if (income.status === 'pending') io.to(rooms).emit('nav:changed');
+  if (income.status === 'pending') tellNav(rooms);
 }
 
 // New exchange rates were fetched: the Finance pages reload them.
@@ -137,7 +155,7 @@ export function instructionEvent(event, instruction, payload) {
       ? [`user:${instruction.recipient._id ?? instruction.recipient}`, 'role:leader', 'role:admin', `user:${authorId}`]
       : [`group:${instruction.group._id ?? instruction.group}`, 'role:leader', 'role:admin', `user:${authorId}`];
   io.to(rooms).emit(event, payload);
-  if (event !== 'instruction:changed') io.to(rooms).emit('nav:changed');
+  if (event !== 'instruction:changed') tellNav(rooms);
 }
 
 // An outcome record changed. A team cost has no member, so only its group

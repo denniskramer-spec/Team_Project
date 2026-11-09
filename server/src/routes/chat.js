@@ -1,18 +1,17 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import ChatRead from '../models/ChatRead.js';
 import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { visibleGroups } from '../utils/scope.js';
-import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, canClearChat, checkEmoji } from '../utils/chatPolicy.js';
+import { resolveChannel, titleKeyFor, canEditMessage, deleteModeFor, deletedFilter, seesDeletedMessages, dmPeerOf, isDmKey, canUseFinanceChat, canBuzzChannel, canFlagOffTopic, canClearChat, checkEmoji, roomsFor } from '../utils/chatPolicy.js';
 import User from '../models/User.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { clean } from '../utils/validate.js';
+import { clean, isId } from '../utils/validate.js';
 import { olderThan, NEWEST_FIRST } from '../utils/paging.js';
 import { chatLimit, buzzLimit } from '../middleware/limits.js';
-import { chatEvent, navChangedFor, dmEvent } from '../socket/events.js';
+import { chatEvent, navChangedFor, dmEvent, tellNav } from '../socket/events.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { shownName } from '../utils/person.js';
@@ -82,18 +81,21 @@ export async function chatUnreadCounts(user) {
   const reads = await ChatRead.find({ user: user._id, channelKey: { $in: channels.map((c) => c.key) } }).lean();
   const readAt = new Map(reads.map((r) => [r.channelKey, r.lastReadAt]));
 
+  const byKey = await unreadByChannel(user, channels.map((c) => ({ key: c.key, since: readAt.get(c.key) ?? user.createdAt })));
   const counts = {};
-  await Promise.all(channels.map(async (c) => {
-    const since = readAt.get(c.key) ?? user.createdAt;
-    const count = await Message.countDocuments({
-      channelKey: c.key,
-      author: { $ne: user._id },
-      createdAt: { $gt: since },
-      ...deletedFilter(user),
-    });
-    if (count) counts[c.titleKey] = count;
-  }));
+  for (const c of channels) if (byKey.get(c.key)) counts[c.titleKey] = byKey.get(c.key);
   return counts;
+}
+
+// Unread messages per channel (each with its own "read up to"), in one
+// query: Map of channel key -> count (only channels with any).
+async function unreadByChannel(user, channels) {
+  if (!channels.length) return new Map();
+  const rows = await Message.aggregate([
+    { $match: { author: { $ne: user._id }, ...deletedFilter(user), $or: channels.map((c) => ({ channelKey: c.key, createdAt: { $gt: c.since } })) } },
+    { $group: { _id: '$channelKey', count: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [r._id, r.count]));
 }
 
 // GET /api/chat/:titleKey/messages?before=<ISO>
@@ -127,7 +129,7 @@ router.post('/:titleKey/upload', uploadLimiter(), async (req, res, next) => {
 // the one answering.
 async function checkReplyTo(value, channel, user) {
   if (value == null || value === '') return null;
-  if (!mongoose.isValidObjectId(value)) throw badRequest('That message cannot be answered');
+  if (!isId(value)) throw badRequest('That message cannot be answered');
   const original = await Message.findOne({ _id: value, channelKey: channel.key, ...deletedFilter(user) }, '_id').lean();
   if (!original) throw badRequest('That message cannot be answered');
   return original._id;
@@ -192,7 +194,7 @@ function sendChatEvent(event, channel, user, payloadFor) {
 }
 
 async function findMessage(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Message not found');
+  if (!isId(req.params.id)) throw notFound('Message not found');
   const message = await Message.findById(req.params.id).populate(POPULATE);
   if (!message || (message.deletedAt && !seesDeletedMessages(req.user))) throw notFound('Message not found');
   // Re-check that the user may open this chat at all.
@@ -302,7 +304,7 @@ router.delete('/:titleKey/messages', async (req, res) => {
   if (deleted) {
     sendChatEvent('chat:cleared', channel, req.user, (key) => ({ titleKey: key, upTo }));
     // Unread badges of a channel drop to nothing (a DM's two sides are told above).
-    if (channel.kind !== 'dm') chatEvent('nav:changed', channel);
+    if (channel.kind !== 'dm') tellNav(roomsFor(channel));
   }
   res.json({ ok: true, deleted, upTo });
 });
@@ -337,17 +339,18 @@ export async function listDms(user) {
   const peerIds = latest.map((l) => dmPeerOf(l._id, me));
   const peers = await User.find({ _id: { $in: peerIds } }, 'name username role group status').populate('group', 'name').lean();
   const peerOf = new Map(peers.map((p) => [String(p._id), p]));
-  return Promise.all(latest.map(async (l) => {
+  const unreadOf = await unreadByChannel(user, keys.map((key) => ({ key, since: readAt.get(key) ?? user.createdAt })));
+  return latest.map((l) => {
     const peerId = dmPeerOf(l._id, me);
     const peer = peerOf.get(peerId);
-    const unread = await Message.countDocuments({ channelKey: l._id, author: { $ne: user._id }, createdAt: { $gt: readAt.get(l._id) ?? user.createdAt }, ...deletedFilter(user) });
+    const unread = unreadOf.get(l._id) ?? 0;
     return {
       titleKey: `dm-${peerId}`,
       peer: { id: peerId, name: shownName(peer) || 'Former member', role: peer?.role ?? 'member', group: peer?.group?.name ?? null, active: peer?.status === 'active' },
       last: { content: previewOf(l.last).slice(0, 120), at: l.last.createdAt, mine: String(l.last.author) === me },
       unread,
     };
-  }));
+  });
 }
 
 // GET /api/chat/dms
