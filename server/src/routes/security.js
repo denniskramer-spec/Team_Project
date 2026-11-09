@@ -46,7 +46,7 @@ function olderOn(query, field) {
 const ACCOUNT = /^(members\.(role|status|reset-password)|auth\.password|security\.(sign-out|export|restore))$/;
 const DANGEROUS = {
   $or: [
-    { flags: { $in: ['outside-app', 'tamper', 'denied', 'rate-limited', 'sensitive-copy'] } },
+    { flags: { $in: ['outside-app', 'tamper', 'denied', 'rate-limited', 'sensitive-copy', 'reset-login'] } },
     { action: /\.delete$/ },
     { action: 'auth.login.failed' },
     { action: /^database\./ },
@@ -60,7 +60,7 @@ const KINDS = {
   delete: { action: /\.delete$/ },
   restore: { action: 'security.restore' },
   failed: { $or: [{ action: 'auth.login.failed' }, { flags: 'rate-limited' }, { flags: 'denied' }] },
-  account: { action: ACCOUNT },
+  account: { $or: [{ action: ACCOUNT }, { flags: 'reset-login' }] },
   copy: { flags: 'sensitive-copy' },
 };
 

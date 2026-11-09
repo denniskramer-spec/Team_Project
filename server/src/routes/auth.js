@@ -151,6 +151,9 @@ router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) =
   const ip = clientIp(req);
   const flags = [];
   if (user.lastLoginAt && !(await AuditLog.exists({ 'user.id': user._id, action: 'auth.login', ip }))) flags.push('new-ip');
+  // A login with a reset password: whoever reset it could be the one logging
+  // in, so admins and the team leader are told (utils/securityAlerts.js).
+  if (user.mustChangePassword && user.passwordResetAt) flags.push('reset-login');
   req.audit = { action: 'auth.login', details: { username }, flags };
   // A password from the leaked-password lists has to be changed now. Only in
   // production: the demo accounts share one on purpose.

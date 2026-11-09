@@ -27,6 +27,7 @@ function Result({ status, flags }) {
     <span className="log-result">
       <span className={`status-pill ${cls}`}>{text}</span>
       {flags?.includes('new-ip') && <span className="status-pill pending" title="First login from this address">new address</span>}
+      {flags?.includes('reset-login') && <span className="status-pill pending" title="Logged in with a password that was reset for them">reset password</span>}
       {flags?.includes('outside-app') && <span className="status-pill disabled" title="Done on the database directly, not through the app">outside app</span>}
       {flags?.includes('sensitive-copy') && <span className="status-pill disabled" title="Copied text holding a bank account, card number or wallet address">bank details</span>}
       {flags?.includes('tamper') && <span className="status-pill disabled" title="The security log, the kept copies or the recording itself were touched">tampering</span>}
@@ -83,7 +84,7 @@ function Details({ entry }) {
 }
 
 function LogRow({ entry, open, onToggle }) {
-  const flagged = entry.flags?.some((f) => ['new-ip', 'rate-limited', 'denied'].includes(f));
+  const flagged = entry.flags?.some((f) => ['new-ip', 'reset-login', 'rate-limited', 'denied'].includes(f));
   const outside = entry.flags?.includes('outside-app');
   return (
     <>
