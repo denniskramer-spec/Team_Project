@@ -69,7 +69,6 @@ function ReportCard({ row }) {
           <Block title="Today's plan" meta={`${planDone}/${plan.length} done`} show={plan.length > 0}>
             <ul className="rc-plan">
               {plan.map((p, i) => (
-                // eslint-disable-next-line react/no-array-index-key
                 <li key={i} className={p.done ? 'is-done' : ''}><Icon name={p.done ? 'tick' : 'dot'} size={12} /> {p.text}</li>
               ))}
             </ul>
@@ -89,7 +88,6 @@ function ReportCard({ row }) {
           <Block title="Calls" meta={`${calls.length} · ${calls.filter((c) => c.result).length} done`} show={calls.length > 0}>
             <ul className="rc-list">
               {calls.map((c, i) => (
-                // eslint-disable-next-line react/no-array-index-key
                 <li key={i}>
                   <div className="rc-line-head">
                     {c.time && <span className="muted small">{c.time}</span>}

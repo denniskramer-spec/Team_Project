@@ -42,7 +42,6 @@ export default function EmojiPicker({ onPick, onClose, anchor }) {
     <div className="emoji-grid">
       {list.map((e, i) => (
         <button
-          // eslint-disable-next-line react/no-array-index-key
           key={`${prefix}-${i}`}
           type="button"
           className="emoji-btn"

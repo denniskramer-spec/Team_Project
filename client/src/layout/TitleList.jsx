@@ -62,7 +62,6 @@ export default function TitleList({ channel, current }) {
   useEffect(() => {
     const auto = channel.titles.filter(holdsSelection).map((t) => t.key);
     if (auto.length) setOpen((prev) => new Set([...prev, ...auto.map(branchKey)]));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel.key, current, selectedGroup, selectedMember]);
 
   const linkFor = (t, parent) => {

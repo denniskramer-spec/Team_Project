@@ -74,7 +74,6 @@ export default function ImageDrop({ existing = [], onRemoveExisting, files, onFi
     };
     document.addEventListener('paste', paste);
     return () => document.removeEventListener('paste', paste);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files, existing.length]);
 
   const drop = (e) => {

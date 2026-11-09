@@ -161,7 +161,6 @@ if (env.isProd && fs.existsSync(path.join(clientDir, 'index.html'))) {
   });
 }
 
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err.name === 'ValidationError') {
     return res.status(400).json({ message: Object.values(err.errors).map((e) => e.message).join(', ') });

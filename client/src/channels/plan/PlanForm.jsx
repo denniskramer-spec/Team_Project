@@ -35,7 +35,6 @@ export default function PlanForm({ title, type, period, scope = 'personal', plan
     }
     setForm(toForm(plan, items));
     setDirty(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan?.id, plan?.updatedAt, period]);
 
   const set = (key) => (e) => { setForm({ ...form, [key]: e.target.value }); setDirty(true); };

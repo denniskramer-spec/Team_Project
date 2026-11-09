@@ -68,7 +68,6 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
     setSavedAt(report?.updatedAt ?? null);
     setSentAt(report?.sentAt ?? null);
     dirty.current = false;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period.key]);
 
   // The latest form, for the delayed draft save.
@@ -211,7 +210,6 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
               {form.todayPlan.length === 0 && <p className="muted small rm-empty">Nothing planned for today yet. The previous report's "plan for tomorrow" lands here.</p>}
               <ul className="rm-checklist">
                 {form.todayPlan.map((p, i) => (
-                  // eslint-disable-next-line react/no-array-index-key
                   <li key={i}>
                     <label className="check">
                       <input type="checkbox" checked={p.done} onChange={() => togglePlan(i)} />
@@ -259,7 +257,6 @@ export default function ReportModal({ period, report, context, onClose, onSaved,
 
             <Section title="Call report" meta={`${form.calls.length} ${form.calls.length === 1 ? 'call' : 'calls'} · ${callsDone} done`}>
               {form.calls.map((c, i) => (
-                // eslint-disable-next-line react/no-array-index-key
                 <div key={i} className="rm-call">
                   <div className="rm-call-head">
                     <input className="rm-time" value={c.time} onChange={(e) => setCall(i, 'time', e.target.value)} placeholder="19:00" aria-label="Call time" maxLength={5} />
