@@ -21,3 +21,7 @@ server/uploads/
 
 # local MongoDB data when `npm run dev` starts mongod itself
 .mongo-data/
+
+# documents and screenshots pasted next to the code
+*.docx
+Pasted image*.png
