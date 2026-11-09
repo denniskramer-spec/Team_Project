@@ -5,7 +5,8 @@
     "dev": "vite build --watch --mode development",
     "preview": "vite preview --port 3000 --strictPort",
     "dev:hmr": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "lint": "eslint ."
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^10.14.0",
     "vite": "^6.4.3"
   },
   "private": true,

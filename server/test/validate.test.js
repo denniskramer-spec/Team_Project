@@ -65,14 +65,14 @@ test('control characters are dropped, line breaks kept', async () => {
 test('a password has to be text of the right length with a digit', async () => {
   const { checkPassword } = await import('../src/utils/validate.js');
   assert.equal(checkPassword('lantern-Fjord42'), 'lantern-Fjord42');
-  for (const bad of [12345678, null, undefined, { length: 10 }, 'short1', 'noDigitsHere', 'a1'.repeat(70)]) {
+  for (const bad of [12345678, null, undefined, { length: 10 }, 'short1', 'nineish12', 'noDigitsHere', 'a1'.repeat(70)]) {
     assert.throws(() => checkPassword(bad), { status: 400 }, String(bad));
   }
 });
 
 test('a common or leaked password is refused, whatever its case', async () => {
   const { checkPassword } = await import('../src/utils/validate.js');
-  for (const bad of ['password1', 'Password1', 'qwerty123', 'demo1234', 'ADMIN1234']) {
+  for (const bad of ['password123', 'Password123', 'qwerty123456', 'welcome123', 'SUPERMAN123']) {
     assert.throws(() => checkPassword(bad), /most common/, bad);
   }
 });
@@ -97,4 +97,13 @@ test('counts are whole numbers and lists have a size limit', async () => {
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   assert.throws(() => checkDay(tomorrow, 'the joined date', { pastOnly: true }), { status: 400 });
   assert.ok(checkDay(tomorrow, 'a start date') instanceof Date);
+});
+
+test('a record id is the text of an ObjectId, nothing else', async () => {
+  const { isId } = await import('../src/utils/validate.js');
+  assert.equal(isId('a'.repeat(24)), true);
+  assert.equal(isId('507f1f77bcf86cd799439011'), true);
+  for (const bad of [5, 12345678901, { id: 'x'.repeat(12) }, 'x'.repeat(12), null, undefined, '', 'zz'.repeat(12), { $ne: null }]) {
+    assert.equal(isId(bad), false, String(bad));
+  }
 });

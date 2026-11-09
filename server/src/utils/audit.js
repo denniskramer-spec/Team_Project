@@ -28,19 +28,24 @@ export const actorOf = (user) => (user
 const SECRET = /pass|token|secret|hash|cookie|authorization/i;
 const MAX_TEXT = 500;
 const MAX_ITEMS = 50;
+const MAX_DEPTH = 4;
+// The most one entry's details may take up once stored. A body is at most
+// 1 MB; the log is append-only, so an entry that big is never worth keeping whole.
+export const MAX_DETAILS_BYTES = 16 * 1024;
 
 // A copy of a request body (or anything) safe to keep: secrets hidden, long
 // text and lists cut short, nested objects limited.
 export function sanitize(value, depth = 0) {
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) {
+    if (depth > MAX_DEPTH) return '[…]';
     const items = value.slice(0, MAX_ITEMS).map((v) => sanitize(v, depth + 1));
     return value.length > MAX_ITEMS ? [...items, `… ${value.length - MAX_ITEMS} more`] : items;
   }
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') {
     if (typeof value.toHexString === 'function') return String(value); // ObjectId
-    if (depth > 4) return '[…]';
+    if (depth > MAX_DEPTH) return '[…]';
     const out = {};
     for (const [key, v] of Object.entries(value)) {
       // Operators and dots cannot be field names in MongoDB, and a key called
@@ -61,6 +66,9 @@ const VERBS = { GET: 'view', HEAD: 'view', POST: 'create', PUT: 'update', PATCH:
 // A copy is written only when it held bank details (routes/copies.js sets
 // req.audit then).
 const SKIP = [/^\/api\/chat\/[^/]+\/read$/, /^\/api\/copies$/];
+// Requests whose body never goes in the log, whatever became of them: chat
+// messages are read by the people in the chat, not by whoever reads the log.
+const PRIVATE_BODY = [/^\/api\/chat\//];
 const pathOf = (req) => req.originalUrl.split('?')[0];
 const isId = (p) => /^[0-9a-f]{24}$/i.test(p);
 
@@ -86,6 +94,10 @@ function shouldLog(req, res) {
   const path = pathOf(req);
   if (!path.startsWith('/api/')) return false;
   if (req.auditCtx?.changes.length) return true;
+  // Nobody logged in: only a refusal is worth an entry (a login or sign-up
+  // writes its own). Anything else anonymous, a wrong path, a bad body, is
+  // noise anyone on the network could write without end.
+  if (!req.user) return [401, 403, 429].includes(res.statusCode);
   // A read that went through is not news; a refused one (not signed in,
   // not allowed, rate-limited) is.
   if (READ.has(req.method)) return req.method !== 'OPTIONS' && [401, 403, 429].includes(res.statusCode);
@@ -93,18 +105,32 @@ function shouldLog(req, res) {
   return !SKIP.some((rx) => rx.test(path));
 }
 
+// An entry's details, cut down to MAX_DETAILS_BYTES: what was sent is
+// dropped first (the changes the data layer saw are the part that matters).
+export function fitDetails(details) {
+  if (!details) return details;
+  const size = (v) => Buffer.byteLength(JSON.stringify(v) ?? '');
+  if (size(details) <= MAX_DETAILS_BYTES) return details;
+  const { changes, moreChanges, ...rest } = details;
+  const kept = { omitted: `details over ${MAX_DETAILS_BYTES / 1024} KB`, size: size(rest), ...(changes ? { changes } : {}), ...(moreChanges ? { moreChanges } : {}) };
+  return size(kept) <= MAX_DETAILS_BYTES ? kept : { omitted: `details over ${MAX_DETAILS_BYTES / 1024} KB`, size: size(details) };
+}
+
 function detailsOf(req, res, extra) {
   const changes = req.auditCtx?.changes ?? [];
+  // What was sent is kept for the person who sent it; nothing of an
+  // anonymous request's body is (a login or sign-up names what it needs).
+  const body = req.user && !PRIVATE_BODY.some((rx) => rx.test(pathOf(req))) && req.body && Object.keys(req.body).length ? sanitize(req.body) : null;
   const base = extra.details !== undefined
     ? sanitize(extra.details)
     : READ.has(req.method)
       ? { ...(viewOf(req) ? { of: viewOf(req) } : {}), ...(req.query && Object.keys(req.query).length ? { query: sanitize(req.query) } : {}) }
-      : (req.body && Object.keys(req.body).length ? sanitize(req.body) : null);
-  if (!changes.length) return base && Object.keys(base).length ? base : null;
+      : body;
+  if (!changes.length) return fitDetails(base && Object.keys(base).length ? base : null);
   const out = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : base ? { request: base } : {};
   out.changes = changes.map((c) => sanitize(c));
   if (req.auditCtx.more) out.moreChanges = req.auditCtx.more;
-  return out;
+  return fitDetails(out);
 }
 
 function targetOf(req, extra) {

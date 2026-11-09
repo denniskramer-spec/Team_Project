@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { badRequest } from './httpError.js';
+import { isId } from './validate.js';
 
 // "Load older" cursor for lists sorted newest first: ?before=<ISO date> and
 // ?beforeId=<id> of the oldest row shown. The id breaks ties, so rows that
@@ -10,7 +11,7 @@ export function olderThan(query) {
   const before = new Date(query.before);
   if (Number.isNaN(before.getTime())) throw badRequest('Invalid "before" date');
   if (!query.beforeId) return { createdAt: { $lt: before } };
-  if (!mongoose.isValidObjectId(query.beforeId)) throw badRequest('Invalid "beforeId"');
+  if (!isId(query.beforeId)) throw badRequest('Invalid "beforeId"');
   return {
     $or: [
       { createdAt: { $lt: before } },

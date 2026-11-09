@@ -7,6 +7,7 @@ const user = { id: 'u1', name: 'Lena Fischer', username: 'lena' };
 test('dangerous entries raise an alert, ordinary ones do not', () => {
   assert.equal(alertOf({ action: 'copy.sensitive', flags: ['sensitive-copy'], user, ip: '1.2.3.4' }).kind, 'copy');
   assert.equal(alertOf({ action: 'auth.login', flags: ['new-ip'], user }).kind, 'new-ip');
+  assert.equal(alertOf({ action: 'auth.login', flags: ['reset-login', 'new-ip'], user }).kind, 'reset-login');
   assert.equal(alertOf({ action: 'database.update', flags: ['outside-app', 'outside-write'], method: 'DB', userAgent: 'MongoDB Compass' }).kind, 'outside-write');
   assert.equal(alertOf({ action: 'database.delete', flags: ['outside-app', 'outside-write', 'tamper'], method: 'DB' }).kind, 'tamper');
   assert.equal(alertOf({ action: 'auth.login', flags: [], user }), null);
@@ -27,4 +28,11 @@ test('the same alert from the same person is held back for ten minutes', () => {
   assert.equal(raiseSecurityAlert(entry, t + 60_000), false);
   assert.equal(raiseSecurityAlert({ ...entry, ip: '8.8.8.8' }, t + 60_000), true);
   assert.equal(raiseSecurityAlert(entry, t + 11 * 60_000), true);
+});
+
+test('a browser name the sender picks does not buy a fresh alert', () => {
+  const t = 2_000_000_000;
+  const copy = (userAgent) => ({ action: 'copy.sensitive', flags: ['sensitive-copy'], user, ip: '1.2.3.4', userAgent });
+  assert.equal(raiseSecurityAlert(copy('Browser/1'), t), true);
+  assert.equal(raiseSecurityAlert(copy('Browser/2'), t + 1000), false);
 });

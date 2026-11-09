@@ -6,12 +6,18 @@ const T1 = 'a'.repeat(24);
 const T2 = 'b'.repeat(24);
 const INCOME = 'c'.repeat(24);
 
-test('a re-saved report keeps the paid marks of the stored work', () => {
-  const stored = [{ task: T1, hours: 2, amount: 100, paidBy: INCOME }, { task: T2, hours: 1, amount: 50, paidBy: null }];
+test('a re-saved report keeps paid work as it was paid for', () => {
+  const stored = [{ task: T1, text: 'old', hours: 2, amount: 100, paidBy: INCOME }, { task: T2, hours: 1, amount: 50, paidBy: null }];
   const sent = [{ task: T1, text: 'more', hours: 3, amount: 150 }, { task: T2, hours: 1, amount: 50 }];
+  // Paid hours and amount stay; the words about the day may change.
   assert.deepEqual(keepPaid(stored, sent), [
-    { task: T1, text: 'more', hours: 3, amount: 150, paidBy: INCOME },
+    { task: T1, text: 'more', hours: 2, amount: 100, paidBy: INCOME },
     { task: T2, hours: 1, amount: 50, paidBy: null },
+  ]);
+  // Leaving a paid day out of the form does not make it unpaid again.
+  assert.deepEqual(keepPaid(stored, [{ task: T2, hours: 4, amount: 200 }]), [
+    { task: T2, hours: 4, amount: 200, paidBy: null },
+    { task: T1, text: 'old', hours: 2, amount: 100, paidBy: INCOME },
   ]);
   assert.deepEqual(keepPaid(undefined, sent).map((w) => w.paidBy), [null, null]);
 });

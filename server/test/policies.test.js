@@ -39,6 +39,15 @@ test('per-row permissions', () => {
   assert.equal(permissionsFor(bossA, memberA).changeUsername, false);
 });
 
+test('an admin password is reset by admins only', () => {
+  const admin2 = { _id: 'admin2', role: 'admin', group: null };
+  assert.equal(permissionsFor(admin, admin2).resetPassword, true);
+  assert.equal(permissionsFor(leader, admin).resetPassword, false); // the one admin power a leader lacks
+  assert.equal(permissionsFor(leader, bossA).resetPassword, true);
+  assert.equal(permissionsFor(bossA, memberA).resetPassword, true);
+  assert.equal(permissionsFor(admin, admin).resetPassword, false);
+});
+
 test('pending sign-ups each approver sees', () => {
   assert.deepEqual(pendingFilter(leader), { status: 'pending' });
   assert.deepEqual(pendingFilter(bossA), { status: 'pending', group: A });

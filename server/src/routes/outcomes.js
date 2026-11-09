@@ -3,17 +3,18 @@ import { archiveDeleted } from '../utils/audit.js';
 import mongoose from 'mongoose';
 import Outcome from '../models/Outcome.js';
 import User from '../models/User.js';
+import Group from '../models/Group.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canRecordOutcome, canManageOutcome, assignableFilter } from '../utils/visibility.js';
 import {
-  financeScope, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName, person, who, whoKey,
-  ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
+  financeScope, peopleInScope, perGroupSums, groupList, groupTiles, scopeName, person, teamPerson, who, whoKeyExpr,
+  PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
 import { resolveTarget, shares, checkMoneyFields, inScope } from '../utils/outcomeTarget.js';
 import { imageUpload, describeUpload, checkImages, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
 import { fileInUse } from '../utils/fileRefs.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkDay } from '../utils/validate.js';
+import { checkDay, isId } from '../utils/validate.js';
 import { outcomeChanged } from '../socket/events.js';
 import { shownName } from '../utils/person.js';
 
@@ -65,29 +66,54 @@ async function checkFields(body, partial = false) {
   return fields;
 }
 
-const item = (o) => ({ id: o._id, date: o.date, amount: o.amount, reason: o.reason, comment: o.comment || '', split: o.split?.id ? o.split.label : null });
 const populate = (q) => q.populate('member', PERSON_FIELDS).populate('group', 'name slug');
 const stillUsed = fileInUse;
+
+// One record as a person's details list it, as an aggregation expression.
+const ITEM = { id: '$_id', date: '$date', amount: '$amount', reason: '$reason', comment: { $ifNull: ['$comment', ''] }, split: { $cond: [{ $gt: ['$split.id', null] }, '$split.label', null] } };
+
+// Sum, count and the newest DETAIL_LIMIT records per person (a team cost
+// under its group's or the team's own key, like whoKey), over every record
+// the filter matches, without loading them all. The team entries carry
+// their group so they can be named.
+async function outcomePerWho(filter) {
+  const rows = await Outcome.aggregate([
+    { $match: filter },
+    { $group: { _id: whoKeyExpr, group: { $first: '$group' }, amount: { $sum: '$amount' }, count: { $sum: 1 }, items: { $topN: { n: DETAIL_LIMIT, sortBy: { date: -1, createdAt: -1 }, output: ITEM } } } },
+  ]);
+  const groupIds = rows.filter((r) => typeof r._id === 'string' && r.group).map((r) => r.group);
+  const groups = new Map((groupIds.length ? await Group.find({ _id: { $in: groupIds } }, 'name slug').lean() : []).map((g) => [String(g._id), g]));
+  return new Map(rows.map((r) => [String(r._id), { amount: r.amount, count: r.count, items: r.items, group: r.group ? groups.get(String(r.group)) ?? r.group : null }]));
+}
 
 // GET /api/outcomes — same query as /api/incomes (type, period/date or from/to, group, member).
 router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
 
-  const outcomes = await populate(Outcome.find(filter).sort({ date: -1, createdAt: -1 })).lean();
-  const people = await peopleInScope(req.user, { groupId, memberId }, outcomes.map((o) => ownerId(o, 'member')));
-
-  const byMember = perMember(outcomes);
-  const total = Math.round(outcomes.reduce((sum, o) => sum + o.amount, 0) * 100) / 100;
+  // The newest records are listed; the totals and the per-person figures
+  // are summed in the database, so a long period never loads every record.
+  const [outcomes, count, perWho] = await Promise.all([
+    populate(Outcome.find(filter).sort({ date: -1, createdAt: -1 }).limit(LIST_LIMIT)).lean(),
+    Outcome.countDocuments(filter),
+    outcomePerWho(filter),
+  ]);
+  const people = await peopleInScope(req.user, { groupId, memberId }, [...perWho.keys()].filter((k) => !k.startsWith('team:')));
+  const total = Math.round([...perWho.values()].reduce((sum, r) => sum + r.amount, 0) * 100) / 100;
+  const byMember = new Map();
+  for (const [key, entry] of perWho) {
+    const p = people.find((u) => String(u._id) === key);
+    byMember.set(key, { member: p ? person(p) : teamPerson(entry.group), amount: entry.amount, count: entry.count });
+  }
 
   // One column per person in scope, with the records behind it.
   const chart = people.map((p) => {
     const id = String(p._id);
-    const own = outcomes.filter((o) => whoKey(o) === id);
+    const own = perWho.get(id);
     return {
       member: person(p),
-      amount: byMember.get(id)?.amount ?? 0,
-      count: own.length,
-      items: own.slice(0, DETAIL_LIMIT).map(item),
+      amount: own?.amount ?? 0,
+      count: own?.count ?? 0,
+      items: own?.items ?? [],
     };
   });
 
@@ -98,12 +124,12 @@ router.get('/', async (req, res) => {
   }));
 
   // The newest records; `count` is how many there are in all.
-  const listed = outcomes.slice(0, LIST_LIMIT);
+  const listed = outcomes;
   const locked = await lockedSplits(req.user, listed);
   res.json({
     period,
     outcomes: listed.map((o) => serialize(o, req.user, locked)),
-    count: outcomes.length,
+    count,
     total,
     perMember: [...byMember.values()].sort((a, b) => b.amount - a.amount),
     perGroup,
@@ -157,7 +183,7 @@ router.post('/', async (req, res) => {
 });
 
 async function findOutcome(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Outcome not found');
+  if (!isId(req.params.id)) throw notFound('Outcome not found');
   const outcome = await populate(Outcome.findById(req.params.id));
   if (!outcome || !inScope(req.user, outcome)) throw notFound('Outcome not found');
   if (!canManageOutcome(req.user, { _id: outcome.member?._id, group: outcome.group?._id ?? outcome.group })) {

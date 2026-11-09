@@ -30,6 +30,7 @@ import securityRoutes from './routes/security.js';
 import copyRoutes from './routes/copies.js';
 import { auditRequests } from './utils/audit.js';
 import { requireAuth } from './middleware/auth.js';
+import { deniedLimit } from './middleware/limits.js';
 import { uploadsDir } from './utils/uploads.js';
 
 const clientDir = fileURLToPath(new URL('../../client/dist/', import.meta.url));
@@ -46,7 +47,15 @@ app.disable('x-powered-by');
 // camera, microphone or location; and, in production over HTTPS, to keep
 // using HTTPS for a year. API answers carry a policy that lets nothing
 // run; the page itself gets its own in the static handler below.
+// Behind a reverse proxy that is not declared (TRUST_PROXY=0), every user
+// looks like the proxy: one shared allowance for the login limits, one
+// address in the security log, and no Secure cookies. Said once, in the log.
+let proxyWarned = false;
 app.use((req, res, next) => {
+  if (!env.trustProxy && !proxyWarned && req.get('x-forwarded-for')) {
+    proxyWarned = true;
+    console.warn(`Requests carry X-Forwarded-For (${req.get('x-forwarded-for')}) but TRUST_PROXY is 0: set TRUST_PROXY=1 in server/.env when a reverse proxy is in front, or every user shares its address for rate limits and the security log.`);
+  }
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
@@ -80,6 +89,10 @@ app.use('/api', (req, res, next) => {
   }
   next();
 });
+// One address sending requests that keep being refused (no session, no
+// permission, no such route) is told to stop, before the refusals pile up
+// in the security log.
+app.use('/api', deniedLimit);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
@@ -148,7 +161,6 @@ if (env.isProd && fs.existsSync(path.join(clientDir, 'index.html'))) {
   });
 }
 
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err.name === 'ValidationError') {
     return res.status(400).json({ message: Object.values(err.errors).map((e) => e.message).join(', ') });

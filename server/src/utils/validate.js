@@ -1,5 +1,13 @@
+import mongoose from 'mongoose';
 import { badRequest } from './httpError.js';
 import { isCommonPassword } from './commonPasswords.js';
+
+// A record id from a request: the text of an ObjectId. Mongoose's own check
+// also says yes to a number or an object with a 12-character id, which a
+// query would then cast; only text is one here.
+export const isId = (value) => typeof value === 'string' && mongoose.isValidObjectId(value);
+
+export const PASSWORD_MIN = 10;
 
 export const USERNAME_RULE = /^[a-z0-9_.]{3,30}$/;
 
@@ -23,8 +31,8 @@ export function checkUsername(username) {
 // `username` is the account's own, which the password may not contain.
 export function checkPassword(password, username = '') {
   if (typeof password !== 'string') throw badRequest('Password must be text');
-  if (password.length < 8 || password.length > 128) {
-    throw badRequest('Password must be 8-128 characters');
+  if (password.length < PASSWORD_MIN || password.length > 128) {
+    throw badRequest(`Password must be ${PASSWORD_MIN}-128 characters`);
   }
   if (!/\d/.test(password)) {
     throw badRequest('Password must contain at least one number');

@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Group, { slugify } from '../models/Group.js';
 import User from '../models/User.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
-import { requireFields, clean, escapeRegex } from '../utils/validate.js';
+import { requireFields, clean, escapeRegex, isId } from '../utils/validate.js';
 import { badRequest, notFound, conflict } from '../utils/httpError.js';
 import { clearGroupFromRecords } from '../utils/moveRecords.js';
 import { directoryChanged, navChanged, sessionChanged } from '../socket/events.js';
@@ -69,7 +68,7 @@ async function assertUnique(name, exceptId) {
 }
 
 async function findGroup(id) {
-  if (!mongoose.isValidObjectId(id)) throw notFound('Group not found');
+  if (!isId(id)) throw notFound('Group not found');
   const group = await Group.findById(id);
   if (!group) throw notFound('Group not found');
   return group;

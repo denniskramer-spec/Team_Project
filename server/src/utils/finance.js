@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import Group from '../models/Group.js';
 import User from '../models/User.js';
 import { parsePeriod, periodKey, shiftPeriod } from './period.js';
@@ -7,6 +6,7 @@ import { scopeFilter, canReadTeam, canSeeMember } from './visibility.js';
 import { visibleGroups, seesAllGroups } from './scope.js';
 import { badRequest, notFound } from './httpError.js';
 import { shownName } from './person.js';
+import { isId } from './validate.js';
 
 // Shared by the Finance routes (income, outcome, total): which period a
 // request asks for and whose records it may see.
@@ -87,7 +87,7 @@ export async function financeScope(req, field = 'member') {
   }
 
   if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
     if (!member || !canSeeMember(req.user, member)) throw notFound('Member not found');
     filter[field] = member._id;
   }
@@ -183,6 +183,9 @@ export const teamPerson = (group) => ({
 });
 export const who = (r) => person(r.member) ?? teamPerson(r.group);
 export const whoKey = (r) => (r.member ? String(r.member._id ?? r.member) : `team:${r.group?._id ?? r.group ?? 'all'}`);
+// The same key as an aggregation expression: the member's id, or the
+// team cost's 'team:<group id>' / 'team:all' as text.
+export const whoKeyExpr = { $ifNull: ['$member', { $concat: ['team:', { $ifNull: [{ $toString: '$group' }, 'all'] }] }] };
 
 // Sum and count per member (team costs included as their own entries), sorted by amount.
 export function perMember(records) {

@@ -64,7 +64,9 @@ export async function setFee(key, { feePercent, feeFixed, source, detail, checke
   const update = { feePercent, feeFixed, source };
   if (detail !== undefined) update.detail = detail;
   if (checkedAt !== undefined) update.checkedAt = checkedAt;
-  const doc = await PaymentFee.findOneAndUpdate({ key }, update, { new: true, upsert: true, setDefaultsOnInsert: true }).lean();
+  // The schema's bounds (0-100 %, a fixed part of 0 or more) hold for every
+  // write, a daily refresh's included.
+  const doc = await PaymentFee.findOneAndUpdate({ key }, update, { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }).lean();
   rates.set(key, doc);
   return doc;
 }

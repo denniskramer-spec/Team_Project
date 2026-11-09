@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import mongoose from 'mongoose';
 import Income from '../models/Income.js';
 import Task from '../models/Task.js';
 import Resident from '../models/Resident.js';
@@ -7,22 +6,21 @@ import Plan from '../models/Plan.js';
 import Report from '../models/Report.js';
 import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
-import { scopeFilter, canReadTeam, assignableFilter } from '../utils/visibility.js';
+import { scopeFilter, canReadTeam, canSeeMember, assignableFilter } from '../utils/visibility.js';
 import {
-  financeScope, inPeriod, peopleInScope, perGroupSums, perMember, groupList, groupTiles, scopeName,
-  person as personOf, ownerId, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
+  financeScope, inPeriod, peopleInScope, perGroupSums, groupList, groupTiles, scopeName,
+  person as personOf, PERSON_FIELDS, LIST_LIMIT, DETAIL_LIMIT,
 } from '../utils/finance.js';
-import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkAmount, checkDay, checkText } from '../utils/validate.js';
+import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
+import { checkAmount, checkDay, checkText, isId } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImages, uploadLimiter } from '../utils/uploads.js';
 import { imageUrl } from '../utils/fileRefs.js';
 import { currentMethods, methodOf, checkPayment, computeSplit } from '../utils/payments.js';
 import { incomeChanged, incomeRecorded, navChangedFor, taskWorkChanged, varianceRaised } from '../socket/events.js';
 import { canCheckVariance, varianceOf } from '../utils/incomeVariance.js';
-import { REAL_INCOME, isRealIncome, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
-import { archiveDeleted } from '../utils/audit.js';
-import { settleTaskWork } from '../utils/reportWork.js';
+import { REAL_INCOME, needsApproval, canApproveIncome, canWithdrawIncome } from '../utils/incomeApproval.js';
+import { settleTaskWork, shareOf, unpaidWorkOf } from '../utils/reportWork.js';
 import { checkCurrency, toBase, currentRates } from '../utils/exchange.js';
 import { shownName } from '../utils/person.js';
 
@@ -93,7 +91,7 @@ const resolveMember = (req) => resolveRecordOwner(req, req.body.member, {
 // The resident the income relates to must belong to the member it is for.
 async function resolveResident(req, member) {
   if (!req.body.resident) return null;
-  if (!mongoose.isValidObjectId(req.body.resident)) throw badRequest('Unknown resident');
+  if (!isId(req.body.resident)) throw badRequest('Unknown resident');
   const resident = await Resident.findOne({ _id: req.body.resident, owner: member._id });
   if (!resident) throw badRequest('That resident belongs to someone else');
   return resident;
@@ -101,10 +99,33 @@ async function resolveResident(req, member) {
 
 async function resolveTask(req, member) {
   if (!req.body.task) return null;
-  if (!mongoose.isValidObjectId(req.body.task)) throw badRequest('Unknown task');
+  if (!isId(req.body.task)) throw badRequest('Unknown task');
   const task = await Task.findById(req.body.task);
   if (!task || String(task.owner) !== String(member._id)) throw badRequest('That task belongs to someone else');
   return task._id;
+}
+
+// What an income record leaves the member, as an aggregation expression:
+// the same rule as netOf (older records without a fee count in full).
+const NET_EXPR = { $cond: [{ $in: [{ $type: '$net' }, ['missing', 'null']] }, { $cond: [{ $eq: [{ $type: '$feeAmount' }, 'missing'] }, '$amount', 0] }, '$net'] };
+// One record as a person's details list it.
+const ITEM = { id: '$_id', date: '$date', amount: '$amount', net: NET_EXPR, task: '$task', from: '$from', note: { $ifNull: ['$note', ''] } };
+
+// Sum, net, count and the newest DETAIL_LIMIT records per member, over
+// every real income record the filter matches, without loading them all.
+async function incomePerMember(filter) {
+  const rows = await Income.aggregate([
+    { $match: filter },
+    { $group: { _id: '$member', amount: { $sum: '$amount' }, net: { $sum: NET_EXPR }, count: { $sum: 1 }, items: { $topN: { n: DETAIL_LIMIT, sortBy: { date: -1, createdAt: -1 }, output: ITEM } } } },
+  ]);
+  const taskIds = [...new Set(rows.flatMap((r) => r.items.map((i) => i.task)).filter(Boolean).map(String))];
+  const tasks = new Map((taskIds.length ? await Task.find({ _id: { $in: taskIds } }, 'name').lean() : []).map((t) => [String(t._id), t.name]));
+  return new Map(rows.map((r) => [String(r._id), {
+    amount: r.amount,
+    net: r.net,
+    count: r.count,
+    items: r.items.map((i) => ({ ...i, task: i.task && tasks.has(String(i.task)) ? { id: i.task, name: tasks.get(String(i.task)) } : null })),
+  }]));
 }
 
 // Planned vs real income per member, for the Finance chart.
@@ -114,15 +135,14 @@ async function resolveTask(req, member) {
 //   upcoming : what the member's reports say is due inside this period (by the
 //              upcoming date), whenever the report was written
 // Members with nothing recorded still get a row, so the chart shows who is behind.
-async function incomeChart(user, period, { groupId, memberId }, byMember, incomes) {
+async function incomeChart(user, period, { groupId, memberId }, people, byMember) {
   const planFilter = { ...scopeFilter(user, 'owner'), scope: 'personal', periodStart: inPeriod(period) };
   const reportFilter = { ...scopeFilter(user, 'author'), scope: 'personal', upcomingAmount: { $gt: 0 }, upcomingDate: inPeriod(period) };
   if (groupId) { planFilter.group = groupId; reportFilter.group = groupId; }
   if (memberId) { planFilter.owner = memberId; reportFilter.author = memberId; }
   if (period.type === 'weekly') planFilter.type = 'weekly';
 
-  const [people, plans, reports] = await Promise.all([
-    peopleInScope(user, { groupId, memberId }, incomes.map((i) => ownerId(i, 'member'))),
+  const [plans, reports] = await Promise.all([
     Plan.find(planFilter, 'owner type income').lean(),
     Report.find(reportFilter, 'author upcomingAmount upcomingDate upcomingNote task periodStart')
       .populate('task', 'name').sort({ upcomingDate: 1, periodStart: -1 }).lean(),
@@ -135,29 +155,17 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
     const planned = (monthly.length ? monthly : ownPlans).reduce((sum, p) => sum + (p.income || 0), 0);
     const ownReports = reports.filter((r) => String(r.author) === id);
     const upcoming = ownReports.reduce((sum, r) => sum + (r.upcomingAmount || 0), 0);
-
-    // Each income record: when it came in, from which task (or client) and how much.
-    const own = incomes.filter((i) => String(i.member?._id ?? i.member) === id);
-    const incomeItems = own
-      .slice(0, DETAIL_LIMIT)
-      .map((i) => ({
-        id: i._id,
-        date: i.date,
-        amount: i.amount,
-        net: netOf(i),
-        task: i.task?._id ? { id: i.task._id, name: i.task.name } : null,
-        from: i.from,
-        note: i.note || '',
-      }));
+    const own = byMember.get(id);
 
     return {
       member: personOf(person),
-      incomeCount: own.length,
+      incomeCount: own?.count ?? 0,
       planned,
-      actual: byMember.get(id)?.amount ?? 0,
-      actualNet: byMember.get(id)?.net ?? 0,
+      actual: own?.amount ?? 0,
+      actualNet: own?.net ?? 0,
       upcoming,
-      incomeItems,
+      // Each income record: when it came in, from which task (or client) and how much.
+      incomeItems: own?.items ?? [],
       // What is still expected, with the day it is due and the task it belongs to.
       upcomingItems: ownReports.filter((r) => r.upcomingAmount > 0).map((r) => ({
         amount: r.upcomingAmount,
@@ -175,27 +183,34 @@ async function incomeChart(user, period, { groupId, memberId }, byMember, income
 // another period; ?type=range&from=&to= picks any duration (see utils/finance.js).
 router.get('/', async (req, res) => {
   const { period, filter, allowed, groupId, memberId } = await financeScope(req, 'member');
-
-  const incomes = await Income.find(filter).sort({ date: -1, createdAt: -1 })
-    .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name')
-    .populate(REVIEWERS).lean();
-
-  // Totals overall and per member, for the summary: received and net. Only
-  // real income counts: records waiting for approval (or rejected) are
-  // listed, not summed.
-  const real = incomes.filter(isRealIncome);
   const cents = (n) => Math.round(n * 100) / 100;
-  const byMember = perMember(real);
-  for (const [key, entry] of perMember(real.map((i) => ({ ...i, amount: netOf(i) })))) byMember.get(key).net = cents(entry.amount);
-  const total = cents(real.reduce((sum, i) => sum + i.amount, 0));
-  const raw = real.reduce((acc, i) => ({
-    fees: acc.fees + (i.feeAmount || 0),
-    residents: acc.residents + (i.residentAmount || 0),
-    net: acc.net + netOf(i),
-  }), { fees: 0, residents: 0, net: 0 });
-  const sums = { fees: cents(raw.fees), residents: cents(raw.residents), net: cents(raw.net) };
 
-  const chart = await incomeChart(req.user, period, { groupId, memberId }, byMember, real);
+  // The newest records are listed; the totals and the per-member figures
+  // are summed in the database, so a long period never loads every record.
+  // Only real income counts: records waiting for approval (or rejected) are
+  // listed, not summed.
+  const real = { ...filter, ...REAL_INCOME };
+  const [incomes, count, pendingCount, sums, perMemberSums] = await Promise.all([
+    Income.find(filter).sort({ date: -1, createdAt: -1 }).limit(LIST_LIMIT)
+      .populate('member', PERSON_FIELDS).populate('group', 'name slug').populate('task', 'name').populate('resident', 'name')
+      .populate(REVIEWERS).lean(),
+    Income.countDocuments(filter),
+    Income.countDocuments({ ...filter, status: 'pending' }),
+    Income.aggregate([
+      { $match: real },
+      { $group: { _id: null, amount: { $sum: '$amount' }, fees: { $sum: { $ifNull: ['$feeAmount', 0] } }, residents: { $sum: { $ifNull: ['$residentAmount', 0] } }, net: { $sum: NET_EXPR } } },
+    ]).then((r) => r[0] ?? { amount: 0, fees: 0, residents: 0, net: 0 }),
+    incomePerMember(real),
+  ]);
+  const total = cents(sums.amount);
+  const people = await peopleInScope(req.user, { groupId, memberId }, [...perMemberSums.keys()]);
+  const byMember = new Map();
+  for (const [id, entry] of perMemberSums) {
+    const person = people.find((p) => String(p._id) === id);
+    byMember.set(id, { member: personOf(person), amount: entry.amount, count: entry.count, net: cents(entry.net) });
+  }
+
+  const chart = await incomeChart(req.user, period, { groupId, memberId }, people, perMemberSums);
 
   const sumFor = await perGroupSums(Income, req.user, allowed, period, { net: true, where: REAL_INCOME });
   const perGroup = groupTiles(allowed, (k) => sumFor.has(k), (k) => ({
@@ -207,13 +222,13 @@ router.get('/', async (req, res) => {
   res.json({
     period,
     // The newest records; `count` is how many there are in all.
-    incomes: incomes.slice(0, LIST_LIMIT).map((i) => serialize(i)),
-    count: incomes.length,
-    pending: incomes.filter((i) => i.status === 'pending').length,
+    incomes: incomes.map((i) => serialize(i)),
+    count,
+    pending: pendingCount,
     total,
-    fees: sums.fees,
-    residents: sums.residents,
-    net: sums.net,
+    fees: cents(sums.fees),
+    residents: cents(sums.residents),
+    net: cents(sums.net),
     methods: currentMethods(),
     perMember: [...byMember.values()].sort((a, b) => b.amount - a.amount),
     perGroup,
@@ -245,11 +260,25 @@ async function upcomingFor(taskId, ownerId) {
 // Work is priced in the base currency, whatever the project is priced in,
 // so `amount` comes with `currency` and the form records it in that.
 router.get('/upcoming', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.query.task)) throw badRequest('Unknown project');
+  if (!isId(req.query.task)) throw badRequest('Unknown project');
   // Only a project this role may see: a member their own, a boss their group's.
   const task = await Task.findOne({ ...scopeFilter(req.user, 'owner'), _id: req.query.task }, 'owner name').lean();
   if (!task) throw badRequest('Unknown project');
   res.json({ project: { id: task._id, name: task.name }, currency: currentRates().base, ...(await upcomingFor(task._id, task.owner)) });
+});
+
+// GET /api/incomes/unpaid?member=<id> — what all of a person's reported
+// work still expects, over every project (their own when no member is
+// given): the form warns when income is recorded with no project while
+// work waits to be paid.
+router.get('/unpaid', async (req, res) => {
+  let memberId = req.user._id;
+  if (req.query.member) {
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
+    if (!member || (String(member._id) !== String(req.user._id) && !canSeeMember(req.user, member))) throw notFound('Member not found');
+    memberId = member._id;
+  }
+  res.json({ currency: currentRates().base, ...(await unpaidWorkOf(memberId)) });
 });
 
 // Members this user can record income for.
@@ -282,13 +311,19 @@ router.post('/', async (req, res) => {
   const task = taskId ? await Task.findById(taskId, 'name').lean() : null;
   // Far from what the reported work expected: a reason is required, and the
   // team leader and the member's boss are told (see utils/incomeVariance.js).
-  const expected = taskId ? (await upcomingFor(taskId, member._id)).amount : 0;
+  // Income for no project while reported work waits to be paid is compared
+  // with all of that work, and always needs the reason: it may be for a
+  // project after all, which then stays upcoming for nothing.
+  const expected = taskId ? (await upcomingFor(taskId, member._id)).amount : (await unpaidWorkOf(member._id)).amount;
   const variance = varianceOf(fields.amount, payment.residentPercent, expected);
+  const unlinked = !taskId && expected > 0;
   let varianceFields = {};
-  if (variance.outside) {
+  if (variance.outside || unlinked) {
     const reason = checkText(req.body.varianceReason, 'Reason', 500);
     if (!reason) {
-      throw badRequest(`This is ${Math.abs(variance.percent)}% ${variance.percent > 0 ? 'more' : 'less'} than the ${currentRates().base} ${expected} the reported work expected: say why in the reason`);
+      throw badRequest(unlinked
+        ? `This income is for no project, but the reported work still expects ${currentRates().base} ${expected}: pick the project it pays for, or say in the reason why it is not for one`
+        : `This is ${Math.abs(variance.percent)}% ${variance.percent > 0 ? 'more' : 'less'} than the ${currentRates().base} ${expected} the reported work expected: say why in the reason`);
     }
     varianceFields = { expected, variancePercent: variance.percent, varianceReason: reason };
   }
@@ -316,7 +351,7 @@ router.post('/', async (req, res) => {
   const settled = income.status === 'approved' ? await settleFor(income) : 0;
 
   incomeChanged(income);
-  if (variance.outside) varianceRaised(income.group?._id ?? income.group);
+  if (variance.outside || unlinked) varianceRaised(income.group?._id ?? income.group);
   // The team leader and the member's boss hear of income a member or a boss records.
   if (['member', 'boss'].includes(req.user.role)) incomeRecorded(income, req.user, await bossesOf(income.group?._id ?? income.group));
   req.audit = {
@@ -331,7 +366,8 @@ async function settleFor(income) {
   const taskId = income.task?._id ?? income.task;
   if (!taskId) return 0;
   const memberId = income.member?._id ?? income.member;
-  const settled = await settleTaskWork(taskId, memberId, income._id);
+  // The member's share of it pays for the oldest unpaid days it covers.
+  const settled = await settleTaskWork(taskId, memberId, income._id, shareOf(income));
   taskWorkChanged(memberId, income.group?._id ?? income.group ?? null);
   return settled;
 }
@@ -340,24 +376,30 @@ const bossesOf = async (groupId) => (groupId
   ? (await User.find({ role: 'boss', status: 'active', group: groupId }, '_id').lean()).map((u) => u._id)
   : []);
 
-// A pending record the team leader (or the member's boss) is deciding on.
-async function pendingIncome(req) {
+// A pending record the team leader (or the member's boss) decides on: it
+// moves to `status` in one write that only lands while it is still pending,
+// so two decisions at the same moment (an approve and a reject, two
+// approves) cannot both take effect. Returns the decided record.
+async function decidePending(req, status, extra = {}) {
   if (!canApproveIncome(req.user)) throw forbidden('Only the team leader and bosses approve income');
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
-  const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
-  if (!income) throw notFound('Income record not found');
-  if (income.status !== 'pending') throw badRequest(`This income was already ${income.status}`);
-  return income;
+  if (!isId(req.params.id)) throw notFound('Income record not found');
+  const scope = scopeFilter(req.user, 'member');
+  const income = await Income.findOneAndUpdate(
+    { _id: req.params.id, ...scope, status: 'pending' },
+    { status, reviewedBy: { user: req.user._id, name: shownName(req.user), at: new Date() }, ...extra },
+    { new: true },
+  );
+  if (income) return income;
+  const found = await Income.findOne({ _id: req.params.id, ...scope }, 'status').lean();
+  if (!found) throw notFound('Income record not found');
+  throw badRequest(`This income was already ${found.status ?? 'approved'}`);
 }
 
 // POST /api/incomes/:id/approve — the team leader or the member's boss
 // accepts it: from now on it counts, and it settles the project's reported
 // work. varianceRaised: the Finance badges of the leader and the boss change.
 router.post('/:id/approve', async (req, res) => {
-  const income = await pendingIncome(req);
-  income.status = 'approved';
-  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
-  await income.save();
+  const income = await decidePending(req, 'approved');
   const settled = await settleFor(income);
   incomeChanged(income);
   varianceRaised(income.group);
@@ -369,11 +411,8 @@ router.post('/:id/approve', async (req, res) => {
 // boss turns it down.
 // It stays listed, as history, and never counts.
 router.post('/:id/reject', async (req, res) => {
-  const income = await pendingIncome(req);
-  income.status = 'rejected';
-  income.rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
-  income.reviewedBy = { user: req.user._id, name: shownName(req.user), at: new Date() };
-  await income.save();
+  const rejectReason = checkText(req.body.reason, 'Reason', 500) ?? '';
+  const income = await decidePending(req, 'rejected', { rejectReason });
   incomeChanged(income);
   varianceRaised(income.group);
   req.audit = { action: 'incomes.reject', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` }, details: { reason: income.rejectReason } };
@@ -384,13 +423,15 @@ router.post('/:id/reject', async (req, res) => {
 // while it still waits for approval. It never counted, so it is removed,
 // kept in Deleted Records like any other delete.
 router.post('/:id/withdraw', async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  if (!isId(req.params.id)) throw notFound('Income record not found');
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member') });
   if (!income) throw notFound('Income record not found');
   if (!canWithdrawIncome(req.user, income)) throw badRequest('Only your own income still waiting for approval can be withdrawn');
-  req.audit = { action: 'incomes.withdraw' };
-  await archiveDeleted(income, req, { model: 'Income', label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` });
-  await Income.deleteOne({ _id: income._id });
+  req.audit = { action: 'incomes.withdraw', target: { model: 'Income', id: income._id, label: `${income.currency} ${income.originalAmount ?? income.amount} · ${income.from || 'income'}` } };
+  // Only while it still waits: a decision landing meanwhile wins (the data
+  // layer keeps the copy of what it removes).
+  const gone = await Income.deleteOne({ _id: income._id, status: 'pending' });
+  if (!gone.deletedCount) throw conflict('This income was just approved or rejected');
   incomeChanged(income);
   varianceRaised(income.group);
   res.json({ ok: true });
@@ -401,7 +442,7 @@ router.post('/:id/withdraw', async (req, res) => {
 // checked it is the one change an income record takes after it is made.
 router.post('/:id/check', async (req, res) => {
   if (!canCheckVariance(req.user)) throw forbidden('Only the team leader and bosses check income');
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Income record not found');
+  if (!isId(req.params.id)) throw notFound('Income record not found');
   const income = await Income.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'member'), variancePercent: { $type: 'number' } });
   if (!income) throw notFound('Income record not found');
   if (!income.varianceCheckedBy.some((c) => String(c.user) === String(req.user._id))) {

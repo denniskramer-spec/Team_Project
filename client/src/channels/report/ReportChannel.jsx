@@ -135,7 +135,6 @@ function MyDay({ data, period, onWrite }) {
           {plan.length === 0 && <p className="muted small">Nothing planned. Write tomorrow's plan in the report and it shows up here the next day.</p>}
           <ul className="rm-checklist">
             {plan.map((p, i) => (
-              // eslint-disable-next-line react/no-array-index-key
               <li key={i}>
                 <label className="check">
                   <input type="checkbox" checked={p.done} onChange={() => togglePlan(i)} />

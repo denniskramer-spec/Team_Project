@@ -10,10 +10,19 @@ import { conflict } from './httpError.js';
 // (its updatedAt is the version). A copy changed in between is read and
 // merged again, once; after that the caller is told to save again.
 
-// The form's work entries, carrying the paid marks of the stored ones.
+// The form's work entries, with the paid ones as they were paid for. A day's
+// work an income has settled is history: its hours, tasks and amount stay
+// as stored (only the words about it may change), and leaving it out of the
+// form does not make it unpaid again.
 export function keepPaid(stored = [], work = []) {
-  const paid = new Map(stored.filter((w) => w.paidBy).map((w) => [String(w.task), w.paidBy]));
-  return work.map((w) => ({ ...w, paidBy: paid.get(String(w.task)) ?? null }));
+  const paid = new Map(stored.filter((w) => w.paidBy).map((w) => [String(w.task), w]));
+  const sent = new Set(work.map((w) => String(w.task)));
+  const merged = work.map((w) => {
+    const p = paid.get(String(w.task));
+    return p ? { ...p, text: w.text ?? p.text } : { ...w, paidBy: null };
+  });
+  for (const [task, p] of paid) if (!sent.has(task)) merged.push({ ...p });
+  return merged;
 }
 
 // The filter and options for writing over `existing` (null: nothing stored

@@ -66,7 +66,6 @@ export default function ChatChannel({ title, headSlot }) {
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markRead]);
 
   const onSent = (message) => {

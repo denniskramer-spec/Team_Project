@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Resident, { LAPTOP_SOURCES, ACCESS_TYPES } from '../models/Resident.js';
 import ChatAccount from '../models/ChatAccount.js';
 import Task from '../models/Task.js';
@@ -9,7 +8,7 @@ import {
   canManageFor, canReadTeam, visibleRecord, narrowScope, assignableMembers, scopeName,
 } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkText, checkDay, searchRegex } from '../utils/validate.js';
+import { checkText, checkDay, searchRegex, isId } from '../utils/validate.js';
 import { resolveRecordOwner, ownsRecords } from '../utils/recordOwner.js';
 import { imageUpload, describeUpload, checkImage, removeUnusedFiles, uploadLimiter } from '../utils/uploads.js';
 import { fileInUse } from '../utils/fileRefs.js';
@@ -126,7 +125,7 @@ router.post('/', async (req, res) => {
 });
 
 async function findResident(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Resident not found');
+  if (!isId(req.params.id)) throw notFound('Resident not found');
   const resident = await populate(Resident.findById(req.params.id));
   if (!resident) throw notFound('Resident not found');
   // Residents outside this role's scope look like they do not exist.

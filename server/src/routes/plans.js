@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import Plan, { PLAN_TYPES, PLAN_STATES, PLAN_ITEMS } from '../models/Plan.js';
 import Report from '../models/Report.js';
 import Income from '../models/Income.js';
@@ -10,7 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { parsePeriod, periodKey, shiftPeriod } from '../utils/period.js';
 import { scopeFilter, narrowScope, scopeName } from '../utils/visibility.js';
 import { badRequest, forbidden, notFound } from '../utils/httpError.js';
-import { checkOptionalAmount, checkCount, checkText } from '../utils/validate.js';
+import { checkOptionalAmount, checkCount, checkText, isId } from '../utils/validate.js';
 import { findGroupRecord, saveGroupRecord, latestPerGroup, canChangeGroupRecord } from '../utils/groupRecords.js';
 import { planChanged } from '../socket/events.js';
 import { planStatus, targetsOf } from '../utils/planStatus.js';
@@ -188,7 +187,7 @@ router.put('/', async (req, res) => {
 });
 
 async function findOwnPlan(req) {
-  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Plan not found');
+  if (!isId(req.params.id)) throw notFound('Plan not found');
   // A plan outside this role's scope looks like it does not exist.
   const plan = await Plan.findOne({ _id: req.params.id, ...scopeFilter(req.user, 'owner') })
     .populate('owner', 'name username role').populate('group', 'name slug');

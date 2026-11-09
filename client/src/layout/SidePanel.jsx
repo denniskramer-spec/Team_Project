@@ -94,7 +94,6 @@ function MyDay() {
       {plan.length > 0 && (
         <ul className="rm-checklist panel-plan">
           {plan.map((p, i) => (
-            // eslint-disable-next-line react/no-array-index-key
             <li key={i}><label className="check"><input type="checkbox" checked={p.done} onChange={() => toggle(i)} /><span className={p.done ? 'is-done' : ''}>{p.text}</span></label></li>
           ))}
         </ul>

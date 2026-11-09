@@ -1,15 +1,12 @@
 import { Router } from 'express';
 import { archiveDeleted } from '../utils/audit.js';
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { requireAuth, requireCapability } from '../middleware/auth.js';
 import { ROLES } from '../config/roles.js';
 import { permissionsFor, pendingFilter } from '../utils/memberPolicy.js';
 import { RESET_PASSWORD, RESET_VALID_HOURS, tempPassword } from '../utils/password.js';
-import {
-  requireFields, checkUsername, checkPassword, checkName, parseBirthday, searchRegex,
-} from '../utils/validate.js';
+import { requireFields, checkUsername, checkPassword, checkName, parseBirthday, searchRegex, isId } from '../utils/validate.js';
 import { badRequest, forbidden, notFound, conflict } from '../utils/httpError.js';
 import Resident from '../models/Resident.js';
 import { scopeFilter } from '../utils/visibility.js';
@@ -23,6 +20,7 @@ router.use(requireAuth);
 
 function serialize(user, actor) {
   const g = user.group;
+  const permissions = permissionsFor(actor, user);
   return {
     id: user._id,
     name: user.name,
@@ -33,13 +31,14 @@ function serialize(user, actor) {
     status: user.status,
     group: g?._id ? { id: g._id, name: g.name, slug: g.slug } : null,
     createdAt: user.createdAt,
-    lastLoginAt: user.lastLoginAt,
-    permissions: permissionsFor(actor, user),
+    // When someone last logged in is for those who look after the account.
+    lastLoginAt: permissions.edit ? user.lastLoginAt : null,
+    permissions,
   };
 }
 
 async function findTarget(id) {
-  if (!mongoose.isValidObjectId(id)) throw notFound('Member not found');
+  if (!isId(id)) throw notFound('Member not found');
   const user = await User.findById(id).populate('group', 'name slug');
   if (!user) throw notFound('Member not found');
   return user;
@@ -47,7 +46,7 @@ async function findTarget(id) {
 
 async function resolveGroup(id) {
   if (id === null || id === '' || id === undefined) return null;
-  if (!mongoose.isValidObjectId(id)) throw badRequest('Unknown group');
+  if (!isId(id)) throw badRequest('Unknown group');
   const group = await Group.findById(id);
   if (!group) throw badRequest('Unknown group');
   return group;
@@ -272,7 +271,7 @@ router.get('/pending', requireCapability('approveSignups'), async (req, res) => 
 
 async function findPending(req) {
   const filter = pendingFilter(req.user);
-  if (!filter || !mongoose.isValidObjectId(req.params.id)) throw notFound('Sign-up not found');
+  if (!filter || !isId(req.params.id)) throw notFound('Sign-up not found');
   const user = await User.findOne({ ...filter, _id: req.params.id });
   if (!user) throw notFound('Sign-up not found');
   return user;

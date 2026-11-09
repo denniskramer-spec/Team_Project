@@ -246,6 +246,15 @@ the team's time zone in **Admin → Team settings**.
   (they show a plan first and change data only with `--apply`).
 - **Backups:** back up the database (`mongodump --uri "<MONGODB_URI>"`) and the
   `UPLOADS_DIR` folder together, daily, and try a restore now and then.
+- **Retention:** the security log and the copies of deleted records are kept for
+  good by default. To have entries older than a year removed once a day, set
+  `AUDIT_RETENTION_DAYS=365` and `DELETED_RETENTION_DAYS=365` in `server/.env`
+  (the removal is logged; take the backup first).
+- **One process:** rate limits, who is online and typing state live in memory.
+  Run one instance; a restart starts them afresh. If the server log says
+  requests carry `X-Forwarded-For` while `TRUST_PROXY` is 0, set `TRUST_PROXY=1`:
+  otherwise everyone shares the proxy's address for the login limits and the
+  security log, and the session cookie is never marked Secure.
 - **Security:** Admin → Security shows the dangerous events (access to the
   database outside the app, deletions, failed logins, account changes); look
   at it regularly.

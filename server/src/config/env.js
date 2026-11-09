@@ -35,6 +35,10 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS) || 7 * 24,
   sessionIdleMinutes: Number(process.env.SESSION_IDLE_MINUTES) || 7 * 24 * 60,
+  // Days the security log and the copies of deleted records are kept;
+  // 0 (the default) keeps them for good (utils/retention.js).
+  auditRetentionDays: Number(process.env.AUDIT_RETENTION_DAYS) || 0,
+  deletedRetentionDays: Number(process.env.DELETED_RETENTION_DAYS) || 0,
   seedAdmin: {
     username: process.env.SEED_ADMIN_USERNAME,
     password: process.env.SEED_ADMIN_PASSWORD,

@@ -34,6 +34,9 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
   const [methods, setMethods] = useState([]);
   // What the chosen project's reported work still expects to be paid.
   const [upcoming, setUpcoming] = useState(null);
+  // What all of the person's reported work still expects, when no project
+  // is picked: income for no project then needs a word of explanation.
+  const [unpaid, setUnpaid] = useState(null);
   const [form, setForm] = useState({
     member: '', amount: '', currency: load(CURRENCY_KEY, 'USD'), date: todayInput(), task: '', note: '',
     resident: '', residentPercent: '', method: 'paypal', feePercent: '', feeFixed: '', varianceReason: '',
@@ -68,6 +71,12 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
 
   // Only the chosen person's projects and residents can be linked ('' = the person recording).
   const ownerId = String(form.member || user.id);
+  useEffect(() => {
+    let current = true;
+    setUnpaid(null);
+    api(`/incomes/unpaid${form.member ? `?member=${form.member}` : ''}`).then((d) => { if (current) setUnpaid(d); }).catch(() => {});
+    return () => { current = false; };
+  }, [form.member]);
   const ownTasks = tasks.filter((t) => String(t.owner?.id) === ownerId);
   const ownResidents = residents.filter((r) => String(r.owner?.id) === ownerId);
   const pickMember = (e) => {
@@ -123,9 +132,10 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
 
   // How far this is from what the project's reported work expected.
   const keep = 1 - (Number(form.residentPercent) || 0) / 100;
-  const expected = form.task && upcoming?.amount > 0 ? upcoming.amount : 0;
+  const unlinked = !form.task && unpaid?.amount > 0;
+  const expected = form.task ? (upcoming?.amount > 0 ? upcoming.amount : 0) : (unpaid?.amount ?? 0);
   const variance = expected && typed > 0 && hasRate ? Math.round(((cents(gross * keep) - expected) / expected) * 1000) / 10 : null;
-  const needsReason = variance !== null && Math.abs(variance) > VARIANCE_LIMIT;
+  const needsReason = unlinked || (variance !== null && Math.abs(variance) > VARIANCE_LIMIT);
   // "Use amount": the full payment whose member's share is the expected amount.
   const useExpected = () => setForm((f) => {
     const k = 1 - (Number(f.residentPercent) || 0) / 100;
@@ -231,17 +241,24 @@ export default function IncomeForm({ forSelf, forOthers, onClose, onSaved }) {
             <Icon name="coins" size={16} />
             <span className="note-grow">
               <strong>Upcoming on this project: {upcoming.currency ?? rates.base} {formatAmount(upcoming.amount)}</strong>
-              <span className="muted small"> · your share of {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles them.</span>
+              <span className="muted small"> · your share of {upcoming.days} {upcoming.days === 1 ? 'day' : 'days'} reported, not paid yet. Recording this income settles the days it pays for, oldest first.</span>
             </span>
             <button type="button" className="btn small-btn" onClick={useExpected}>Use amount</button>
           </div>
         )}
         {needsReason && (
           <div className="variance-check">
-            <p className="small alert-text">
-              Your share of this ({rates.base} {formatAmount(cents(gross * keep))}) is <strong>{Math.abs(variance)}% {variance > 0 ? 'more' : 'less'}</strong> than
-              the {rates.base} {formatAmount(expected)} your reported work expected. Say why: the team leader and your boss will see it.
-            </p>
+            {unlinked ? (
+              <p className="small alert-text">
+                No project is picked, but the reported work on {unpaid.projects} {unpaid.projects === 1 ? 'project' : 'projects'} still expects
+                <strong> {rates.base} {formatAmount(unpaid.amount)}</strong>. Pick the project this pays for, or say why it is for none: the team leader and your boss will see it.
+              </p>
+            ) : (
+              <p className="small alert-text">
+                Your share of this ({rates.base} {formatAmount(cents(gross * keep))}) is <strong>{Math.abs(variance)}% {variance > 0 ? 'more' : 'less'}</strong> than
+                the {rates.base} {formatAmount(expected)} your reported work expected. Say why: the team leader and your boss will see it.
+              </p>
+            )}
             <label>
               Reason
               <textarea rows={2} maxLength={500} value={form.varianceReason} onChange={set('varianceReason')} required placeholder="Paid for fewer hours, a bonus, a partial payment, the rate changed..." />

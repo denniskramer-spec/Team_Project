@@ -1,9 +1,9 @@
 import Group from '../models/Group.js';
 import User from '../models/User.js';
-import mongoose from 'mongoose';
 import { seesAllGroups } from './scope.js';
 import { badRequest, notFound } from './httpError.js';
 import { shownName } from './person.js';
+import { isId } from './validate.js';
 
 // Chat titles in the nav map to channel keys:
 //   general       -> 'general'
@@ -31,7 +31,7 @@ export async function resolveChannel(user, titleKey) {
   }
   if (titleKey.startsWith('dm-')) {
     const otherId = titleKey.slice(3);
-    if (!mongoose.isValidObjectId(otherId) || otherId === String(user._id)) throw notFound('Chat not found');
+    if (!isId(otherId) || otherId === String(user._id)) throw notFound('Chat not found');
     const other = await User.findOne({ _id: otherId, status: 'active' }, 'name username role group').lean();
     if (!other) throw notFound('Chat not found');
     return { key: dmKey(user._id, other._id), kind: 'dm', group: null, name: shownName(other), peers: [String(user._id), String(other._id)], other };

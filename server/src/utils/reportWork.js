@@ -1,6 +1,7 @@
 import Report from '../models/Report.js';
 import Task from '../models/Task.js';
 import { workEarnings } from './payments.js';
+import { VARIANCE_LIMIT } from './incomeVariance.js';
 import { reportChanged } from '../socket/events.js';
 
 // The money side of a daily report's work entries, shared by the Dashboard,
@@ -68,14 +69,47 @@ export async function dropTaskWork(taskId) {
   return reports.length;
 }
 
-// An income record on a project pays for the unpaid work reported on it:
-// those days stop counting as upcoming. Returns how many days were settled.
-export async function settleTaskWork(taskId, memberId, incomeId) {
-  const reports = await Report.find({ author: memberId, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null } } });
-  let settled = 0;
-  for (const r of reports) {
-    r.work.forEach((w) => { if (String(w.task) === String(taskId) && !w.paidBy) { w.paidBy = incomeId; settled += 1; } });
-    await saveAndTell(r);
+// Which of the unpaid entries (oldest first, each { amount }) an income
+// whose member's share is `share` pays for: all of them when the share
+// covers their total within the variance limit (a correct payment, or near
+// enough), otherwise the oldest ones as far as the share reaches. An
+// instalment settles what it paid for and leaves the rest upcoming; no
+// share given (an older caller) settles everything.
+export function paidEntries(entries, share) {
+  if (share === undefined || share === null) return entries.length;
+  const total = money(entries.reduce((n, e) => n + (e.amount || 0), 0));
+  if (share >= money(total * (1 - VARIANCE_LIMIT / 100))) return entries.length;
+  let paid = 0;
+  let count = 0;
+  for (const e of entries) {
+    if (money(paid + (e.amount || 0)) > share + 0.005) break;
+    paid = money(paid + (e.amount || 0));
+    count += 1;
   }
-  return settled;
+  return count;
+}
+
+// The member's share of an income record (after the resident's part), the
+// same footing the reported work is priced on (utils/incomeVariance.js).
+export const shareOf = (income) => money((Number(income.amount) || 0) * (1 - (Number(income.residentPercent) || 0) / 100));
+
+// An income record on a project pays for the unpaid work reported on it:
+// those days stop counting as upcoming, oldest first, as far as the
+// income's share reaches (paidEntries). Returns how many days were settled.
+export async function settleTaskWork(taskId, memberId, incomeId, share) {
+  const reports = await Report.find({ author: memberId, scope: 'personal', type: 'daily', work: { $elemMatch: { task: taskId, paidBy: null } } }).sort({ periodStart: 1 });
+  const unpaid = reports.flatMap((r) => r.work.filter((w) => String(w.task) === String(taskId) && !w.paidBy).map((w) => ({ report: r, w })));
+  const count = paidEntries(unpaid.map(({ w }) => ({ amount: w.amount })), share);
+  const touched = new Set();
+  unpaid.slice(0, count).forEach(({ report, w }) => { w.paidBy = incomeId; touched.add(report); });
+  for (const r of touched) await saveAndTell(r);
+  return count;
+}
+
+// What all of a member's reported work still expects to be paid, over
+// every project: { amount, days, projects }.
+export async function unpaidWorkOf(memberId) {
+  const reports = await Report.find({ author: memberId, scope: 'personal', type: 'daily', work: { $elemMatch: { paidBy: null, amount: { $gt: 0 } } } }, 'work').lean();
+  const entries = reports.flatMap((r) => (r.work ?? []).filter((w) => !w.paidBy && w.amount > 0));
+  return { amount: money(entries.reduce((n, w) => n + w.amount, 0)), days: entries.length, projects: new Set(entries.map((w) => String(w.task))).size };
 }

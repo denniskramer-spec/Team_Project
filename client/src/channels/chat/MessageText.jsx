@@ -24,11 +24,9 @@ export default function MessageText({ content }) {
   return (
     <p className="msg-text">
       {parts.map((part, i) => {
-        // eslint-disable-next-line react/no-array-index-key
         if (i % 2 === 0) return <span key={i}>{part}</span>;
         const { url, tail } = splitTrail(part);
         return (
-          // eslint-disable-next-line react/no-array-index-key
           <Fragment key={i}>
             <a href={url} target="_blank" rel="noopener noreferrer nofollow">{url}</a>{tail}
           </Fragment>

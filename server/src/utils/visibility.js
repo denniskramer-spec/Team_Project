@@ -1,9 +1,9 @@
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import { seesAllGroups, visibleGroups } from './scope.js';
 import { notFound } from './httpError.js';
 import { shownName } from './person.js';
+import { isId } from './validate.js';
 
 // Shared role rules for records that belong to one member (tasks, income):
 //   team leader, admin : everything
@@ -79,7 +79,7 @@ export async function narrowScope(req, field) {
   }
   let memberId = null;
   if (req.query.member) {
-    const member = await User.findById(mongoose.isValidObjectId(req.query.member) ? req.query.member : null);
+    const member = await User.findById(isId(req.query.member) ? req.query.member : null);
     if (!member || !canSeeMember(user, member)) throw notFound('Member not found');
     filter[field] = member._id;
     memberId = member._id;

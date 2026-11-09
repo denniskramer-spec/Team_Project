@@ -71,7 +71,6 @@ export function AlertsProvider({ children }) {
       setSettings(next);
       save(SETTINGS_KEY, next);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const open = useCallback((alert) => {

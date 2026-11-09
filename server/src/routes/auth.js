@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Group from '../models/Group.js';
 import bcrypt from 'bcryptjs';
@@ -8,9 +7,7 @@ import {
   requireAuth, revokeToken, setSessionCookie, TOKEN_COOKIE, cookieOptions,
 } from '../middleware/auth.js';
 import { ipBucket } from '../middleware/limits.js';
-import {
-  requireFields, checkUsername, checkPassword, checkName, parseBirthday,
-} from '../utils/validate.js';
+import { requireFields, checkUsername, checkPassword, checkName, parseBirthday, isId } from '../utils/validate.js';
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
 import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/events.js';
 import { disconnectSession } from '../socket/index.js';
@@ -101,7 +98,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
 
   let group = null;
   if (req.body.group) {
-    if (!mongoose.isValidObjectId(req.body.group) || !(await Group.exists({ _id: req.body.group }))) {
+    if (!isId(req.body.group) || !(await Group.exists({ _id: req.body.group }))) {
       throw badRequest('Unknown group');
     }
     group = req.body.group;
@@ -113,6 +110,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   await user.setPassword(password);
   await user.save();
   approvalsChanged(); // updates the approvals badge for approvers
+  req.audit = { action: 'auth.signup', username, details: { username, name, group } };
 
   res.status(201).json({
     message: 'Account created. You can log in once an admin, team leader or boss approves it.',
@@ -151,6 +149,9 @@ router.post('/login', ipLimiter, authLimiter, accountLimiter, async (req, res) =
   const ip = clientIp(req);
   const flags = [];
   if (user.lastLoginAt && !(await AuditLog.exists({ 'user.id': user._id, action: 'auth.login', ip }))) flags.push('new-ip');
+  // A login with a reset password: whoever reset it could be the one logging
+  // in, so admins and the team leader are told (utils/securityAlerts.js).
+  if (user.mustChangePassword && user.passwordResetAt) flags.push('reset-login');
   req.audit = { action: 'auth.login', details: { username }, flags };
   // A password from the leaked-password lists has to be changed now. Only in
   // production: the demo accounts share one on purpose.
