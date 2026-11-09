@@ -135,7 +135,8 @@ async function checkReplyTo(value, channel, user) {
 
 // POST /api/chat/:titleKey/messages { content, images?, replyTo? }
 router.post('/:titleKey/messages', chatLimit, async (req, res) => {
-  const channel = await resolveChannel(req.user, req.params.titleKey);
+  const { titleKey } = req.params;
+  const channel = await resolveChannel(req.user, titleKey);
   const images = (await checkImages(req.body.images)) ?? [];
   const content = checkContent(req.body.content, images.length > 0);
   const replyTo = await checkReplyTo(req.body.replyTo, channel, req.user);
@@ -153,6 +154,8 @@ router.post('/:titleKey/messages', chatLimit, async (req, res) => {
 
   // Sending counts as having read the chat.
   await ChatRead.touch(req.user._id, channel.key, message.createdAt);
+  // The log notes that a message was sent, never what it said.
+  req.audit = { details: { chat: titleKey, chars: content.length, images: images.length, replyTo: Boolean(replyTo) } };
 
   sendChatEvent('chat:new', channel, req.user, (titleKey, peer) => ({
     titleKey, channelName: peer ? peer.name : channel.name, message: serialize(message), dm: channel.kind === 'dm',
@@ -207,6 +210,7 @@ router.patch('/messages/:id', async (req, res) => {
   message.content = checkContent(req.body.content, message.images?.length > 0);
   message.editedAt = new Date();
   await message.save();
+  req.audit = { target: { model: 'Message', id: message._id, label: `message in ${message.channelKey}` }, details: { chars: message.content.length } };
 
   sendChatEvent('chat:changed', channel, req.user, (key) => ({ titleKey: key, message: serialize(message) }));
   res.json({ message: serialize(message) });
@@ -265,7 +269,7 @@ router.delete('/messages/:id', async (req, res) => {
     sendChatEvent('chat:deleted', channel, req.user, (key) => ({ titleKey: key, id: message._id, deletedAt: message.deletedAt }));
     return res.json({ ok: true, deletedAt: message.deletedAt });
   }
-  await archiveDeleted(message, req, { model: 'Message', label: `${titleKey}: ${previewOf(message).slice(0, 80)}` });
+  await archiveDeleted(message, req, { model: 'Message', label: `${titleKey}: 1 message` });
   await message.deleteOne();
 
   sendChatEvent('chat:deleted', channel, req.user, (key) => ({ titleKey: key, id: message._id }));
@@ -288,7 +292,7 @@ router.delete('/:titleKey/messages', async (req, res) => {
   for (;;) {
     const batch = await Message.find({ channelKey: channel.key, createdAt: { $lte: upTo } }).limit(CLEAR_BATCH);
     if (!batch.length) break;
-    await archiveDeleted(batch, req, { model: 'Message', label: (m) => `${titleKey}: ${previewOf(m).slice(0, 80)}` });
+    await archiveDeleted(batch, req, { model: 'Message', label: `${titleKey}: whole chat` });
     const gone = await Message.deleteMany({ _id: { $in: batch.map((m) => m._id) } });
     if (!gone.deletedCount) break; // someone else removed them meanwhile
     deleted += gone.deletedCount;

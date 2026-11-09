@@ -21,7 +21,9 @@ const LABELS = {
   User: (d) => `${d.name ?? ''} (@${d.username ?? ''})`,
   Report: (d) => `${d.scope ?? ''} ${d.type ?? ''} report ${d.period ?? ''}`,
   Plan: (d) => `${d.type ?? ''} plan ${d.period ?? ''}`,
-  Message: (d) => String(d.content ?? ''),
+  // Never the text: a direct message is between its two people, and the
+  // log is read by admins and the team leader.
+  Message: (d) => `message in ${d.channelKey ?? 'chat'}`,
   Outcome: (d) => `${d.reason ?? ''} · ${d.split?.total ?? d.amount ?? ''}`,
   Income: (d) => `${d.amount ?? ''} ${d.currency ?? ''} ${d.from ? `from ${d.from}` : ''}`,
   PaymentFee: (d) => d.key ?? '',
@@ -40,19 +42,24 @@ export const plainOf = (doc) => (typeof doc?.toObject === 'function'
   ? doc.toObject({ depopulate: true, flattenMaps: true, versionKey: false })
   : doc);
 
+// Fields whose old and new value stay out of the log, per model: a chat
+// message's text (changed, but not what it said).
+const PRIVATE = { Message: new Set(['content']) };
+
 // A field's value as the log may keep it: hidden when the field is a secret.
 const safe = (key, value) => sanitize({ [key]: value })[key] ?? null;
 
 // The top-level fields that differ between two copies of a record, as
 // { field: { from, to } }, or null when nothing of note changed. Secrets are
 // hidden the same way as everywhere else in the log.
-export function diffRecords(before = {}, after = {}) {
+export function diffRecords(before = {}, after = {}, model = '') {
   const fields = {};
+  const hidden = PRIVATE[model];
   for (const key of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])) {
     if (NOISE.has(key)) continue;
     if (JSON.stringify(before?.[key] ?? null) === JSON.stringify(after?.[key] ?? null)) continue;
     // A changed password shows as changed, never as what it was or is.
-    fields[key] = { from: safe(key, before?.[key]), to: safe(key, after?.[key]) };
+    fields[key] = hidden?.has(key) ? { from: '[hidden]', to: '[hidden]' } : { from: safe(key, before?.[key]), to: safe(key, after?.[key]) };
   }
   return Object.keys(fields).length ? fields : null;
 }
@@ -88,7 +95,7 @@ export function auditPlugin(schema) {
     if (this.isNew) {
       note(ctx, { op: 'create', model, id: this._id, label: labelOf(model, after) });
     } else {
-      const fields = diffRecords(this.$locals.auditBefore, after);
+      const fields = diffRecords(this.$locals.auditBefore, after, model);
       if (fields) note(ctx, { op: 'update', model, id: this._id, label: labelOf(model, after), fields });
     }
     this.$locals.auditBefore = after;
@@ -132,7 +139,7 @@ export function auditPlugin(schema) {
       const byId = new Map(after.map((a) => [String(a._id), a]));
       for (const was of before) {
         const now = byId.get(String(was._id));
-        const fields = diffRecords(was, now ?? was);
+        const fields = diffRecords(was, now ?? was, model);
         if (fields) note(ctx, { op: 'update', model, id: was._id, label: labelOf(model, now ?? was), fields });
       }
     });
