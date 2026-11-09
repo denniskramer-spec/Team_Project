@@ -113,6 +113,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   await user.setPassword(password);
   await user.save();
   approvalsChanged(); // updates the approvals badge for approvers
+  req.audit = { action: 'auth.signup', username, details: { username, name, group } };
 
   res.status(201).json({
     message: 'Account created. You can log in once an admin, team leader or boss approves it.',

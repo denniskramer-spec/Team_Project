@@ -30,6 +30,7 @@ import securityRoutes from './routes/security.js';
 import copyRoutes from './routes/copies.js';
 import { auditRequests } from './utils/audit.js';
 import { requireAuth } from './middleware/auth.js';
+import { deniedLimit } from './middleware/limits.js';
 import { uploadsDir } from './utils/uploads.js';
 
 const clientDir = fileURLToPath(new URL('../../client/dist/', import.meta.url));
@@ -80,6 +81,10 @@ app.use('/api', (req, res, next) => {
   }
   next();
 });
+// One address sending requests that keep being refused (no session, no
+// permission, no such route) is told to stop, before the refusals pile up
+// in the security log.
+app.use('/api', deniedLimit);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);

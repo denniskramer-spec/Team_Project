@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitize, actionOf, filesOf, viewOf } from '../src/utils/audit.js';
+import { sanitize, actionOf, filesOf, viewOf, fitDetails, MAX_DETAILS_BYTES } from '../src/utils/audit.js';
 import { diffRecords, labelOf } from '../src/utils/auditPlugin.js';
 
 test('what goes in the security log hides secrets and keeps the rest', () => {
@@ -13,6 +13,21 @@ test('what goes in the security log hides secrets and keeps the rest', () => {
   assert.equal(many[50], '… 10 more');
   // Keys MongoDB would refuse are made plain.
   assert.deepEqual(sanitize({ $set: { 'a.b': 1 } }), { _set: { a_b: 1 } });
+  // Lists nest no deeper than objects do.
+  let deep = 'x';
+  for (let i = 0; i < 8; i += 1) deep = [deep];
+  assert.equal(JSON.stringify(sanitize(deep)).includes('"x"'), false);
+});
+
+test('details too big for one entry are cut down to what matters', () => {
+  const small = { note: 'hi', changes: [{ op: 'update' }] };
+  assert.equal(fitDetails(small), small);
+  const big = { blob: Array.from({ length: 50 }, () => 'y'.repeat(500)), changes: [{ op: 'update', model: 'Task' }] };
+  const cut = fitDetails(big);
+  assert.ok(Buffer.byteLength(JSON.stringify(cut)) <= MAX_DETAILS_BYTES);
+  assert.equal(cut.blob, undefined);
+  assert.deepEqual(cut.changes, big.changes);
+  assert.match(cut.omitted, /over 16 KB/);
 });
 
 test('an action is named after the resource and what was done to it', () => {
@@ -41,6 +56,9 @@ test('an edit is kept field by field, old value and new, secrets hidden', () => 
   assert.equal(diffRecords(before, { ...before, updatedAt: new Date() }), null);
   // A field that appeared or went away counts.
   assert.deepEqual(diffRecords({ a: 1 }, {}), { a: { from: 1, to: null } });
+  // A chat message's text is private to its chat: changed, never quoted.
+  assert.deepEqual(diffRecords({ content: 'old' }, { content: 'new' }, 'Message'), { content: { from: '[hidden]', to: '[hidden]' } });
+  assert.doesNotMatch(labelOf('Message', { content: 'our secret', channelKey: 'dm:a:b' }), /secret/);
 });
 
 test('a record is named in the log by what it is about', () => {
@@ -48,7 +66,7 @@ test('a record is named in the log by what it is about', () => {
   assert.equal(labelOf('Outcome', { reason: 'Travel', amount: 295 }), 'Travel · 295');
   assert.equal(labelOf('Plan', { type: 'weekly', period: '2026-W43' }), 'weekly plan 2026-W43');
   assert.equal(labelOf('Task', { name: 'Supplier review' }), 'Supplier review');
-  assert.equal(labelOf('Message', { content: 'x'.repeat(300) }).length, 200);
+  assert.equal(labelOf('Message', { content: 'x'.repeat(300), channelKey: 'general' }), 'message in general');
   assert.equal(labelOf('Whatever', {}), '');
 });
 

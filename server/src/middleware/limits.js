@@ -72,3 +72,18 @@ export const urgentLimit = perUser({
   skip: (req) => req.body?.priority !== 'urgent',
   message: 'Too many urgent instructions at once, please wait a minute',
 });
+
+// Per address, for every route: only requests that were refused count, as
+// not logged in (401), not allowed (403) or sent to no route (404). A person
+// is refused a few times when a session runs out; a script probing the API
+// or flooding the security log with refusals gets 300 a quarter of an hour.
+export const deniedLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  keyGenerator: (req) => ipBucket(req.ip),
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: (req, res) => ![401, 403, 404].includes(res.statusCode),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many refused requests from this network, please try again later' },
+});
