@@ -9,7 +9,6 @@ import { useChatAlerts } from '../alerts/ChatAlertsContext.jsx';
 import { useLatestRequest } from '../useLiveData.js';
 import { useCopyWatch } from '../security/useCopyWatch.js';
 import IdleLogout from '../security/IdleLogout.jsx';
-import CopyNotice from '../security/CopyNotice.jsx';
 import SecurityAlerts from '../alerts/SecurityAlerts.jsx';
 import IncomeAlerts from '../alerts/IncomeAlerts.jsx';
 import ReportReminder from '../alerts/ReportReminder.jsx';
@@ -155,7 +154,6 @@ export default function Workspace() {
       <IncomeAlerts />
       <BuzzListener />
       <IdleLogout />
-      <CopyNotice />
       <div className="workspace">
         <nav className={`nav-drawer ${navOpen ? 'open' : ''}`} aria-label="Channels">
           <ChannelRail channels={channels} current={channel.key} />
