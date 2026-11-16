@@ -96,7 +96,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   const password = checkPassword(req.body.password, username);
   const birthday = parseBirthday(req.body.birthday);
 
-  if (await User.exists({ username })) throw conflict('That username is already taken');
+  if (await User.exists({ username })) throw conflict('This username is already in use by another account. Choose a different one.');
 
   const user = new User({ username, name, birthday, group: null, role: 'member', status: 'pending' });
   await user.setPassword(password);

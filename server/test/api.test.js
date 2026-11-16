@@ -130,6 +130,12 @@ test('a sign-up never has a group: the approver assigns one, and a boss approves
 
   assert.equal((await fetch(`${base}/groups/options`)).status, 401); // group names are not public
 
+  // The same username again, in any case, is refused and says why.
+  const again = await fetch(`${base}/auth/signup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'NORA', name: 'Other Nora', password: PASSWORD }) });
+  assert.equal(again.status, 409);
+  assert.match((await again.json()).message, /already in use/);
+  assert.equal(await User.countDocuments({ username: 'nora' }), 1);
+
   const bruno = await login('bruno');
   assert.equal((await bruno.get('/members/pending')).status, 403);
   assert.equal((await bruno.post(`/members/${nora._id}/approve`)).status, 403);
