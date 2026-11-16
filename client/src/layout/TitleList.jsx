@@ -44,7 +44,6 @@ export default function TitleList({ channel, current }) {
     if (t.queryKey === 'g') return selectedGroup === t.queryValue && !selectedMember;
     return t.key === current && !selectedMember;
   };
-  // Branches stay collapsed until you open one, or something inside is chosen.
   // "All" is never auto-opened, or every member would be listed twice.
   const holdsSelection = (t) => Boolean(
     t.children?.length && (
@@ -58,6 +57,15 @@ export default function TitleList({ channel, current }) {
   // Several channels have an "all" title: a branch opened in one must not
   // show open in another.
   const branchKey = (key) => `${channel.key}/${key}`;
+  // A channel opens with every group unfolded, so everyone is in view. "All"
+  // repeats them, so it stays folded unless it is the only branch there is.
+  useEffect(() => {
+    const branches = channel.titles.filter((t) => t.children?.length);
+    const isAll = (t) => t.key === 'all' || (t.queryKey === 'g' && !t.queryValue);
+    const groups = branches.filter((t) => !isAll(t));
+    const show = groups.length ? groups : branches;
+    if (show.length) setOpen((prev) => new Set([...prev, ...show.map((t) => branchKey(t.key))]));
+  }, [channel.key]);
   // Keep the branch holding the current selection open.
   useEffect(() => {
     const auto = channel.titles.filter(holdsSelection).map((t) => t.key);
