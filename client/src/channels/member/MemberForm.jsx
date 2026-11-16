@@ -26,7 +26,9 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
   const [busy, setBusy] = useState(false);
 
   const canPickGroup = editing ? member.permissions.changeGroup : isManager(user);
-  const canPickRole = !editing && isManager(user);
+  // Admins and the team leader set the role, here as on Users & roles (never their own).
+  const canPickRole = editing ? member.permissions.changeRole : isManager(user);
+  const roleChanged = editing && canPickRole && form.role !== member.role;
   // The username is set when the member is added; afterwards only the leader
   // (or an admin) may change it.
   const canSetUsername = editing ? member.permissions.changeUsername : true;
@@ -44,7 +46,18 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
         const body = { name: form.name, birthday: form.birthday || null };
         if (canPickGroup) body.group = form.group || null;
         if (canSetUsername) body.username = form.username;
+        // A boss leads their group, so the role route takes the group as well.
+        const saveRole = () => api(`/members/${member.id}/role`, {
+          method: 'PATCH',
+          body: form.role === 'boss' ? { role: form.role, group: form.group } : { role: form.role },
+        });
+        // A boss cannot be left without a group, so a boss stepping down
+        // changes role before the group may be cleared; otherwise the details
+        // go first, as they are what can be refused (a taken username).
+        const roleFirst = roleChanged && member.role === 'boss';
+        if (roleFirst) await saveRole();
         result = await api(`/members/${member.id}`, { method: 'PATCH', body });
+        if (roleChanged && !roleFirst) result = await saveRole();
       } else {
         const body = { name: form.name, username: form.username, birthday: form.birthday || null };
         if (canPickGroup) body.group = form.group || null;
