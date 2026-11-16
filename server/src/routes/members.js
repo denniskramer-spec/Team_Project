@@ -277,10 +277,10 @@ async function findPending(req) {
   return user;
 }
 
-// POST /api/members/:id/approve { group? } — admins and leaders may (re)assign the group.
+// POST /api/members/:id/approve { group? } — the approver assigns the group.
 router.post('/:id/approve', requireCapability('approveSignups'), async (req, res) => {
   const user = await findPending(req);
-  if (req.body.group !== undefined && ['admin', 'leader'].includes(req.user.role)) {
+  if (req.body.group !== undefined) {
     user.group = (await resolveGroup(req.body.group))?._id ?? null;
   }
   user.status = 'active';

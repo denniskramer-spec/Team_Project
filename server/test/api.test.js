@@ -120,6 +120,27 @@ test('a logged-in write is logged with its (sanitized) body, cut to size', async
   assert.equal(JSON.stringify(entry.details).includes('secret-should-hide'), false);
 });
 
+test('a sign-up never has a group: the approver assigns one, and a boss approves nobody', async () => {
+  const group = await Group.findOne({ name: 'Group1' });
+  const res = await fetch(`${base}/auth/signup`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'nora', name: 'Nora', password: PASSWORD, group: String(group._id) }) });
+  assert.equal(res.status, 201);
+  const nora = await User.findOne({ username: 'nora' });
+  assert.equal(nora.group, null); // whatever the request asked for
+  assert.equal(nora.status, 'pending');
+
+  assert.equal((await fetch(`${base}/groups/options`)).status, 401); // group names are not public
+
+  const bruno = await login('bruno');
+  assert.equal((await bruno.get('/members/pending')).status, 403);
+  assert.equal((await bruno.post(`/members/${nora._id}/approve`)).status, 403);
+
+  const lena = await login('lena');
+  assert.deepEqual((await lena.get('/members/pending')).body.members.map((m) => m.username), ['nora']);
+  const approved = await lena.post(`/members/${nora._id}/approve`, { group: String(group._id) });
+  assert.equal(approved.status, 200);
+  assert.equal(approved.body.member.group.name, 'Group1');
+});
+
 test('ids must be the text of an ObjectId: anything else is simply not found', async () => {
   const mina = await login('mina');
   assert.equal((await mina.get('/users/5/peek')).status, 404);
