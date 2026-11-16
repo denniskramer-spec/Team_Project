@@ -29,6 +29,10 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
   // Admins and the team leader set the role, here as on Users & roles (never their own).
   const canPickRole = editing ? member.permissions.changeRole : isManager(user);
   const roleChanged = editing && canPickRole && form.role !== member.role;
+  // Nobody is made an admin from the edit dialog: that is done on Users &
+  // roles. An admin being edited still shows as one.
+  const roleOptions = Object.entries(ROLE_LABELS)
+    .filter(([key]) => !editing || key !== 'admin' || member.role === 'admin');
   // The username is set when the member is added; afterwards only the leader
   // (or an admin) may change it.
   const canSetUsername = editing ? member.permissions.changeUsername : true;
@@ -128,7 +132,7 @@ export default function MemberForm({ member, defaultGroupId, onClose, onSaved })
           <label>
             Role
             <select value={form.role} onChange={set('role')}>
-              {Object.entries(ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {roleOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </label>
         )}
