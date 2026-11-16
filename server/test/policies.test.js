@@ -50,7 +50,7 @@ test('an admin password is reset by admins only', () => {
 
 test('pending sign-ups each approver sees', () => {
   assert.deepEqual(pendingFilter(leader), { status: 'pending' });
-  assert.deepEqual(pendingFilter(bossA), { status: 'pending', group: A });
+  assert.equal(pendingFilter(bossA), null); // a sign-up has no group yet
   assert.equal(pendingFilter(memberA), null);
 });
 

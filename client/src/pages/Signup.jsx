@@ -1,24 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { AuthFooter } from '../layout/Footer.jsx';
-import { api } from '../api.js';
 import { todayInput } from '../format.js';
 import PasswordRules, { passwordValid } from '../components/PasswordRules.jsx';
 
-const EMPTY = { name: '', username: '', birthday: '', group: '', password: '', confirm: '' };
+const EMPTY = { name: '', username: '', birthday: '', password: '', confirm: '' };
 
 export default function Signup() {
   const { user, signup } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState(EMPTY);
-  const [groups, setGroups] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    api('/groups/options').then((d) => setGroups(d.groups)).catch(() => setGroups([]));
-  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -48,7 +42,7 @@ export default function Signup() {
     <div className="center-screen">
       <form className="auth-card" onSubmit={submit}>
         <h1>Create an account</h1>
-        <p className="muted">An admin, team leader or boss will approve it.</p>
+        <p className="muted">An admin or the team leader will approve it and put you in a group.</p>
         {error && <div className="alert error">{error}</div>}
         <label>
           Full name
@@ -66,19 +60,10 @@ export default function Signup() {
             required
           />
         </label>
-        <div className="row">
-          <label>
-            Birthday
-            <input type="date" max={today} value={form.birthday} onChange={set('birthday')} />
-          </label>
-          <label>
-            Group
-            <select value={form.group} onChange={set('group')}>
-              <option value="">No group yet</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          </label>
-        </div>
+        <label>
+          Birthday
+          <input type="date" max={today} value={form.birthday} onChange={set('birthday')} />
+        </label>
         <label>
           Password
           <input type="password" autoComplete="new-password" value={form.password} onChange={set('password')} minLength={10} maxLength={128} required />

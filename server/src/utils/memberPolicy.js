@@ -32,9 +32,9 @@ export function permissionsFor(actor, target) {
   };
 }
 
-// Pending sign-ups an approver may see: bosses only get their own group's.
+// Pending sign-ups an approver may see. A sign-up belongs to no group until
+// it is approved, so there is nothing for a boss to approve.
 export function pendingFilter(actor) {
   if (actor.role === 'admin' || actor.role === 'leader') return { status: 'pending' };
-  if (actor.role === 'boss' && actor.group) return { status: 'pending', group: actor.group };
   return null;
 }

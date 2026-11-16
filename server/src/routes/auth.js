@@ -1,13 +1,12 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import User from '../models/User.js';
-import Group from '../models/Group.js';
 import bcrypt from 'bcryptjs';
 import {
   requireAuth, revokeToken, setSessionCookie, TOKEN_COOKIE, cookieOptions,
 } from '../middleware/auth.js';
 import { ipBucket } from '../middleware/limits.js';
-import { requireFields, checkUsername, checkPassword, checkName, parseBirthday, isId } from '../utils/validate.js';
+import { requireFields, checkUsername, checkPassword, checkName, parseBirthday } from '../utils/validate.js';
 import { badRequest, unauthorized, forbidden, conflict } from '../utils/httpError.js';
 import { approvalsChanged, directoryChanged, sessionChanged } from '../socket/events.js';
 import { disconnectSession } from '../socket/index.js';
@@ -88,7 +87,8 @@ const signupLimiter = rateLimit({
   message: { message: 'Too many sign-ups from this network, please try again later' },
 });
 
-// New accounts start as "pending" members until an admin, leader or boss approves them.
+// New accounts start as "pending" members of no group until an admin or the
+// leader approves them; the group is chosen then, never by the person signing up.
 router.post('/signup', signupLimiter, async (req, res) => {
   requireFields(req.body, ['username', 'name', 'password']);
   const username = checkUsername(req.body.username);
@@ -96,24 +96,16 @@ router.post('/signup', signupLimiter, async (req, res) => {
   const password = checkPassword(req.body.password, username);
   const birthday = parseBirthday(req.body.birthday);
 
-  let group = null;
-  if (req.body.group) {
-    if (!isId(req.body.group) || !(await Group.exists({ _id: req.body.group }))) {
-      throw badRequest('Unknown group');
-    }
-    group = req.body.group;
-  }
-
   if (await User.exists({ username })) throw conflict('That username is already taken');
 
-  const user = new User({ username, name, birthday, group, role: 'member', status: 'pending' });
+  const user = new User({ username, name, birthday, group: null, role: 'member', status: 'pending' });
   await user.setPassword(password);
   await user.save();
   approvalsChanged(); // updates the approvals badge for approvers
-  req.audit = { action: 'auth.signup', username, details: { username, name, group } };
+  req.audit = { action: 'auth.signup', username, details: { username, name } };
 
   res.status(201).json({
-    message: 'Account created. You can log in once an admin, team leader or boss approves it.',
+    message: 'Account created. You can log in once an admin or the team leader approves it.',
   });
 });
 

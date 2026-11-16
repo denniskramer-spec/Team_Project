@@ -55,7 +55,7 @@ const PEOPLE = [
   { username: 'tess', name: 'Tess Novak', role: 'member', group: 'Group1', birthday: '1998-09-22' },
   { username: 'kai', name: 'Kai Sorensen', role: 'member', group: 'Group2', birthday: '1992-12-11' },
   { username: 'rita', name: 'Rita Moreau', role: 'member', group: 'Group2', birthday: '1996-04-18' },
-  { username: 'sam', name: 'Sam Okafor', role: 'member', group: 'Group2', birthday: '1994-08-05', status: 'pending' },
+  { username: 'sam', name: 'Sam Okafor', role: 'member', group: null, birthday: '1994-08-05', status: 'pending' },
 ];
 
 const CLIENTS = ['Acme Ltd', 'Globex', 'Initech', 'Umbrella Co', 'Stark Industries', 'Wayne Group'];

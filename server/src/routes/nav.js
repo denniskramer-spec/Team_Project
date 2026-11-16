@@ -17,7 +17,7 @@ const router = Router();
 
 router.get('/', requireAuth, async (req, res) => {
   const groups = await Group.find({}, 'name slug').sort('name').lean();
-  const filter = ['admin', 'leader', 'boss'].includes(req.user.role) ? pendingFilter(req.user) : null;
+  const filter = pendingFilter(req.user);
   const pendingCount = filter ? await User.countDocuments(filter) : 0;
 
   // Unread instructions per title: "all" (which also lists the ones sent

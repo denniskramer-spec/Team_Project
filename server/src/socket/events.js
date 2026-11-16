@@ -32,7 +32,7 @@ export const navChangedFor = (userId) => tellNav([`user:${userId}`]);
 // An income far from what the reported work expected: the badge of the team
 // leader and of the boss of the member's group changes.
 export const varianceRaised = (groupId) => tellNav(['role:leader', ...(groupId ? [`group:${groupId}`] : [])]);
-export const approvalsChanged = () => tellNav(['role:admin', 'role:leader', 'role:boss']);
+export const approvalsChanged = () => tellNav(['role:admin', 'role:leader']);
 // A payment fee changed, by hand or by the daily refresh: fee tables reload.
 export const feesChanged = () => getIO()?.emit('fees:changed');
 // The team time zone changed: "today" may be another day for everyone.

@@ -11,14 +11,14 @@ import { shownName } from '../utils/person.js';
 
 const router = Router();
 
-// Public list of group names for the sign-up form.
+// Everything here requires login: sign-up no longer offers the groups.
+router.use(requireAuth);
+
+// Group names for the forms that assign one.
 router.get('/options', async (req, res) => {
   const groups = await Group.find({}, 'name slug').sort('name').lean();
   res.json({ groups: groups.map((g) => ({ id: g._id, name: g.name, slug: g.slug })) });
 });
-
-// Everything below requires login.
-router.use(requireAuth);
 
 // Groups with member counts and their bosses.
 router.get('/', async (req, res) => {

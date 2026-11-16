@@ -238,9 +238,9 @@ export function buildNav(user, groups, {
     : [...channels];
 
   const adminTitles = [];
-  if (['admin', 'leader', 'boss'].includes(user.role)) adminTitles.push({ key: 'approvals', name: 'Approvals', badge: pendingCount });
   if (['admin', 'leader'].includes(user.role)) {
     adminTitles.push(
+      { key: 'approvals', name: 'Approvals', badge: pendingCount },
       { key: 'users', name: 'Users & roles' }, { key: 'groups', name: 'Groups' },
       { key: 'fees', name: 'Payment fees' }, { key: 'security', name: 'Security' },
       { key: 'team', name: 'Team settings' },

@@ -18,7 +18,7 @@ export const CAPABILITIES = {
   manageUsers: ['admin', 'leader'], // change roles
   manageGroups: ['admin', 'leader'],
   addMembers: ['admin', 'leader', 'boss'], // bosses: own group only
-  approveSignups: ['admin', 'leader', 'boss'], // bosses: own group only
+  approveSignups: ['admin', 'leader'], // a sign-up has no group until they assign one
   sendInstructions: ['leader', 'boss'], // bosses: own group only
   viewAllReports: ['admin', 'leader'],
   writeGroupReport: ['boss'],
