@@ -36,9 +36,13 @@ router.get('/', requireAuth, async (req, res) => {
   const chatUnread = await chatUnreadCounts(req.user);
   const dms = await listDms(req.user);
 
-  // Members shown under each group in the tree.
-  const members = await User.find({ status: 'active', role: { $in: ['member', 'boss'] } }, 'name username role group')
-    .sort('username').lean();
+  // Members shown under each group in the tree: group by group, the boss of
+  // each first, then by username.
+  const groupOrder = new Map(groups.map((g, i) => [String(g._id), i]));
+  const groupRank = (m) => groupOrder.get(String(m.group)) ?? groups.length;
+  const members = (await User.find({ status: 'active', role: { $in: ['member', 'boss'] } }, 'name username role group')
+    .sort('username').lean())
+    .sort((a, b) => groupRank(a) - groupRank(b) || (b.role === 'boss') - (a.role === 'boss'));
 
   // Project names become titles under the Projects channel (most recent first).
   const tasks = await Task.find(scopeFilter(req.user, 'owner'), 'name status')
